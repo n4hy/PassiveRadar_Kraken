@@ -20,6 +20,3 @@ Install dependencies (Ubuntu/Debian):
 sudo apt install gnuradio gr-osmosdr python3-pyqt5 python3-sip
 pip install numpy
 
-## System Architecture & Signal Flow
-
-The diagram below illustrates a KrakenSDR-based passive radar with **five coherent channels**: one **Reference** channel aimed at the illuminator (FM/TV) and **four Surveillance** channels covering the airspace. Each surveillance branch performs an FFT-domain **Cross-Ambiguity Function (CAF)** with the common Reference FFT, followed by IFFT and magnitude-squared to form a **range profile**; successive profiles form a **range–time** display.
