@@ -229,7 +229,8 @@ flowchart LR
   W0 --> FS0[FFT (Surv0)]
   FR --> M0[(× conj)]
   FS0 --> M0
-  M0 --> I0[IFFT]
+  M0 --> I0[IFFt]
+
   I0 --> P0[|·|² → Range profile]
   P0 --> RT0[[Range–Time Raster]]
 
