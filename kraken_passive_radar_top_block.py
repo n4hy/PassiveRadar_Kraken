@@ -22,8 +22,130 @@ try:
     HAVE_OSMOSDR = True
 except Exception:
     HAVE_OSMOSDR = False
-from PyQt5 import Qt
+from PyQt5 import Qt, QtCore
 from gnuradio.filter import firdes
+
+class DopplerProcessingBlock(gr.basic_block):
+    """
+    Custom Python block to perform slow-time FFT for Range-Doppler processing.
+    Consumes doppler_len vectors of size fft_len (Range bins).
+    Outputs a single Range-Doppler map (flattened) or triggers a GUI update.
+    """
+    def __init__(self, fft_len, doppler_len, callback=None):
+        gr.basic_block.__init__(self,
+            name="DopplerProcessingBlock",
+            in_sig=[(np.complex64, fft_len)],
+            out_sig=None) # We don't output to GR stream, we send to GUI via callback
+
+        self.fft_len = fft_len
+        self.doppler_len = doppler_len
+        self.callback = callback
+
+        # Buffer to store 'doppler_len' range profiles (rows=slow_time, cols=fast_time)
+        self.buffer = np.zeros((doppler_len, fft_len), dtype=np.complex64)
+        self.buf_idx = 0
+
+        # Window function for Doppler dimension
+        self.win = np.hamming(doppler_len).astype(np.float32)
+
+    def general_work(self, input_items, output_items):
+        in0 = input_items[0]
+        n_input = len(in0)
+
+        # We need to process all input items
+        # Since this is a basic_block, we must implement consume manually
+
+        processed = 0
+        while processed < n_input:
+            # How much space is left in the buffer?
+            space = self.doppler_len - self.buf_idx
+            # How much data do we have?
+            available = n_input - processed
+
+            # Copy chunk
+            to_copy = min(space, available)
+            self.buffer[self.buf_idx : self.buf_idx + to_copy] = in0[processed : processed + to_copy]
+
+            self.buf_idx += to_copy
+            processed += to_copy
+
+            if self.buf_idx >= self.doppler_len:
+                # Buffer full, process map
+                self.process_map()
+                self.buf_idx = 0
+
+        self.consume(0, n_input)
+        return 0
+
+    def process_map(self):
+        # 1. Apply window along slow-time (axis 0)
+        # buffer shape: (doppler_len, fft_len)
+        # multiply column-wise by window
+        cpi = self.buffer * self.win[:, np.newaxis]
+
+        # 2. FFT along slow-time (axis 0) -> Doppler
+        rd_complex = np.fft.fftshift(np.fft.fft(cpi, axis=0), axes=0)
+
+        # 3. Magnitude squared or log mag
+        rd_mag = 10 * np.log10(np.abs(rd_complex)**2 + 1e-12)
+
+        # 4. Send to GUI
+        if self.callback:
+            self.callback(rd_mag)
+
+class RangeDopplerWidget(Qt.QWidget):
+    """
+    Custom Qt Widget to display the Range-Doppler Map.
+    """
+    update_signal = QtCore.pyqtSignal(object)
+
+    def __init__(self, fft_len, doppler_len, parent=None):
+        super().__init__(parent)
+        self.fft_len = fft_len
+        self.doppler_len = doppler_len
+        self.data = np.zeros((doppler_len, fft_len), dtype=np.float32)
+
+        self.update_signal.connect(self.on_update)
+
+        layout = Qt.QVBoxLayout(self)
+        self.label = Qt.QLabel()
+        self.label.setScaledContents(True) # Allow resizing
+        layout.addWidget(self.label)
+
+    def on_update(self, data):
+        self.data = data
+        # Normalize for display (simple min/max)
+        d_min = np.min(data)
+        d_max = np.max(data)
+        if d_max > d_min:
+            norm = (data - d_min) / (d_max - d_min) * 255
+        else:
+            norm = data * 0
+
+        norm = norm.astype(np.uint8)
+
+        # Map to colormap (grayscale for now)
+        # In PyQt, creating an image from numpy array usually involves some shuffling
+        # data is (doppler_len, fft_len) -> (Y, X)
+        # We want X axis = Doppler, Y axis = Range ?
+        # Standard RD Map: X=Doppler, Y=Range.
+        # But our matrix is (doppler_len, fft_len).
+        # So axis 0 is Doppler, axis 1 is Range.
+        # So we should transpose to get (Range, Doppler) -> (Y, X)
+
+        # display_data shape: (fft_len, doppler_len)
+        display_data = norm.T
+
+        h, w = display_data.shape
+        # Create QImage from data
+        # We need to make it contiguous and formatted correctly
+        # This is a bit tricky with raw QImage and numpy without extra libs like qimage2ndarray
+        # Simple hack: create RGB array
+
+        rgb = np.dstack((display_data, display_data, display_data)).copy()
+
+        qimg = Qt.QImage(rgb.data, w, h, 3*w, Qt.QImage.Format_RGB888)
+        self.label.setPixmap(Qt.QPixmap.fromImage(qimg))
 
 class KrakenPassiveRadar(gr.top_block, Qt.QWidget):
     def __init__(self,
@@ -128,6 +250,18 @@ class KrakenPassiveRadar(gr.top_block, Qt.QWidget):
         # To keep GRC-free, we approximate by stacking frames then using a raster GUI.
         # We'll still compute a slow-time FFT by accumulating doppler_len frames.
         self.accum = blocks.stream_to_vector(gr.sizeof_float, self.vec * self.doppler_len)
+
+        # New: Custom Doppler Processing Block
+        # Create the widget first
+        self.rd_widget = RangeDopplerWidget(self.fft_len, self.doppler_len)
+        self.top_layout.addWidget(self.rd_widget)
+
+        # Callback wrapper to be called from the block (in GR thread) to update GUI (in Qt thread)
+        def update_gui(data):
+            self.rd_widget.update_signal.emit(data)
+
+        self.doppler_proc = DopplerProcessingBlock(self.fft_len, self.doppler_len, callback=update_gui)
+
         # NOTE: For simplicity, we won't implement per-bin FFT here — instead, we display
         # range-time raster (motion shows slanted traces). For a full RD map, consider
         # gnuradio blocks or custom python blocks per-bin FFT.
@@ -142,6 +276,8 @@ class KrakenPassiveRadar(gr.top_block, Qt.QWidget):
             x_axis_units="s",
         )
         self._rd_raster_win = sip.wrapinstance(self.rd_raster.qwidget(), Qt.QWidget)
+        # self.top_layout.addWidget(self._rd_raster_win) # Disable old raster or keep it?
+        # Let's keep it below for comparison
         self.top_layout.addWidget(self._rd_raster_win)
 
         # Also show PSDs for debugging
@@ -159,11 +295,18 @@ class KrakenPassiveRadar(gr.top_block, Qt.QWidget):
         self.connect((self.ref_fft, 0), (self.mult_conj, 0))
         self.connect((self.surv_fft, 0), (self.mult_conj, 1))
         self.connect(self.mult_conj, self.ifft)
+
+        # Branch 1: Existing path for Range-Time Raster
         self.connect(self.ifft, self.corr_mag)
         self.connect(self.corr_mag, self.throttle)
         self.connect(self.throttle, self.slow_stv)
         # feed as raster (expects stream of vectors -> flattened)
         self.connect(self.slow_stv, self.rd_raster)
+
+        # Branch 2: New path for Range-Doppler Map
+        # DopplerProcessingBlock expects complex input of size fft_len
+        # The output of ifft is stream of vectors of size fft_len (complex)
+        self.connect(self.ifft, self.doppler_proc)
 
         # PSD debug
         self.connect(self.ref_dc, (self.ref_psd, 0))
