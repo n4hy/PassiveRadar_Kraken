@@ -48,12 +48,12 @@ graph TD
     end
 
     subgraph "Doppler Processing (Slow-Time)"
-        IFFT -->|Range Profiles| Buff[Buffer (Slow-Time)]
+        IFFT -->|Range Profiles| Buff["Buffer (Slow-Time)"]
         Buff -->|Window & FFT| DoppFFT[Doppler FFT]
         DoppFFT -->|Magnitude| Mag[Log Magnitude]
     end
 
     subgraph Display
-        Mag --> RDMap[Range-Doppler Map (Qt Widget)]
+        Mag --> RDMap["Range-Doppler Map (Qt Widget)"]
         IFFT -->|Mag Squared| RTMap[Range-Time Raster]
     end
