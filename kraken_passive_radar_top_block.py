@@ -25,6 +25,77 @@ except Exception:
 from PyQt5 import Qt, QtCore
 from gnuradio.filter import firdes
 
+# In a real installation, we would import from the OOT module:
+# from kraken_passive_radar import DopplerProcessingBlock, RangeDopplerWidget, ClutterCanceller
+# But here we inline the new ClutterCanceller or define it for the standalone script.
+# Since we already inlined DopplerProcessingBlock, we should inline ClutterCanceller too
+# OR actually import it if we set PYTHONPATH.
+# Given the user wants a standalone script (presumably), I will add the class here.
+
+class ClutterCanceller(gr.basic_block):
+    """
+    Adaptive Clutter Canceller using NLMS.
+
+    Inputs:
+    0: Reference Signal (Predictor)
+    1: Surveillance Signal (Desired)
+
+    Outputs:
+    0: Error Signal (Surveillance - Estimated Clutter)
+    """
+    def __init__(self, num_taps=32, mu=0.1):
+        gr.basic_block.__init__(self,
+            name="ClutterCanceller",
+            in_sig=[np.complex64, np.complex64],
+            out_sig=[np.complex64])
+
+        self.num_taps = num_taps
+        self.mu = mu
+        self.w = np.zeros(num_taps, dtype=np.complex64)
+
+        # Buffer for reference history
+        self.history = np.zeros(num_taps, dtype=np.complex64)
+
+    def general_work(self, input_items, output_items):
+        ref_in = input_items[0]
+        surv_in = input_items[1]
+        out_err = output_items[0]
+
+        n_input = min(len(ref_in), len(surv_in), len(out_err))
+
+        if n_input == 0:
+            return 0
+
+        # Prepare full reference stream including history
+        full_ref = np.concatenate((self.history, ref_in[:n_input]))
+
+        # Iterate
+        # Note: In a production environment, this should be optimized (C++ or numba)
+        for i in range(n_input):
+            # x[n] = [ref[i], ref[i-1], ... ref[i-N+1]]
+            # This corresponds to full_ref[i : i + num_taps] reversed
+            x = full_ref[i : i + self.num_taps][::-1]
+
+            # Filter output (Estimate of clutter)
+            y = np.dot(self.w, x)
+
+            # Error (Desired - Estimate)
+            d = surv_in[i]
+            e = d - y
+
+            # Update weights (NLMS)
+            norm_x_sq = np.real(np.dot(x, np.conj(x))) + 1e-12
+            self.w += self.mu * e * np.conj(x) / norm_x_sq
+
+            out_err[i] = e
+
+        # Update history
+        self.history = full_ref[n_input:]
+
+        self.consume(0, n_input)
+        self.consume(1, n_input)
+        return n_input
+
 class DopplerProcessingBlock(gr.basic_block):
     """
     Custom Python block to perform slow-time FFT for Range-Doppler processing.
@@ -218,6 +289,12 @@ class KrakenPassiveRadar(gr.top_block, Qt.QWidget):
         self.ref_dc = filter.dc_blocker_cc(128, True)
         self.surv_dc = filter.dc_blocker_cc(128, True)
 
+        #########################################
+        # CLUTTER CANCELLATION (NLMS)
+        #########################################
+        # Clean surveillance channel by removing direct path (ref)
+        self.clutter_cancel = ClutterCanceller(num_taps=64, mu=0.05)
+
         ############################
         # CAF RANGE PROCESSOR (FFT)
         ############################
@@ -289,8 +366,23 @@ class KrakenPassiveRadar(gr.top_block, Qt.QWidget):
         ############################
         # Connections
         ############################
-        self.connect(self.ref_src, self.ref_chan, self.ref_dc, self.ref_vec, self.ref_win, self.ref_fft)
-        self.connect(self.surv_src, self.surv_chan, self.surv_dc, self.surv_vec, self.surv_win, self.surv_fft)
+        # Reference Path: Src -> Chan -> DC -> [Clutter Cancel In 0] -> Vec -> Win -> FFT
+        # Note: Ref DC also goes to CAF Reference input
+        self.connect(self.ref_src, self.ref_chan, self.ref_dc)
+        self.connect(self.surv_src, self.surv_chan, self.surv_dc)
+
+        # Clutter Cancellation (NLMS)
+        # Input 0: Ref (Predictor), Input 1: Surv (Desired)
+        # Output 0: Error (Clean Surv)
+        self.connect(self.ref_dc, (self.clutter_cancel, 0))
+        self.connect(self.surv_dc, (self.clutter_cancel, 1))
+
+        # CAF Processing
+        # Reference branch for CAF
+        self.connect(self.ref_dc, self.ref_vec, self.ref_win, self.ref_fft)
+
+        # Surveillance branch for CAF (Now comes from Clutter Canceller)
+        self.connect(self.clutter_cancel, self.surv_vec, self.surv_win, self.surv_fft)
 
         self.connect((self.ref_fft, 0), (self.mult_conj, 0))
         self.connect((self.surv_fft, 0), (self.mult_conj, 1))

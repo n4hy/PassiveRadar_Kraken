@@ -39,9 +39,15 @@ graph TD
         SurvChan --> SurvDC[DC Blocker]
     end
 
+    subgraph "Clutter Cancellation (NLMS)"
+        RefDC -->|Predictor| NLMS[Adaptive Filter]
+        SurvDC -->|Desired| NLMS
+        NLMS -->|Error/Clean| CleanSurv[Cleaned Surv]
+    end
+
     subgraph "CAF Processing (Fast-Time)"
         RefDC --> RefFFT[FFT]
-        SurvDC --> SurvFFT[FFT]
+        CleanSurv --> SurvFFT[FFT]
         RefFFT --> Mult[Multiply Conj]
         SurvFFT --> Mult
         Mult --> IFFT[IFFT]

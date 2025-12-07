@@ -1,3 +1,4 @@
 
 from .doppler_processing import DopplerProcessingBlock
 from .range_doppler_widget import RangeDopplerWidget
+from .clutter_cancellation import ClutterCanceller
