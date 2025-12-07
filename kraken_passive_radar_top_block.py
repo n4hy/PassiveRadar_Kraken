@@ -17,6 +17,10 @@
 #
 from gnuradio import gr, blocks, filter, analog, fft, qtgui
 import sip, numpy as np, sys, os, time, math
+import ctypes
+from ctypes import c_float, c_void_p, c_int, POINTER
+import subprocess
+
 try:
     import osmosdr
     HAVE_OSMOSDR = True
@@ -25,12 +29,60 @@ except Exception:
 from PyQt5 import Qt, QtCore
 from gnuradio.filter import firdes
 
-# In a real installation, we would import from the OOT module:
-# from kraken_passive_radar import DopplerProcessingBlock, RangeDopplerWidget, ClutterCanceller
-# But here we inline the new ClutterCanceller or define it for the standalone script.
-# Since we already inlined DopplerProcessingBlock, we should inline ClutterCanceller too
-# OR actually import it if we set PYTHONPATH.
-# Given the user wants a standalone script (presumably), I will add the class here.
+# --- Load NLMS C++ Library ---
+
+def compile_and_load_nlms_lib():
+    """
+    Attempts to load the NLMS shared library.
+    If not found, attempts to compile it using g++.
+    Returns the ctypes CDLL object or None.
+    """
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    src_dir = os.path.join(script_dir, 'src')
+    lib_name = 'libnlms_clutter_canceller.so'
+    lib_path = os.path.join(src_dir, lib_name)
+
+    # If library doesn't exist, try to compile
+    if not os.path.exists(lib_path):
+        cpp_file = os.path.join(src_dir, 'nlms_clutter_canceller.cpp')
+        if os.path.exists(cpp_file):
+            print(f"NLMS library not found. Compiling {cpp_file}...")
+            try:
+                # Command: g++ -O3 -shared -fPIC -DLIBRARY_BUILD src/nlms_clutter_canceller.cpp -o src/libnlms_clutter_canceller.so
+                cmd = [
+                    'g++', '-O3', '-shared', '-fPIC', '-DLIBRARY_BUILD',
+                    cpp_file, '-o', lib_path
+                ]
+                subprocess.check_call(cmd)
+                print("Compilation successful.")
+            except (subprocess.CalledProcessError, FileNotFoundError) as e:
+                print(f"Compilation failed: {e}. Will use Python fallback (slow).")
+                return None
+        else:
+            print(f"Source file {cpp_file} not found. Cannot compile.")
+            return None
+
+    try:
+        nlms_lib = ctypes.CDLL(lib_path)
+
+        # Define argtypes and restypes
+        nlms_lib.nlms_create.argtypes = [c_int, c_float]
+        nlms_lib.nlms_create.restype = c_void_p
+
+        nlms_lib.nlms_destroy.argtypes = [c_void_p]
+        nlms_lib.nlms_destroy.restype = None
+
+        # process: ptr, ref_in, surv_in, out_err, n_samples
+        nlms_lib.nlms_process.argtypes = [c_void_p, POINTER(c_float), POINTER(c_float), POINTER(c_float), c_int]
+        nlms_lib.nlms_process.restype = None
+
+        print(f"Loaded NLMS C++ library from {lib_path}")
+        return nlms_lib
+    except Exception as e:
+        print(f"Failed to load NLMS library: {e}. Will use Python fallback.")
+        return None
+
+_nlms_lib = compile_and_load_nlms_lib()
 
 class ClutterCanceller(gr.basic_block):
     """
@@ -43,7 +95,7 @@ class ClutterCanceller(gr.basic_block):
     Outputs:
     0: Error Signal (Surveillance - Estimated Clutter)
     """
-    def __init__(self, num_taps=32, mu=0.1):
+    def __init__(self, num_taps=64, mu=0.1):
         gr.basic_block.__init__(self,
             name="ClutterCanceller",
             in_sig=[np.complex64, np.complex64],
@@ -51,10 +103,24 @@ class ClutterCanceller(gr.basic_block):
 
         self.num_taps = num_taps
         self.mu = mu
-        self.w = np.zeros(num_taps, dtype=np.complex64)
+        self.use_cpp = (_nlms_lib is not None)
+        self.cpp_obj = None
 
-        # Buffer for reference history
-        self.history = np.zeros(num_taps, dtype=np.complex64)
+        if self.use_cpp:
+            self.cpp_obj = _nlms_lib.nlms_create(num_taps, mu)
+        else:
+            self.w = np.zeros(num_taps, dtype=np.complex64)
+            # Buffer for reference history
+            self.history = np.zeros(num_taps, dtype=np.complex64)
+
+    def __del__(self):
+        # Safe destruction
+        if getattr(self, 'use_cpp', False) and getattr(self, 'cpp_obj', None):
+            try:
+                _nlms_lib.nlms_destroy(self.cpp_obj)
+            except Exception:
+                pass
+            self.cpp_obj = None
 
     def general_work(self, input_items, output_items):
         ref_in = input_items[0]
@@ -66,31 +132,49 @@ class ClutterCanceller(gr.basic_block):
         if n_input == 0:
             return 0
 
-        # Prepare full reference stream including history
-        full_ref = np.concatenate((self.history, ref_in[:n_input]))
+        if self.use_cpp:
+            # Call C++ implementation
+            # Ensure arrays are contiguous and float32 (complex64 is 2x float32)
+            # numpy complex64 is compatible with float* (interleaved)
 
-        # Iterate
-        # Note: In a production environment, this should be optimized (C++ or numba)
-        for i in range(n_input):
-            # x[n] = [ref[i], ref[i-1], ... ref[i-N+1]]
-            # This corresponds to full_ref[i : i + num_taps] reversed
-            x = full_ref[i : i + self.num_taps][::-1]
+            # We must pass the pointer to the data.
+            # input_items are already numpy arrays.
+            # To be safe, ensure C contiguous, though GR usually provides it.
 
-            # Filter output (Estimate of clutter)
-            y = np.dot(self.w, x)
+            # cast to POINTER(c_float)
+            p_ref = ref_in.ctypes.data_as(POINTER(c_float))
+            p_surv = surv_in.ctypes.data_as(POINTER(c_float))
+            p_out = out_err.ctypes.data_as(POINTER(c_float))
 
-            # Error (Desired - Estimate)
-            d = surv_in[i]
-            e = d - y
+            _nlms_lib.nlms_process(self.cpp_obj, p_ref, p_surv, p_out, n_input)
 
-            # Update weights (NLMS)
-            norm_x_sq = np.real(np.dot(x, np.conj(x))) + 1e-12
-            self.w += self.mu * e * np.conj(x) / norm_x_sq
+        else:
+            # Python implementation (Slow)
 
-            out_err[i] = e
+            # Prepare full reference stream including history
+            full_ref = np.concatenate((self.history, ref_in[:n_input]))
 
-        # Update history
-        self.history = full_ref[n_input:]
+            # Iterate
+            for i in range(n_input):
+                # x[n] = [ref[i], ref[i-1], ... ref[i-N+1]]
+                # This corresponds to full_ref[i : i + num_taps] reversed
+                x = full_ref[i : i + self.num_taps][::-1]
+
+                # Filter output (Estimate of clutter)
+                y = np.dot(self.w, x)
+
+                # Error (Desired - Estimate)
+                d = surv_in[i]
+                e = d - y
+
+                # Update weights (NLMS)
+                norm_x_sq = np.real(np.dot(x, np.conj(x))) + 1e-12
+                self.w += self.mu * e * np.conj(x) / norm_x_sq
+
+                out_err[i] = e
+
+            # Update history
+            self.history = full_ref[n_input:]
 
         self.consume(0, n_input)
         self.consume(1, n_input)
