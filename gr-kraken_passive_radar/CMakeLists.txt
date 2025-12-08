@@ -3,31 +3,16 @@ project(gr-kraken_passive_radar CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 
-find_package(Gnuradio "3.10" REQUIRED)
+find_package(Gnuradio "3.10" REQUIRED COMPONENTS RUNTIME)
 
 include(GrVersion)
+include(GrPython)
 
-include_directories(
-    ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/lib
-    ${GNURADIO_ALL_INCLUDE_DIRS}
-)
-
-set(GR_REQUIRED_COMPONENTS RUNTIME)
-find_package(Gnuradio "3.10" REQUIRED COMPONENTS ${GR_REQUIRED_COMPONENTS})
-
-if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE "Release")
-endif()
-
-add_subdirectory(include/gnuradio/kraken_passive_radar)
-add_subdirectory(lib)
-add_subdirectory(apps)
-add_subdirectory(docs)
+# Python blocks
 add_subdirectory(python/kraken_passive_radar)
+
+# GRC block definitions
 add_subdirectory(grc)
 
-# Install cmake modules
-install(FILES cmake/Modules/kraken_passive_radarConfig.cmake
-    DESTINATION lib/cmake/kraken_passive_radar
-)
+# C++ ECA-B kernel library (build from top-level src/)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src ${CMAKE_CURRENT_BINARY_DIR}/src_build)

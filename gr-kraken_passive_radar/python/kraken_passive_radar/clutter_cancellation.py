@@ -1,89 +1,106 @@
-
 from gnuradio import gr
 import numpy as np
+
 
 class ClutterCanceller(gr.basic_block):
     """
     Adaptive Clutter Canceller using NLMS.
 
-    Inputs:
-    0: Reference Signal (Predictor)
-    1: Surveillance Signal (Desired)
+    This block implements a complex-valued NLMS adaptive FIR filter where:
+      - Input 0 is the reference / predictor signal (x[n])
+      - Input 1 is the surveillance / desired signal (d[n])
+      - Output 0 is the error signal e[n] = d[n] - y_hat[n],
+        where y_hat[n] is the NLMS estimate of the clutter component.
 
-    Outputs:
-    0: Error Signal (Surveillance - Estimated Clutter)
+    Typical use in passive radar:
+      - Reference: direct-path signal from illuminator
+      - Surveillance: antenna looking into the scene (direct + clutter + targets)
+      - Output: clutter-suppressed surveillance, with moving targets emphasized.
     """
-    def __init__(self, num_taps=32, mu=0.1):
-        gr.basic_block.__init__(self,
+
+    def __init__(self, num_taps=64, mu=0.1):
+        """
+        Parameters
+        ----------
+        num_taps : int
+            Length of the adaptive FIR filter.
+        mu : float
+            NLMS step size (0 < mu <= 1). Smaller values converge more slowly
+            but are more stable; larger values converge faster but may diverge
+            if too large.
+        """
+        gr.basic_block.__init__(
+            self,
             name="ClutterCanceller",
             in_sig=[np.complex64, np.complex64],
-            out_sig=[np.complex64])
+            out_sig=[np.complex64],
+        )
 
-        self.num_taps = num_taps
-        self.mu = mu
-        self.w = np.zeros(num_taps, dtype=np.complex64)
+        self.num_taps = int(num_taps)
+        self.mu = float(mu)
 
-        # Buffer for reference history
-        # We need at least num_taps history to compute filter output
-        # But basic_block gives us chunks. We need to manage history manually or use sync_block with history?
-        # sync_block with set_history is easier for FIR operations.
-        # But this is an IIR filter? No, FIR adaptive.
+        # Adaptive weight vector (complex)
+        self.w = np.zeros(self.num_taps, dtype=np.complex64)
 
-        # Let's switch to sync_block if possible?
-        # No, adaptive filter updates weights, so it has internal state.
-        # basic_block is fine, we just need to keep a small history buffer.
-        self.history = np.zeros(num_taps, dtype=np.complex64)
+        # History buffer for the reference signal so that we can form
+        # tap-length vectors across work() calls.
+        self.history = np.zeros(max(self.num_taps - 1, 0), dtype=np.complex64)
+
+    def forecast(self, noutput_items, ninput_items_required):
+        """
+        GNU Radio scheduler hook: declare how many input items are needed
+        to produce noutput_items.
+        """
+        # We require 1:1 reference/surveillance samples.
+        ninput_items_required[0] = noutput_items
+        ninput_items_required[1] = noutput_items
 
     def general_work(self, input_items, output_items):
-        ref_in = input_items[0]
-        surv_in = input_items[1]
+        """
+        Perform NLMS adaptation and clutter cancellation.
+
+        input_items[0] : reference signal (complex64)
+        input_items[1] : surveillance signal (complex64)
+        output_items[0]: error signal (complex64)
+        """
+        ref = input_items[0]
+        surv = input_items[1]
         out_err = output_items[0]
 
-        n_input = min(len(ref_in), len(surv_in), len(out_err))
-
-        if n_input == 0:
+        n_input = min(len(ref), len(surv), len(out_err))
+        if n_input <= 0:
             return 0
 
-        # Process sample by sample (slow in Python, but correct for NLMS)
-        # To optimize: use numba or C++. For now, simple loop.
+        # Concatenate history + new reference samples so we can slide a window
+        full_ref = np.concatenate((self.history, ref[:n_input]))
 
-        # We need history of 'ref' to compute dot product w^H * ref_vector
-
-        # Prepare full reference stream including history
-        full_ref = np.concatenate((self.history, ref_in[:n_input]))
-
-        # Iterate
+        # NLMS adaptation loop
         for i in range(n_input):
-            # Ref vector at time i (current + past samples)
-            # x[n] = [ref[i], ref[i-1], ... ref[i-N+1]]
-            # In full_ref: full_ref[i + num_taps - 1 : i - 1 : -1] ?
-            # Let's say history is [r[-N], ..., r[-1]].
-            # full_ref is [r[-N]...r[-1], r[0]...r[n-1]]
-            # At i=0, we need r[0], r[-1], ... r[-N+1]
-            # So slice full_ref from i to i + num_taps
-            # But we usually define taps such that y[n] = sum(w[k] * x[n-k])
-            # So vector x is full_ref[i : i + num_taps][::-1]
+            # Reference vector x[n] of length num_taps, newest on the right
+            x = full_ref[i : i + self.num_taps]
 
-            x = full_ref[i : i + self.num_taps][::-1]
+            # Estimated clutter y_hat[n] = w^H x
+            y_hat = np.vdot(self.w, x)  # vdot does conj(self.w)*x and sums
 
-            # Filter output (Estimate of clutter)
-            y = np.dot(self.w, x)
+            # Error e[n] = d[n] - y_hat[n]
+            e = surv[i] - y_hat
 
-            # Error (Desired - Estimate)
-            # Desired is Surveillance
-            d = surv_in[i]
-            e = d - y
+            # NLMS weight update:
+            #   w[n+1] = w[n] + mu * e * conj(x) / (||x||^2 + eps)
+            norm_x_sq = float(np.real(np.vdot(x, x))) + 1e-12
+            if norm_x_sq > 0.0:
+                self.w += self.mu * e * np.conj(x) / norm_x_sq
 
-            # Update weights (NLMS)
-            # w[n+1] = w[n] + mu * e * conj(x) / (norm(x)^2 + eps)
-            norm_x_sq = np.real(np.dot(x, np.conj(x))) + 1e-12
-            self.w += self.mu * e * np.conj(x) / norm_x_sq
-
+            # Output the error sample
             out_err[i] = e
 
-        # Update history
-        self.history = full_ref[n_input:]
+        # Update reference history to the last (num_taps - 1) samples
+        if self.num_taps > 1:
+            self.history = full_ref[n_input:]
+        else:
+            self.history = np.zeros(0, dtype=np.complex64)
 
+        # Consume the processed input
         self.consume(0, n_input)
         self.consume(1, n_input)
         return n_input
