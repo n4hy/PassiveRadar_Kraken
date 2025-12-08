@@ -12,15 +12,44 @@
 ### Software Dependencies
 - [GNU Radio 3.10+](https://wiki.gnuradio.org/)
 - [gr-osmosdr](https://osmocom.org/projects/gr-osmosdr/wiki) (with SoapySDR support)
-- `numpy`, `PyQt5`, `sip`
 - `g++` (for C++ acceleration)
-- Optional: `SoapySDR` driver for KrakenRF
+- **SoapySDR**: Required for KrakenSDR connectivity (via `gr-osmosdr`).
 
-Install dependencies (Ubuntu/Debian):
+#### System Packages (Ubuntu/Debian/Raspberry Pi)
 ```bash
-sudo apt install gnuradio gr-osmosdr python3-pyqt5 python3-sip build-essential
-pip install numpy
+sudo apt update
+sudo apt install gnuradio gr-osmosdr \
+    python3-pyqt5 python3-sip \
+    soapysdr-tools soapysdr-module-all \
+    build-essential python3-venv git
 ```
+
+### Virtual Environment Setup (Raspberry Pi / Debian)
+Modern Linux distributions (like Raspberry Pi OS) often enforce "externally managed environments" (PEP 668), preventing global pip installs. It is recommended to use a Python virtual environment.
+
+1. **Create the virtual environment**:
+   ```bash
+   python3 -m venv .venv
+   ```
+
+2. **Activate the environment**:
+   ```bash
+   source .venv/bin/activate
+   ```
+   *(Note: You must activate the environment every time you open a new terminal to run this software.)*
+
+3. **Install Python dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   ```
+   *Note: `gnuradio` and `PyQt5` bindings are often best installed via system packages (`apt`) and inherited using `--system-site-packages` if creating the venv manually, or by relying on the system python path. However, `requirements.txt` is provided for standard pip-based environments.*
+
+   To inherit system packages (recommended for GNU Radio):
+   ```bash
+   python3 -m venv --system-site-packages .venv
+   source .venv/bin/activate
+   pip install -r requirements.txt
+   ```
 
 ## Signal Flow Diagram
 
@@ -80,7 +109,7 @@ The Python top block (`kraken_passive_radar_top_block.py`) automatically detects
 **Note on Doppler Processing:** The C++ optimization for Doppler processing currently supports power-of-two Doppler lengths (e.g., 64, 128, 256). If a non-power-of-two length is selected, the system will use the Python fallback.
 
 ## REFERENCES
-Griffiths, H. D., et al. “Passive Coherent Location Radar Systems.” IEEE Aerospace & Electronic Systems Magazine, 2017.
+Griffiths, H. D., et al. “Passive Coherent Location RRadar Systems.” IEEE Aerospace & Electronic Systems Magazine, 2017.
 
 Jahangir, M., Baker, C. J. “Performance Evaluation of Passive Radar with FM Radio Signals for Air Traffic Control.” IET Radar, Sonar & Navigation, 2016.
 
