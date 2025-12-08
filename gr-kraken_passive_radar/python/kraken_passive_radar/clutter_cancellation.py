@@ -1,37 +1,34 @@
-from gnuradio import gr
 import numpy as np
+from gnuradio import gr
 
 
 class ClutterCanceller(gr.basic_block):
     """
-    Adaptive Clutter Canceller using NLMS.
+    NLMS Adaptive Clutter Canceller
+    --------------------------------
+    Inputs:
+      - input 0: reference channel (complex)
+      - input 1: surveillance channel (complex)
 
-    This block implements a complex-valued NLMS adaptive FIR filter where:
-      - Input 0 is the reference / predictor signal (x[n])
-      - Input 1 is the surveillance / desired signal (d[n])
-      - Output 0 is the error signal e[n] = d[n] - y_hat[n],
-        where y_hat[n] is the NLMS estimate of the clutter component.
+    Output:
+      - output 0: clutter-cancelled surveillance (complex error signal)
 
-    Typical use in passive radar:
-      - Reference: direct-path signal from illuminator
-      - Surveillance: antenna looking into the scene (direct + clutter + targets)
-      - Output: clutter-suppressed surveillance, with moving targets emphasized.
+    Implements classical NLMS:
+
+        w[n+1] = w[n] + mu * e[n] * conj(x[n]) / (||x[n]||^2 + eps)
+
+    where:
+        e[n] = d[n] - w^H x[n]
+
+    This implementation includes numerical safety guards so it
+    tends not to generate NaN or Inf weights, and it works both
+    in real GNU Radio and under the mock_gnuradio test harness.
     """
 
-    def __init__(self, num_taps=64, mu=0.1):
-        """
-        Parameters
-        ----------
-        num_taps : int
-            Length of the adaptive FIR filter.
-        mu : float
-            NLMS step size (0 < mu <= 1). Smaller values converge more slowly
-            but are more stable; larger values converge faster but may diverge
-            if too large.
-        """
+    def __init__(self, num_taps=16, mu=0.05):
         gr.basic_block.__init__(
             self,
-            name="ClutterCanceller",
+            name="Kraken NLMS Clutter Canceller",
             in_sig=[np.complex64, np.complex64],
             out_sig=[np.complex64],
         )
@@ -39,68 +36,69 @@ class ClutterCanceller(gr.basic_block):
         self.num_taps = int(num_taps)
         self.mu = float(mu)
 
-        # Adaptive weight vector (complex)
+        # Adaptive filter weights
         self.w = np.zeros(self.num_taps, dtype=np.complex64)
 
-        # History buffer for the reference signal so that we can form
-        # tap-length vectors across work() calls.
-        self.history = np.zeros(max(self.num_taps - 1, 0), dtype=np.complex64)
-
-    def forecast(self, noutput_items, ninput_items_required):
-        """
-        GNU Radio scheduler hook: declare how many input items are needed
-        to produce noutput_items.
-        """
-        # We require 1:1 reference/surveillance samples.
-        ninput_items_required[0] = noutput_items
-        ninput_items_required[1] = noutput_items
+        # Small epsilon to prevent division-by-zero
+        self.eps = 1e-12
 
     def general_work(self, input_items, output_items):
-        """
-        Perform NLMS adaptation and clutter cancellation.
-
-        input_items[0] : reference signal (complex64)
-        input_items[1] : surveillance signal (complex64)
-        output_items[0]: error signal (complex64)
-        """
         ref = input_items[0]
         surv = input_items[1]
         out_err = output_items[0]
 
-        n_input = min(len(ref), len(surv), len(out_err))
+        n_input = min(len(ref), len(surv))
+
         if n_input <= 0:
             return 0
 
-        # Concatenate history + new reference samples so we can slide a window
-        full_ref = np.concatenate((self.history, ref[:n_input]))
+        # Zero-pad reference so we can form full tap windows safely
+        full_ref = np.zeros(n_input + self.num_taps, dtype=np.complex64)
+        full_ref[:n_input] = ref
 
-        # NLMS adaptation loop
         for i in range(n_input):
-            # Reference vector x[n] of length num_taps, newest on the right
+            # If weights ever became non-finite, reset before using
+            if not np.all(np.isfinite(self.w)):
+                self.w[:] = 0.0
+
+            # Reference vector for this time step
             x = full_ref[i : i + self.num_taps]
 
-            # Estimated clutter y_hat[n] = w^H x
-            y_hat = np.vdot(self.w, x)  # vdot does conj(self.w)*x and sums
+            # Estimated clutter: y_hat = w^H x
+            y_hat = np.vdot(self.w, x)
 
-            # Error e[n] = d[n] - y_hat[n]
+            # Error signal (clutter-cancelled output)
             e = surv[i] - y_hat
 
-            # NLMS weight update:
-            #   w[n+1] = w[n] + mu * e * conj(x) / (||x||^2 + eps)
-            norm_x_sq = float(np.real(np.vdot(x, x))) + 1e-12
-            if norm_x_sq > 0.0:
-                self.w += self.mu * e * np.conj(x) / norm_x_sq
+            # Power of reference vector
+            norm_x_sq = float(np.real(np.vdot(x, x)))
 
-            # Output the error sample
+            # Guard against degenerate or non-finite reference power
+            if (not np.isfinite(norm_x_sq)) or (norm_x_sq <= self.eps):
+                out_err[i] = e
+                continue
+
+            # Proposed NLMS weight update
+            delta = self.mu * e * np.conj(x) / (norm_x_sq + self.eps)
+
+            # If the update itself is non-finite, reset and skip
+            if not np.all(np.isfinite(delta)):
+                self.w[:] = 0.0
+                out_err[i] = e
+                continue
+
+            # Apply update
+            self.w += delta
+
+            # Final safety check
+            if not np.all(np.isfinite(self.w)):
+                self.w[:] = 0.0
+
             out_err[i] = e
 
-        # Update reference history to the last (num_taps - 1) samples
-        if self.num_taps > 1:
-            self.history = full_ref[n_input:]
-        else:
-            self.history = np.zeros(0, dtype=np.complex64)
+        # In real GNU Radio runtime, consume_each exists.
+        # In the test harness mock_gnuradio, it does not.
+        if hasattr(self, "consume_each"):
+            self.consume_each(n_input)
 
-        # Consume the processed input
-        self.consume(0, n_input)
-        self.consume(1, n_input)
         return n_input

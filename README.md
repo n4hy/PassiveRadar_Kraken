@@ -1,332 +1,298 @@
 # PassiveRadar_Kraken
 
-This repository implements a passive radar processing chain using a five-channel
-KrakenSDR front-end, GNU Radio, adaptive clutter cancellation (NLMS and ECA-B),
-and Range–Doppler processing and visualization.
+PassiveRadar_Kraken is a GNU Radio–based passive radar processing chain designed for use with the KrakenSDR (5 coherent channels: 4 surveillance + 1 reference).  
+The primary use case is **aircraft detection and tracking** using high‑power illuminators of opportunity (FM broadcast and digital/analog TV transmitters) as the non‑cooperative transmitters.
 
-The primary use case is **tracking aircraft using broadcast FM or TV
-illuminators-of-opportunity** in a fully passive, receive-only configuration.
+The project provides:
 
----
+- A GNU Radio OOT module: **`gr-kraken_passive_radar`**
+- Python blocks for:
+  - **NLMS adaptive clutter cancellation** (`ClutterCanceller`)
+  - **ECA‑B clutter cancellation** (`EcaBClutterCanceller`, driven by a C++ kernel)
+  - Doppler and angle‑of‑arrival (AoA) processing (via C++ backends)
+- GNU Radio Companion (GRC) blocks under the category **`[Kraken Passive Radar]`**
 
-## 1. System Overview
-
-At a high level, the processing chain is:
-
-1. **Multi-channel acquisition (KrakenSDR)**  
-   - 5 coherent RF channels at 2.048 Msps complex baseband
-   - 1 reference channel pointed toward the broadcast transmitter
-   - 4 surveillance channels pointed toward the monitored airspace
-
-2. **Polyphase resampling**  
-   - Front-end rate: **2.048 Msps**
-   - Polyphase resampler: `interp = 175`, `decim = 2048`
-   - Effective baseband processing rate: **175 kHz** per channel
-
-3. **Clutter cancellation (two interchangeable modes)**  
-   - **NLMS (Python GNU Radio block)**  
-     - Adaptive FIR canceller, streaming, low-latency
-   - **ECA-B (C++ kernel exposed via Python GNU Radio block)**  
-     - Batch least-squares canceller, high dynamic range, research-grade
-
-4. **Range–Doppler processing**  
-   - Cross-ambiguity processing over coherent processing intervals (CPIs)
-   - Slow-time FFT for Doppler
-   - Magnitude / log-power Range–Doppler map
-
-5. **Visualization**  
-   - Qt-based Range–Doppler widget for real-time display
-
-The codebase is structured to be compatible with a **Python-only GNU Radio OOT
-module** (`gr-kraken_passive_radar`) that exposes both clutter cancellers into
-GNU Radio Companion (GRC) for direct comparison.
+Once installed, the user can construct a passive radar processing chain in GRC using the Kraken-specific blocks and standard GNU Radio / gr‑osmosdr source blocks.
 
 ---
 
-## 2. Repository Layout
+## 1. Architecture Overview
 
-Key directories and files:
+A typical FM/TV‑based passive radar chain using the KrakenSDR looks like:
 
-- `kraken_passive_radar_top_block.py`  
-  Example Python top block (skeleton) showing how to wire the pieces.
+1. **KrakenSDR Source (gr‑osmosdr)**  
+   - 5 coherent channels: 4 surveillance + 1 reference
+   - Common sample rate (e.g., 2.048 Msps) and center frequency tuned to the illuminator
 
-- `gr-kraken_passive_radar/`  
-  Python-only GNU Radio OOT module:
-  - `python/kraken_passive_radar/`
-    - `clutter_cancellation.py` — NLMS adaptive clutter canceller (GR block)
-    - `eca_b_clutter_canceller.py` — ECA-B clutter canceller (GR block via ctypes)
-    - `doppler_processing.py` — Doppler processing / Range–Doppler construction
-    - `range_doppler_widget.py` — Qt Range–Doppler visualization widget
-    - `__init__.py` — exports the above blocks/classes
-  - `grc/`
-    - `kraken_passive_radar_clutter_canceller.block.yml`
-    - `kraken_passive_radar_eca_b_clutter_canceller.block.yml`
-  - `CMakeLists.txt` — CMake entry for the OOT module
+2. **Per‑channel preprocessing**  
+   - Complex gain adjustment and DC offset removal (if needed)
+   - Optional band‑limiting around the selected FM/TV carrier
 
-- `src/`
-  - `eca_b_clutter_canceller.cpp` — C++ ECA-B kernel (built as a shared library)
-  - `nlms_clutter_canceller.cpp` — C++ NLMS kernel (optional/reference)
-  - `doppler_processing.cpp` — C++ Doppler kernel (used in tests / acceleration)
-  - `aoa_processing.cpp` — C++ AoA kernel (used in tests / acceleration)
-  - `resampler.cpp` — Polyphase resampler implementation
-  - `CMakeLists.txt` — builds `libkraken_eca_b_clutter_canceller.so`
+3. **Polyphase resampling**  
+   - High‑rate input (e.g., 2.048 Msps) decimated via a polyphase resampler to a lower analysis rate (e.g., 175 kHz) suitable for CAF / range–Doppler processing
 
-- `tests/`
-  - `mock_gnuradio.py` — mock for GNU Radio APIs (for unit testing)
-  - `test_instantiation.py` — basic instantiation checks
-  - `test_doppler_cpp.py` — Doppler kernel correctness test
-  - `test_aoa_cpp.py` — AoA kernel correctness test
-  - `test_clutter_nlms.py` — NLMS clutter canceller regression test
-  - `test_eca_b_cpp.py` — ECA-B clutter canceller regression test
+4. **Adaptive clutter cancellation**  
+   - **NLMS**: `Kraken NLMS Clutter Canceller`
+   - **ECA‑B**: `Kraken ECA-B Clutter Canceller`
+   - Each surveillance channel uses the reference channel as input and outputs a clutter‑reduced surveillance (error signal)
 
-- `.gitignore`, `.gitattributes`  
-  - Repository hygiene, CI safety, and cross-platform consistency
+5. **Cross‑ambiguity and Doppler processing**  
+   - Range–Doppler map computation (C++ backend + Python front‑end)
+   - AoA processing across multiple surveillance channels (C++ backend)
+
+6. **Display and logging**  
+   - Range–Doppler visualization
+   - Track extraction and export to downstream systems (e.g., ADS‑B fusion, custom track server)
+
+The Kraken-specific blocks are intended to be **drop‑in GRC components** at steps (4) and (5).
 
 ---
 
-## 3. Software Requirements
+## 2. System Dependencies
 
-### 3.1 System Dependencies (Linux recommended)
+### 2.1 Hardware
 
-- **GNU Radio 3.10+** (runtime and development headers)
-- **gr-osmosdr** with SoapySDR support
-- **g++** with C++17 support
-- **CMake ≥ 3.8**
-- **Qt5** (for Range–Doppler widget)
+- Raspberry Pi 4/5 **or** x86_64 host with enough CPU and RAM for FFT‑heavy processing
+- **KrakenSDR** 5‑channel coherent SDR
+- Stable RF front‑end (LNAs, antenna array, appropriate band filters)
+- Network connectivity (for remote control / data export, optional)
 
-Typical install on Debian/Ubuntu-like systems (example):
+### 2.2 Software (Debian / Raspberry Pi OS)
+
+The project is designed for GNU Radio 3.10+ installed from distribution packages.
+
+Install core dependencies:
 
 ```bash
 sudo apt update
-sudo apt install -y   gnuradio   gr-osmosdr   g++   cmake   qtbase5-dev   python3-pyqt5   python3-pyqt5.qtsvg   python3-venv
+sudo apt install -y   gnuradio   gr-osmosdr   python3-numpy   python3-pyqt5   python3-pyqt5.qtsvg   g++ cmake make
 ```
 
-> Note: package names may vary slightly by distribution. Adjust as necessary.
+You should already have KrakenSDR tooling and calibration utilities installed separately (not part of this repo).
 
-### 3.2 Python Dependencies
+---
 
-These are captured in `requirements.txt`:
+## 3. Building and Installing the OOT Module
+
+The OOT module lives in:
 
 ```text
-numpy>=1.20
-PyQt5>=5.15
-PyQt5-sip>=12.0
+gr-kraken_passive_radar/
 ```
 
----
-
-## 4. Python Virtual Environment Setup
-
-It is strongly recommended to use an isolated Python environment.
-
-From the repository root:
+### 3.1 Build and install into the system GNU Radio prefix
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate        # On Windows: .venv\Scripts\activate
-
-pip install --upgrade pip
-pip install -r requirements.txt
-```
-
-This venv is used for:
-
-- Running the Python-based unit tests
-- Running analysis tools / scripts
-- Using the Python blocks directly
-
-> GNU Radio itself is typically installed at the system level and imported into
-> this venv via the system Python if installed that way.
-
----
-
-## 5. Building and Installing the OOT Module
-
-The OOT module is located at `gr-kraken_passive_radar/`. It is a **Python-only**
-module with an additional C++ shared library for the ECA-B kernel.
-
-From the repository root:
-
-```bash
-cd gr-kraken_passive_radar
-mkdir -p build
+cd ~/PassiveRadar_Kraken/gr-kraken_passive_radar
+rm -rf build
+mkdir build
 cd build
-cmake ..
-make -j$(nproc)
+
+# Use the same prefix that GNU Radio uses (typically /usr)
+cmake -DCMAKE_INSTALL_PREFIX=/usr ..
+make -j"$(nproc)"
+
 sudo make install
-sudo ldconfig   # on Linux, as needed
+sudo ldconfig
 ```
 
-This will:
+This installs:
 
-- Install the `kraken_passive_radar` Python package into GNU Radio’s Python dir
-- Install the GRC block definitions into `${GR_PKG_GRC_BLOCKS_DIR}`
-- Build and install the `libkraken_eca_b_clutter_canceller.so` shared library
-  next to the Python package
+- The Python package `kraken_passive_radar` into the system Python site‑packages (via GNU Radio’s CMake helpers, if configured)
+- The GRC block definition files into:
 
-After this, start **GNU Radio Companion** and look for the category:
+  ```text
+  /usr/share/gnuradio/grc/blocks
+  ```
 
-> `[Kraken Passive Radar]`
+### 3.2 Ensuring Python can import `kraken_passive_radar`
 
-You should see two blocks:
-
-- `Kraken Passive Radar NLMS Clutter Canceller`
-- `Kraken Passive Radar ECA-B Clutter Canceller`
-
-Each block has two complex inputs (reference, surveillance) and a single complex
-output (clutter-suppressed surveillance).
-
----
-
-## 6. Using NLMS and ECA-B in GRC
-
-1. Open **gnuradio-companion**.
-2. Place your KrakenSDR (or file source) blocks providing:
-   - Reference stream (direct-path illuminator)
-   - Surveillance stream(s)
-3. Under `[Kraken Passive Radar]`, drop:
-   - `Kraken Passive Radar NLMS Clutter Canceller`, or
-   - `Kraken Passive Radar ECA-B Clutter Canceller`
-4. Wire:
-   - Input 0 ← reference
-   - Input 1 ← surveillance
-   - Output → your CAF / Doppler / Range–Doppler processing chain
-
-For **direct comparison** between NLMS and ECA-B, you can:
-
-- Use a `Selector` block to switch between NLMS and ECA-B outputs feeding a
-  common Range–Doppler chain, or
-- Run two parallel chains and compare Range–Doppler outputs visually.
-
----
-
-## 7. Running Unit Tests
-
-From the repository root, with the Python venv activated:
+On some systems, the Python site‑packages directory is under `/usr/local` instead of `/usr`. To confirm:
 
 ```bash
-python -m unittest discover -v tests
+python3 - << 'EOF'
+import sys, sysconfig
+print("Python:", sys.executable)
+print("platlib:", sysconfig.get_paths()["platlib"])
+EOF
 ```
 
-This runs:
+If the `platlib` path does not match where CMake installed the package, you can explicitly set the Python install directory when configuring:
 
-- NLMS clutter cancellation test (`test_clutter_nlms.py`)
-- ECA-B kernel test (`test_eca_b_cpp.py`)
-- Doppler and AoA kernel tests
-- Basic instantiation and mock GNU Radio tests
+```bash
+PY_SITE=$(python3 - << 'EOF'
+import sysconfig
+print(sysconfig.get_paths()["platlib"])
+EOF
+)
 
-> Note: `test_eca_b_cpp.py` will compile a local
-> `src/libkraken_eca_b_clutter_canceller.so` if it has not already been built.
+cd ~/PassiveRadar_Kraken/gr-kraken_passive_radar
+rm -rf build
+mkdir build
+cd build
+
+cmake   -DCMAKE_INSTALL_PREFIX=/usr   -DGR_PYTHON_DIR="$PY_SITE"   ..
+
+make -j"$(nproc)"
+sudo make install
+sudo ldconfig
+```
+
+You should then verify:
+
+```bash
+python3 -c "import sys, kraken_passive_radar; print(sys.executable); print(kraken_passive_radar.__file__)"
+```
+
+If this succeeds (no `ModuleNotFoundError`), GNU Radio Companion will also be able to import the Kraken blocks.
 
 ---
 
-## 8. Sample Rate and Resampling Configuration
+## 4. GNU Radio Companion (GRC) Blocks
 
-The system explicitly enforces:
+After a successful install, start GRC:
 
-- **KrakenSDR front-end sample rate:**
-
-```python
-samp_rate = 2_048_000  # 2.048 Msps
+```bash
+gnuradio-companion
 ```
 
-- **Polyphase resampler configuration:**
+In the block tree, you should see a category:
 
-```python
-interp = 175
-decim = 2048
+```text
+[Kraken Passive Radar]
 ```
 
-Thus, the effective processing rate is:
+Under this category, the key blocks are:
 
-\[
-f_{out} = 2.048 \times 10^6 \cdot \frac{175}{2048} = 175\,000 \; \text{Hz}.
-\]
+1. **Kraken NLMS Clutter Canceller**  
+   - ID: `kraken_passive_radar_clutter_canceller`
+   - Inputs:
+     - `ref` (complex) – reference channel
+     - `surv` (complex) – surveillance channel
+   - Output:
+     - `err` (complex) – clutter‑reduced surveillance (error signal)
+   - Parameters:
+     - `num_taps` – number of adaptive filter taps (e.g., 16–64)
+     - `mu` – NLMS step size (e.g., 0.01–0.1; smaller is more stable, larger is faster)
 
-This fixed 2.048 Msps → 175 kHz channelization is part of the explicit
-engineering basis for export classification (see below).
+2. **Kraken ECA-B Clutter Canceller**  
+   - ID: `kraken_passive_radar_eca_b_clutter_canceller`
+   - Inputs:
+     - `ref` (complex) – reference channel
+     - `surv` (complex) – surveillance channel
+   - Output:
+     - `err` (complex) – clutter‑reduced surveillance
+   - Parameters:
+     - `num_taps` – number of taps per segment
+     - `num_segments` – number of historical segments in the batch (lookback)
+
+These block definitions live in:
+
+```text
+/usr/share/gnuradio/grc/blocks/
+  kraken_passive_radar_clutter_canceller.block.yml
+  kraken_passive_radar_eca_b_clutter_canceller.block.yml
+```
+
+You can inspect or edit these YAML files directly if you need to customize labels, categories, or defaults.
 
 ---
 
-## 9. Export Control & ITAR Compliance
+## 5. Example GRC Wiring
 
-This repository has been designed and reviewed with explicit attention to U.S.
-export control regulations, including ITAR (22 CFR §120–130) and EAR
-(15 CFR §730–774).
+A minimal passive radar chain in GRC using Kraken blocks:
 
-### 9.1 Governing Regulations
+1. **Sources**
 
-- **ITAR** (International Traffic in Arms Regulations) — 22 CFR §120–130  
-  Administered by the U.S. Department of State (DDTC). Controls defense
-  articles, defense services, and technical data on the U.S. Munitions List
-  (USML).
+   - One **KrakenSDR/OSMOSDR Source** configured for 5 coherent channels (4 surveillance + 1 reference)
+   - Set sample rate to **2.048 Msps** (for example) and center frequency to the chosen FM/TV illuminator
 
-- **EAR** (Export Administration Regulations) — 15 CFR §730–774  
-  Administered by the U.S. Department of Commerce (BIS). Controls commercial
-  and dual-use items not on the USML.
+2. **Per‑channel processing**
 
-### 9.2 ITAR Applicability Determination
+   - For each channel, add:
+     - `Complex Multiply Const` (optional, for per‑channel gain)
+     - `DC Blocker` (optional)
 
-This project is **not ITAR-controlled** because:
+3. **Resampling to analysis rate**
 
-- It is **receive-only** (no RF transmission, no waveform generation).
-- It uses **civilian broadcast FM and TV transmitters** as illuminators.
-- It uses **commercial, off-the-shelf SDR hardware** (KrakenSDR).
-- It does **not** implement or exploit any military-only, classified, or
-  proprietary waveforms.
-- It is not designed for weapons guidance, fire control, or combat systems.
-- It is openly published, unclassified, and research-oriented.
+   - Use a polyphase resampler or rational resampler to convert from 2.048 Msps to, e.g., **175 kHz** for analysis
+   - The **same resampling chain** must be used for the reference and each surveillance channel so that all streams remain time‑aligned
 
-Therefore, this software is **not a defense article** and is not subject to
-ITAR under the definitions of 22 CFR §120.10 and §121.
+4. **NLMS clutter cancellation**
 
-### 9.3 EAR Classification
+   - Insert **Kraken NLMS Clutter Canceller** block
+   - Connect:
+     - `ref` ← resampled reference channel
+     - `surv` ← resampled surveillance channel
+     - `err` → clutter‑reduced output
+   - Start with conservative parameters, e.g.:
+     - `num_taps = 32`
+     - `mu = 0.02`
 
-Under the EAR, this software is appropriately classified as:
+5. **ECA‑B clutter cancellation (optional)**
 
-> **EAR99 – No License Required (NLR)**
+   - As an alternative, insert **Kraken ECA-B Clutter Canceller**
+   - Use the same `ref`/`surv` wiring
+   - Typical starting values:
+     - `num_taps = 64`
+     - `num_segments = 8`
 
-Basis:
+6. **Downstream processing**
 
-- It is open-source signal processing code using standard academic algorithms
-  (NLMS, ECA-B, FFT, polyphase resampling).
-- It does not contain controlled encryption features.
-- It does not implement weapons guidance, tracking, or fire control functions.
-- It is designed for civil passive radar / airspace awareness using broadcast
-  illuminators.
-
-### 9.4 Engineering Steps Taken to Ensure Civil Classification
-
-- **Receive-only architecture**: No transmit capability, no waveform generation.
-- **Civil illuminators**: Explicit use of public FM and TV broadcasts only.
-- **Fixed sample rates**:
-  - KrakenSDR operated at **2.048 Msps**.
-  - Polyphase resampler converts to **175 kHz** channels.
-- **Open algorithms**:
-  - NLMS adaptive filtering.
-  - ECA-B clutter cancellation.
-  - CAF and FFT-based Doppler / Range–Doppler processing.
-- **Open-source license**: MIT License, ensuring public-domain visibility and
-  preventing proprietary military use claims.
-
-### 9.5 Export Statement for the Repository
-
-This software is classified as **EAR99** under the U.S. Export Administration
-Regulations (15 CFR §730–774). It is **not subject to ITAR** (22 CFR §120–130).
-
-It is authorized for public release. No export license is required for most
-destinations. Users are responsible for ensuring compliance with applicable
-U.S. embargoes and sanctions, including restrictions on exports to:
-
-- Iran
-- North Korea
-- Syria
-- Cuba
-- Crimea / Donetsk / Luhansk regions (and any other comprehensively sanctioned
-  jurisdictions as updated by U.S. law).
+   - Feed the clutter‑reduced outputs into:
+     - Range–Doppler processing (CFAR / detection)
+     - AoA estimation and track extraction
+   - These components will live in the same OOT family and can be added as needed.
 
 ---
 
-© Released under the MIT License. All export compliance responsibilities for
-deployment, redistribution, or operational use remain with the end user and/or
-deploying organization.
+## 6. Running the Unit Tests (Optional)
+
+If you have the development dependencies installed and want to run the tests:
+
+```bash
+cd ~/PassiveRadar_Kraken
+python3 -m unittest discover -v
+```
+
+This will execute:
+
+- C++ kernel tests for AoA, Doppler, and ECA‑B
+- NLMS clutter canceller tests using a mock GNU Radio environment
+
+Note: the tests are designed primarily for development and CI and are not required for operational deployment of the GRC blocks.
+
+---
+
+## 7. ITAR / Export Control Considerations (Informational, Not Legal Advice)
+
+This repository provides **software signal processing components** for passive radar using broadcast FM/TV illuminators and KrakenSDR hardware. As implemented here:
+
+- The code:
+  - Operates on **publicly available broadcast waveforms** (FM radio, TV)
+  - Uses standard adaptive filtering and correlation methods widely known in the open literature
+  - Is not coupled to any specific weapons system or classified sensor
+
+- Typical use:
+  - Aircraft detection and tracking for situational awareness, research, and spectrum monitoring
+  - Operation with **commercially available hardware** and **commercial broadcast emitters**
+
+Based on these characteristics, the software is **likely to be treated as EAR99** (catch‑all classification) under U.S. export control, and in many cases can be shared publicly (e.g., on GitHub) without a specific export license. However:
+
+- This is **not legal advice**.
+- Final jurisdiction and classification determinations rest with the relevant export control authorities (e.g., U.S. BIS/DDTC).
+- If you intend to deploy this system in a defense, government, or international context, you should seek an official classification (e.g., a Commodity Jurisdiction request) and/or consult with export control counsel.
+
+The repository is intended for **research and commercial non‑military applications**, and it is licensed under a permissive open‑source license (e.g., MIT or BSD, as declared in the LICENSE file).
+
+---
+
+## 8. License
+
+See the `LICENSE` file in the repository for the full license text. In typical use, this project is distributed under a permissive license (e.g., MIT), allowing:
+
+- Use, modification, and redistribution
+- Inclusion in larger systems
+- Commercial and non‑commercial usage
+
+subject to the conditions specified in the LICENSE file.

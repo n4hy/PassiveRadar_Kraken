@@ -1,3 +1,2 @@
 numpy>=1.20
-PyQt5>=5.15
-PyQt5-sip>=12.0
+
