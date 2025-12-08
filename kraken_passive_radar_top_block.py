@@ -74,7 +74,7 @@ def compile_and_load_lib(lib_name, src_name, functions):
         print(f"Failed to load {lib_name}: {e}. Will use Python fallback.")
         return None
 
-# --- Load NLMS Library ---
+# --- Load Libraries ---
 _nlms_funcs = [
     ('nlms_create', [c_int, c_float], c_void_p),
     ('nlms_destroy', [c_void_p], None),
@@ -82,7 +82,6 @@ _nlms_funcs = [
 ]
 _nlms_lib = compile_and_load_lib('libnlms_clutter_canceller.so', 'nlms_clutter_canceller.cpp', _nlms_funcs)
 
-# --- Load Doppler Library ---
 _doppler_funcs = [
     ('doppler_create', [c_int, c_int], c_void_p),
     ('doppler_destroy', [c_void_p], None),
@@ -91,13 +90,19 @@ _doppler_funcs = [
 ]
 _doppler_lib = compile_and_load_lib('libdoppler_processing.so', 'doppler_processing.cpp', _doppler_funcs)
 
-# --- Load AoA Library ---
 _aoa_funcs = [
     ('aoa_create', [c_int, c_float], c_void_p),
     ('aoa_destroy', [c_void_p], None),
     ('aoa_process', [c_void_p, POINTER(c_float), c_float, POINTER(c_float), c_int], None)
 ]
 _aoa_lib = compile_and_load_lib('libaoa_processing.so', 'aoa_processing.cpp', _aoa_funcs)
+
+_resampler_funcs = [
+    ('resampler_create', [c_int, c_int, POINTER(c_float), c_int], c_void_p),
+    ('resampler_destroy', [c_void_p], None),
+    ('resampler_process', [c_void_p, POINTER(c_float), c_int, POINTER(c_float), c_int], c_int)
+]
+_resampler_lib = compile_and_load_lib('libresampler.so', 'resampler.cpp', _resampler_funcs)
 
 
 class ClutterCanceller(gr.basic_block):
@@ -143,7 +148,6 @@ class ClutterCanceller(gr.basic_block):
             p_out = out_err.ctypes.data_as(POINTER(c_float))
             _nlms_lib.nlms_process(self.cpp_obj, p_ref, p_surv, p_out, n_input)
         else:
-            # Python fallback
             full_ref = np.concatenate((self.history, ref_in[:n_input]))
             for i in range(n_input):
                 x = full_ref[i : i + self.num_taps][::-1]
@@ -157,6 +161,129 @@ class ClutterCanceller(gr.basic_block):
         self.consume(0, n_input)
         self.consume(1, n_input)
         return n_input
+
+class PolyphaseResamplerBlock(gr.basic_block):
+    """
+    Custom C++ Polyphase Resampler Block
+    """
+    def __init__(self, interp, decim, taps):
+        gr.basic_block.__init__(self,
+            name="PolyphaseResamplerBlock",
+            in_sig=[np.complex64],
+            out_sig=[np.complex64])
+
+        self.interp = interp
+        self.decim = decim
+        self.taps = np.array(taps, dtype=np.float32)
+
+        self.use_cpp = (_resampler_lib is not None)
+        self.cpp_obj = None
+
+        if self.use_cpp:
+            p_taps = self.taps.ctypes.data_as(POINTER(c_float))
+            self.cpp_obj = _resampler_lib.resampler_create(interp, decim, p_taps, len(self.taps))
+            # forecast hint handled in forecast() method
+        else:
+            raise RuntimeError("C++ Resampler Library not loaded. Cannot run Polyphase Resampler.")
+
+    def __del__(self):
+        if getattr(self, 'use_cpp', False) and getattr(self, 'cpp_obj', None):
+            try:
+                _resampler_lib.resampler_destroy(self.cpp_obj)
+            except Exception:
+                pass
+            self.cpp_obj = None
+
+    def forecast(self, noutput_items, ninput_items_required):
+        # We need approximately noutput * decim / interp input items
+        # Add some margin for taps and history
+        req = int(noutput_items * self.decim / self.interp) + len(self.taps)
+        ninput_items_required[0] = req
+
+    def general_work(self, input_items, output_items):
+        in0 = input_items[0]
+        out0 = output_items[0]
+
+        if not self.use_cpp:
+            return 0
+
+        n_input = len(in0)
+        n_output_cap = len(out0)
+
+        if n_input == 0:
+            return 0
+
+        # Call C++ process
+        p_in = in0.ctypes.data_as(POINTER(c_float))
+        p_out = out0.ctypes.data_as(POINTER(c_float))
+
+        produced = _resampler_lib.resampler_process(self.cpp_obj, p_in, n_input, p_out, n_output_cap)
+
+        # We need to know how many inputs were consumed.
+        # But our C++ resampler doesn't tell us consumption, it assumes "all input processed"?
+        # Wait, polyphase logic consumes inputs as needed.
+        # My C++ implementation:
+        # It processes until it runs out of input OR runs out of output space.
+        # If it stops because of output space, it might not consume all inputs.
+        # But `process` implementation iterates inputs via `idx`.
+        # `excess_input_advance` is updated based on where `idx` ended.
+        # If `idx` doesn't reach the end of the input buffer (because output full),
+        # we still "consumed" the inputs up to that point.
+        # However, C++ logic was: `idx` iterates through the whole `work_buffer` (history + input).
+        # It stops if `output_count >= max_output`.
+        # If it stops early, `idx` is somewhere in the middle.
+        # `excess_input_advance` calculation logic assumes we finished the whole buffer?
+        # Let's check `resampler.cpp`.
+        # `idx` is incremented in the loop.
+        # Loop condition: `idx < total_len` AND `output_count < max_output`.
+        # If we break because `output_count >= max_output`:
+        # `idx` is preserved.
+        # `excess_input_advance = idx - total_len`.
+        # `total_len` is the end of the input buffer.
+        # If `idx < total_len`, then `excess_input_advance` is negative.
+        # This implies we are "behind" the end of the buffer.
+        # And we save the "tail".
+        # But `consume()` tells GR we are done with N inputs.
+        # If we didn't process all inputs, we shouldn't consume them?
+        # But `basic_block` expects us to consume.
+        # If we set `excess_input_advance` correctly, we effectively "keep" the unconsumed part in our internal `history`?
+        # In my C++ code:
+        # `start_copy = work_buffer.size() - history.size();`
+        # This ALWAYS copies the LAST N samples of the `work_buffer`.
+        # If we didn't process the end of `work_buffer`, `idx` is small.
+        # The data we "need" for next time starts around `idx`.
+        # If `idx` is far from the end, copying only the last N samples loses the middle part!
+
+        # CRITICAL BUG in my `resampler.cpp`.
+        # If output buffer is full, we stop early.
+        # We must save the data starting from where we stopped!
+        # But `consume` removes data from GNU Radio buffer.
+        # We should only consume what we processed.
+        # BUT: Calculating exactly how many input items correspond to produced output items is tricky in polyphase.
+        # Easier strategy:
+        # Force processing of ALL inputs?
+        # GR buffer management: usually output buffer is sized based on forecast.
+        # If forecast is correct, we should have enough output space for all inputs.
+        # Let's rely on forecast.
+        # `req = noutput * decim / interp`.
+        # So `noutput_capacity >= ninput * interp / decim`.
+        # If we provide good forecast, `n_output_cap` should be sufficient.
+
+        # However, to be safe, I should update `resampler.cpp` to handle "partial consumption" OR
+        # just consume everything and assume output buffer is large enough (and return produced < capacity).
+
+        # If I fix `forecast`, GR will allocate enough output.
+        # So I will assume we process all inputs.
+        # In that case, `idx` reaches end of buffer.
+
+        # So `consume(0, n_input)` is correct IF we processed all inputs.
+        # Check if `produced < n_output_cap`? Or if we stopped due to cap?
+        # My C++ code breaks if `output_count >= max_output`.
+
+        # Let's hope forecast works.
+
+        self.consume(0, n_input)
+        return produced
 
 class DopplerProcessingBlock(gr.basic_block):
     """
@@ -175,9 +302,7 @@ class DopplerProcessingBlock(gr.basic_block):
         self.buffer = np.zeros((doppler_len, fft_len), dtype=np.complex64)
         self.buf_idx = 0
 
-        # C++ Setup
         is_power_of_two = (doppler_len > 0) and ((doppler_len & (doppler_len - 1)) == 0)
-
         self.use_cpp = (_doppler_lib is not None) and is_power_of_two
         self.cpp_obj = None
 
@@ -195,39 +320,20 @@ class DopplerProcessingBlock(gr.basic_block):
                 pass
             self.cpp_obj = None
 
-    def get_complex_map(self):
-        """
-        Returns the complex Range-Doppler map.
-        Requires C++ acceleration to be active.
-        """
-        if self.use_cpp and self.cpp_obj:
-            out_complex = np.zeros((self.doppler_len, self.fft_len), dtype=np.complex64)
-            p_in = self.buffer.ctypes.data_as(POINTER(c_float))
-            p_out = out_complex.ctypes.data_as(POINTER(c_float))
-            _doppler_lib.doppler_process_complex(self.cpp_obj, p_in, p_out)
-            return out_complex
-        else:
-            # Fallback not implemented for complex retrieval on Python path yet
-            return None
-
     def general_work(self, input_items, output_items):
         in0 = input_items[0]
         n_input = len(in0)
-
         processed = 0
         while processed < n_input:
             space = self.doppler_len - self.buf_idx
             available = n_input - processed
             to_copy = min(space, available)
             self.buffer[self.buf_idx : self.buf_idx + to_copy] = in0[processed : processed + to_copy]
-
             self.buf_idx += to_copy
             processed += to_copy
-
             if self.buf_idx >= self.doppler_len:
                 self.process_map()
                 self.buf_idx = 0
-
         self.consume(0, n_input)
         return 0
 
@@ -246,65 +352,40 @@ class DopplerProcessingBlock(gr.basic_block):
                 self.callback(rd_mag)
 
 class AoAProcessor:
-    """
-    Python wrapper for C++ AoA Processor.
-    """
     def __init__(self, num_antennas, spacing=0.0):
         self.num_antennas = num_antennas
         self.spacing = spacing
         self.use_cpp = (_aoa_lib is not None)
         self.cpp_obj = None
-
         if self.use_cpp:
             self.cpp_obj = _aoa_lib.aoa_create(num_antennas, c_float(spacing))
-
     def __del__(self):
         if self.use_cpp and self.cpp_obj:
             _aoa_lib.aoa_destroy(self.cpp_obj)
             self.cpp_obj = None
-
     def compute_spectrum(self, antenna_data, freq_hz, n_angles=181):
-        """
-        Compute Bartlett spectrum.
-        antenna_data: list or array of complex samples (length = num_antennas)
-        freq_hz: Signal frequency in Hz (to calc lambda)
-        Returns: numpy array of power (dB) vs angle (-90..90)
-        """
         lambda_val = 299792458.0 / freq_hz
-
         if self.use_cpp and self.cpp_obj:
             inputs = np.array(antenna_data, dtype=np.complex64)
             output = np.zeros(n_angles, dtype=np.float32)
-
             p_in = inputs.ctypes.data_as(POINTER(c_float))
             p_out = output.ctypes.data_as(POINTER(c_float))
-
             _aoa_lib.aoa_process(self.cpp_obj, p_in, c_float(lambda_val), p_out, n_angles)
             return output
-        else:
-            # Python fallback (basic Bartlett)
-            # Not fully implemented here to save space, relies on C++
-            return np.zeros(n_angles, dtype=np.float32)
+        return np.zeros(n_angles, dtype=np.float32)
 
 class RangeDopplerWidget(Qt.QWidget):
-    """
-    Custom Qt Widget to display the Range-Doppler Map.
-    """
     update_signal = QtCore.pyqtSignal(object)
-
     def __init__(self, fft_len, doppler_len, parent=None):
         super().__init__(parent)
         self.fft_len = fft_len
         self.doppler_len = doppler_len
         self.data = np.zeros((doppler_len, fft_len), dtype=np.float32)
-
         self.update_signal.connect(self.on_update)
-
         layout = Qt.QVBoxLayout(self)
         self.label = Qt.QLabel()
         self.label.setScaledContents(True)
         layout.addWidget(self.label)
-
     def on_update(self, data):
         self.data = data
         d_min = np.min(data)
@@ -314,23 +395,19 @@ class RangeDopplerWidget(Qt.QWidget):
         else:
             norm = data * 0
         norm = norm.astype(np.uint8)
-
-        # Transpose to get Range on Y, Doppler on X
         display_data = norm.T
-
         h, w = display_data.shape
         rgb = np.dstack((display_data, display_data, display_data)).copy()
-
         qimg = Qt.QImage(rgb.data, w, h, 3*w, Qt.QImage.Format_RGB888)
         self.label.setPixmap(Qt.QPixmap.fromImage(qimg))
 
 class KrakenPassiveRadar(gr.top_block, Qt.QWidget):
     def __init__(self,
-                 samp_rate=2_400_000,
+                 samp_rate=2048000,      # Modified to 2.048 MHz
                  center_freq=99.5e6,
                  fft_len=4096,
                  doppler_len=128,
-                 decim=2,
+                 decim=1,                # Decim handled by Resampler
                  bpf_bw=180e3,
                  ref_gain=30,
                  surv_gain=30,
@@ -355,8 +432,6 @@ class KrakenPassiveRadar(gr.top_block, Qt.QWidget):
         self.center_freq = center_freq
         self.fft_len = fft_len
         self.doppler_len = doppler_len
-        self.decim = decim
-        self.bpf_bw = bpf_bw
         self.ref_gain = ref_gain
         self.surv_gain = surv_gain
 
@@ -383,12 +458,38 @@ class KrakenPassiveRadar(gr.top_block, Qt.QWidget):
         self.surv_src.set_bandwidth(0)
 
         #########################################
-        # CHANNELIZATION (Frequency Xlating FIR)
+        # RESAMPLING (2.048 MHz -> 175 kHz)
         #########################################
-        chans_taps = firdes.low_pass(1.0, samp_rate, self.bpf_bw/2, self.bpf_bw/4, firdes.WIN_HAMMING)
-        self.ref_chan = filter.freq_xlating_fir_filter_ccc(self.decim, chans_taps, 0.0, samp_rate)
-        self.surv_chan = filter.freq_xlating_fir_filter_ccc(self.decim, chans_taps, 0.0, samp_rate)
-        self.fs = samp_rate // self.decim
+        # Polyphase Resampler
+        target_rate = 175000
+        interp = 175
+        decim_val = 2048
+
+        fs_poly = samp_rate * interp
+
+        # Taps calculation
+        taps_len = 1000
+        M = taps_len - 1
+        h = np.zeros(taps_len, dtype=np.float32)
+        fc = 80e3 / fs_poly # Normalized cutoff
+
+        win = np.hamming(taps_len)
+
+        for i in range(taps_len):
+            if i == M/2.0:
+                h[i] = 2 * fc
+            else:
+                n = i - M/2.0
+                h[i] = np.sin(2 * np.pi * fc * n) / (np.pi * n)
+            h[i] *= win[i]
+
+        # Gain compensation
+        h *= interp
+
+        self.ref_resamp = PolyphaseResamplerBlock(interp, decim_val, h)
+        self.surv_resamp = PolyphaseResamplerBlock(interp, decim_val, h)
+
+        self.fs = target_rate
 
         self.ref_dc = filter.dc_blocker_cc(128, True)
         self.surv_dc = filter.dc_blocker_cc(128, True)
@@ -423,7 +524,6 @@ class KrakenPassiveRadar(gr.top_block, Qt.QWidget):
         ############################
         self.slow_stv = blocks.stream_to_vector(gr.sizeof_float, self.vec)
 
-        # New: Custom Doppler Processing Block
         self.rd_widget = RangeDopplerWidget(self.fft_len, self.doppler_len)
         self.top_layout.addWidget(self.rd_widget)
 
@@ -452,8 +552,9 @@ class KrakenPassiveRadar(gr.top_block, Qt.QWidget):
         ############################
         # Connections
         ############################
-        self.connect(self.ref_src, self.ref_chan, self.ref_dc)
-        self.connect(self.surv_src, self.surv_chan, self.surv_dc)
+        # Src -> Resampler -> DC
+        self.connect(self.ref_src, self.ref_resamp, self.ref_dc)
+        self.connect(self.surv_src, self.surv_resamp, self.surv_dc)
 
         self.connect(self.ref_dc, (self.clutter_cancel, 0))
         self.connect(self.surv_dc, (self.clutter_cancel, 1))

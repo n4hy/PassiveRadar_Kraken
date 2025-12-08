@@ -34,10 +34,10 @@ graph TD
     end
 
     subgraph Pre-Processing
-        Ref -->|Freq Xlating FIR| RefChan[Ref Channelizer]
-        Surv -->|Freq Xlating FIR| SurvChan[Surv Channelizer]
-        RefChan --> RefDC[DC Blocker]
-        SurvChan --> SurvDC[DC Blocker]
+        Ref -->|Resampler (2.048M->175k)| RefRes[Polyphase Resampler]
+        Surv -->|Resampler (2.048M->175k)| SurvRes[Polyphase Resampler]
+        RefRes --> RefDC[DC Blocker]
+        SurvRes --> SurvDC[DC Blocker]
     end
 
     subgraph "Clutter Cancellation (NLMS)"
@@ -72,7 +72,18 @@ This project includes C++ implementations for computationally intensive blocks t
 
 1.  **NLMS Clutter Canceller**: `src/nlms_clutter_canceller.cpp`
 2.  **Doppler Processing**: `src/doppler_processing.cpp`
+3.  **AoA Processing**: `src/aoa_processing.cpp`
+4.  **Polyphase Resampling**: `src/resampler.cpp`
 
 The Python top block (`kraken_passive_radar_top_block.py`) automatically detects if these sources are present and attempts to compile them into shared libraries (`.so`) using `g++`. If compilation succeeds, the optimized C++ logic is loaded via `ctypes`. If `g++` is missing or compilation fails, the system seamlessly falls back to the pure Python/NumPy implementation.
 
 **Note on Doppler Processing:** The C++ optimization for Doppler processing currently supports power-of-two Doppler lengths (e.g., 64, 128, 256). If a non-power-of-two length is selected, the system will use the Python fallback.
+
+## REFERENCES
+Griffiths, H. D., et al. “Passive Coherent Location Radar Systems.” IEEE Aerospace & Electronic Systems Magazine, 2017.
+
+Jahangir, M., Baker, C. J. “Performance Evaluation of Passive Radar with FM Radio Signals for Air Traffic Control.” IET Radar, Sonar & Navigation, 2016.
+
+Melvin, W. L., Scheer, J. A. Principles of Modern Radar: Advanced Techniques. SciTech Publishing, 2013.
+
+Fishler, E., Haimovich, A., Blum, R. “High-Resolution Passive Radar Imaging Using Television Broadcast Signals.” IEEE TAES, 2015.
