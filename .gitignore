@@ -1,0 +1,135 @@
+############################################
+# Python
+############################################
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+pip-wheel-metadata/
+.pytest_cache/
+.mypy_cache/
+
+############################################
+# Virtual Environments
+############################################
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+############################################
+# GNU Radio / OOT Build Artifacts
+############################################
+gr-kraken_passive_radar/build/
+gr-kraken_passive_radar/.cache/
+gr-kraken_passive_radar/*.log
+gr-kraken_passive_radar/**/*.so
+gr-kraken_passive_radar/**/*.o
+gr-kraken_passive_radar/**/*.a
+
+############################################
+# CMake
+############################################
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+compile_commands.json
+CTestTestfile.cmake
+Testing/
+_install/
+
+############################################
+# C / C++ Build Artifacts
+############################################
+*.o
+*.a
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+*.out
+*.obj
+*.lib
+*.pdb
+
+############################################
+# Qt / GUI
+############################################
+*.ui~
+*.qmlc
+*.jsc
+*.qrc.depends
+*.qrc.resource
+
+############################################
+# Unit Test Artifacts
+############################################
+.coverage
+htmlcov/
+*.gcda
+*.gcno
+*.gcov
+test_output/
+test_results/
+
+############################################
+# SDR / Signal Data
+############################################
+*.dat
+*.iq
+*.cf32
+*.sc16
+*.sc16q11
+*.wav
+*.raw
+*.bin
+
+############################################
+# Logs
+############################################
+*.log
+logs/
+
+############################################
+# Editors / IDEs
+############################################
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+*.bak
+*.tmp
+
+############################################
+# OS Junk
+############################################
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.stackdump
+
+############################################
+# Archives (optional)
+############################################
+*.tar
+*.tar.gz
+*.tgz
+*.zip
+
+############################################
+# Local override / secrets
+############################################
+.local/
+secrets/
+.env
+.env.local
+.env.*

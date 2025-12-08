@@ -1,0 +1,61 @@
+############################################
+# Default text handling
+############################################
+* text=auto
+
+# Enforce LF for source code
+*.py   text eol=lf
+*.c    text eol=lf
+*.h    text eol=lf
+*.cc   text eol=lf
+*.cpp  text eol=lf
+*.hpp  text eol=lf
+*.cmake text eol=lf
+CMakeLists.txt text eol=lf
+*.sh   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.md   text eol=lf
+*.txt  text eol=lf
+*.grc  text eol=lf
+
+############################################
+# Binary files (no diff)
+############################################
+*.so    binary
+*.so.*  binary
+*.dylib binary
+*.dll   binary
+*.exe   binary
+*.o     binary
+*.a     binary
+*.lib   binary
+*.pdb   binary
+
+# Signal / data files
+*.dat   binary
+*.iq    binary
+*.cf32  binary
+*.sc16  binary
+*.sc16q11 binary
+*.wav   binary
+*.raw   binary
+*.bin   binary
+
+# Images
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.svg   text eol=lf
+
+############################################
+# Diff hints for specific file types
+############################################
+*.py    diff=python
+*.md    diff=markdown
+*.cmake diff=cmake
+CMakeLists.txt diff=cmake
+
+# Treat .grc as XML for diffs
+*.grc diff=xml
