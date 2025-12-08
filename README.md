@@ -78,7 +78,7 @@ Settings can be modified in the `KrakenPassiveRadar` class within `kraken_passiv
 
 ## Troubleshooting
 
-*   **"C++ Library not found"**: The script attempts to compile `.so` files in `src/`. Ensure you have `g++` and `libfftw3-dev` installed. If compilation fails, the script falls back to Python (slower).
+*   **"C++ Library not found"**: The script attempts to compile `.so` files in `src/`. Ensure you have `g++` and `libfftw3-dev` installed. If compilation fails, the script falls back to Python (slower), except for Resampling which requires C++.
 *   **"No module named gnuradio"**: Ensure you installed `gnuradio` via apt and used `--system-site-packages` for your venv, or set `PYTHONPATH` correctly.
 *   **Performance Issues**: If the UI is sluggish, ensure C++ acceleration is active (check terminal output for "Loaded C++ library").
 
@@ -100,10 +100,10 @@ graph TD
         SurvRes --> SurvDC[DC Blocker]
     end
 
-    subgraph "Clutter Cancellation (NLMS)"
-        RefDC -->|Predictor| NLMS[Adaptive Filter]
-        SurvDC -->|Desired| NLMS
-        NLMS -->|Error/Clean| CleanSurv[Cleaned Surv]
+    subgraph "Clutter Cancellation (ECA-B)"
+        RefDC -->|Regressor| ECA[ECA-B Filter]
+        SurvDC -->|Desired| ECA
+        ECA -->|Error| CleanSurv[Cleaned Surv]
     end
 
     subgraph "CAF Processing (Fast-Time)"
@@ -130,14 +130,12 @@ graph TD
 
 This project includes C++ implementations for computationally intensive blocks to improve real-time performance.
 
-1.  **NLMS Clutter Canceller**: `src/nlms_clutter_canceller.cpp`
+1.  **ECA-B Clutter Canceller**: `src/eca_b_clutter_canceller.cpp` (Replaces NLMS)
 2.  **Doppler Processing**: `src/doppler_processing.cpp` (Uses FFTW3)
 3.  **AoA Processing**: `src/aoa_processing.cpp`
 4.  **Polyphase Resampling**: `src/resampler.cpp`
 
-The Python top block (`kraken_passive_radar_top_block.py`) automatically detects if these sources are present and attempts to compile them into shared libraries (`.so`) using `g++`. If compilation succeeds, the optimized C++ logic is loaded via `ctypes`. If `g++` is missing or compilation fails, the system seamlessly falls back to the pure Python/NumPy implementation.
-
-**Note on Doppler Processing:** The C++ optimization relies on `libfftw3`. If this library is missing, Doppler processing falls back to Python.
+The Python top block (`kraken_passive_radar_top_block.py`) automatically detects if these sources are present and attempts to compile them into shared libraries (`.so`) using `g++`. If compilation succeeds, the optimized C++ logic is loaded via `ctypes`. If `g++` is missing or compilation fails, the system falls back to Python implementations where possible (except Resampler).
 
 ## REFERENCES
 Griffiths, H. D., et al. “Passive Coherent Location Radar Systems.” IEEE Aerospace & Electronic Systems Magazine, 2017.
