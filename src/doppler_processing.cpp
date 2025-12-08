@@ -3,54 +3,12 @@
 #include <cmath>
 #include <algorithm>
 #include <iostream>
+#include <fftw3.h>
 
 // Constants
 const float PI = 3.14159265358979323846f;
 
 using Complex = std::complex<float>;
-
-// Simple in-place Cooley-Tukey FFT (Radix-2, Decimation in Time)
-// n must be a power of 2
-void fft_radix2(std::vector<Complex>& a, bool invert) {
-    size_t n = a.size();
-    if (n <= 1) return;
-
-    // Bit-reversal permutation
-    size_t j = 0;
-    for (size_t i = 1; i < n; ++i) {
-        size_t bit = n >> 1;
-        while (j & bit) {
-            j ^= bit;
-            bit >>= 1;
-        }
-        j ^= bit;
-        if (i < j) {
-            std::swap(a[i], a[j]);
-        }
-    }
-
-    // Butterfly updates
-    for (size_t len = 2; len <= n; len <<= 1) {
-        float angle = 2 * PI / len * (invert ? -1 : 1);
-        Complex wlen(std::cos(angle), std::sin(angle));
-        for (size_t i = 0; i < n; i += len) {
-            Complex w(1.0f, 0.0f);
-            for (size_t k = 0; k < len / 2; ++k) {
-                Complex u = a[i + k];
-                Complex v = a[i + k + len / 2] * w;
-                a[i + k] = u + v;
-                a[i + k + len / 2] = u - v;
-                w *= wlen;
-            }
-        }
-    }
-
-    if (invert) {
-        for (Complex& x : a) {
-            x /= static_cast<float>(n);
-        }
-    }
-}
 
 class DopplerProcessor {
 private:
@@ -58,6 +16,11 @@ private:
     int doppler_len;  // Doppler bins (Slow-time) - Rows
 
     std::vector<float> window;
+
+    // FFTW Resources
+    fftwf_plan plan;
+    fftwf_complex* in_buf;
+    fftwf_complex* out_buf;
 
 public:
     DopplerProcessor(int n_fft, int n_doppler) : fft_len(n_fft), doppler_len(n_doppler) {
@@ -70,30 +33,66 @@ public:
         } else {
             window[0] = 1.0f;
         }
+
+        // Initialize FFTW
+        // We will process one column at a time
+        in_buf = fftwf_alloc_complex(doppler_len);
+        out_buf = fftwf_alloc_complex(doppler_len);
+
+        // Create plan
+        // FFTW_ESTIMATE is faster to plan, FFTW_MEASURE provides faster execution but slower startup
+        plan = fftwf_plan_dft_1d(doppler_len, in_buf, out_buf, FFTW_FORWARD, FFTW_ESTIMATE);
+    }
+
+    ~DopplerProcessor() {
+        fftwf_destroy_plan(plan);
+        fftwf_free(in_buf);
+        fftwf_free(out_buf);
     }
 
     // Process logic shared by output modes
-    // returns windowed, FFT'd, Shifted column
+    // Fills 'result' with FFT'd and Shifted data for a column
     void process_column(const Complex* input, int r, std::vector<Complex>& result) {
         result.resize(doppler_len);
 
-        // 1. Extract and Window
+        // 1. Extract and Window -> Copy to FFTW input
         for (int d = 0; d < doppler_len; ++d) {
-            result[d] = input[d * fft_len + r] * window[d];
+            Complex val = input[d * fft_len + r] * window[d];
+            in_buf[d][0] = val.real();
+            in_buf[d][1] = val.imag();
         }
 
         // 2. FFT
-        fft_radix2(result, false);
+        fftwf_execute(plan);
 
-        // 3. FFT Shift (in place swap)
-        // result buffer is modified to be shifted
-        // Using rotate or manual swap
+        // 3. FFT Shift and Copy to result
+        // Shift: Swap first half and second half
         int half = doppler_len / 2;
-        // Simple manual swap for first half vs second half
-        std::vector<Complex> temp = result;
-        for (int d = 0; d < half; ++d) {
-            result[d] = temp[d + half];
-            result[d + half] = temp[d];
+        int odd = doppler_len % 2; // Usually 0 for powers of 2, but FFTW handles any size
+
+        // If even: 0..half-1 -> half..end; half..end -> 0..half-1
+        // If odd (N=3): half=1. 0(1) -> 2; 1(2) -> 0; 2(3) -> 1?
+        // Standard fftshift: center is at floor(N/2).
+        // 0..ceil(N/2)-1 goes to end.
+        // For N=3: [0, 1, 2] -> [2, 0, 1]. Element 0 goes to 1. Element 1 goes to 2. Element 2 goes to 0.
+        // Let's stick to even/simple logic or use a helper.
+        // Using (i + half) % N for destination index works for even N.
+
+        // Copy out_buf to result with shift
+        for (int i = 0; i < doppler_len; ++i) {
+            int dest_idx = (i + (doppler_len + 1) / 2) % doppler_len; // General shift formula?
+            // NumPy: [0, 1, 2] -> [2, 0, 1].
+            // i=0 -> dest=2. (0 + 2)%3 = 2.
+            // i=1 -> dest=0. (1 + 2)%3 = 0.
+            // i=2 -> dest=1. (2 + 2)%3 = 1.
+            // Correct.
+
+            // Wait, usually we read FROM shifted index?
+            // We want result[0] to be the most negative frequency.
+            // That corresponds to index (N+1)/2 in the FFT output.
+
+            int src_idx = (i + (doppler_len + 1) / 2) % doppler_len;
+            result[i] = Complex(out_buf[src_idx][0], out_buf[src_idx][1]);
         }
     }
 

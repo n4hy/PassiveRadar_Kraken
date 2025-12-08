@@ -21,7 +21,8 @@ sudo apt update
 sudo apt install gnuradio gr-osmosdr \
     python3-pyqt5 python3-sip \
     soapysdr-tools soapysdr-module-all \
-    build-essential python3-venv git
+    build-essential python3-venv git \
+    libfftw3-dev libfftw3-tools
 ```
 
 ### Virtual Environment Setup (Raspberry Pi / Debian)
@@ -50,6 +51,36 @@ Modern Linux distributions (like Raspberry Pi OS) often enforce "externally mana
    source .venv/bin/activate
    pip install -r requirements.txt
    ```
+
+## Usage
+
+1. **Check SDR Connectivity**:
+   Ensure your KrakenSDR is connected and detected:
+   ```bash
+   SoapySDRUtil --find
+   ```
+
+2. **Run the Application**:
+   Ensure you are in the virtual environment (if used):
+   ```bash
+   python3 kraken_passive_radar_top_block.py
+   ```
+   The application will attempt to compile C++ acceleration libraries on the first run.
+
+## Configuration
+
+Settings can be modified in the `KrakenPassiveRadar` class within `kraken_passive_radar_top_block.py` or via arguments (if extended).
+
+*   **Sample Rate**: Default 2.048 MSPS (required for resampler logic).
+*   **Center Frequency**: Default 99.5 MHz. Change `center_freq` to your local illuminator.
+*   **Gain**: Default 30 dB. Adjust `ref_gain` and `surv_gain`.
+*   **Device Args**: Default `numchan=5,rtl=0` (Ref) and `numchan=5,rtl=1` (Surv). Adjust for your specific device indices.
+
+## Troubleshooting
+
+*   **"C++ Library not found"**: The script attempts to compile `.so` files in `src/`. Ensure you have `g++` and `libfftw3-dev` installed. If compilation fails, the script falls back to Python (slower).
+*   **"No module named gnuradio"**: Ensure you installed `gnuradio` via apt and used `--system-site-packages` for your venv, or set `PYTHONPATH` correctly.
+*   **Performance Issues**: If the UI is sluggish, ensure C++ acceleration is active (check terminal output for "Loaded C++ library").
 
 ## Signal Flow Diagram
 
@@ -100,16 +131,16 @@ graph TD
 This project includes C++ implementations for computationally intensive blocks to improve real-time performance.
 
 1.  **NLMS Clutter Canceller**: `src/nlms_clutter_canceller.cpp`
-2.  **Doppler Processing**: `src/doppler_processing.cpp`
+2.  **Doppler Processing**: `src/doppler_processing.cpp` (Uses FFTW3)
 3.  **AoA Processing**: `src/aoa_processing.cpp`
 4.  **Polyphase Resampling**: `src/resampler.cpp`
 
 The Python top block (`kraken_passive_radar_top_block.py`) automatically detects if these sources are present and attempts to compile them into shared libraries (`.so`) using `g++`. If compilation succeeds, the optimized C++ logic is loaded via `ctypes`. If `g++` is missing or compilation fails, the system seamlessly falls back to the pure Python/NumPy implementation.
 
-**Note on Doppler Processing:** The C++ optimization for Doppler processing currently supports power-of-two Doppler lengths (e.g., 64, 128, 256). If a non-power-of-two length is selected, the system will use the Python fallback.
+**Note on Doppler Processing:** The C++ optimization relies on `libfftw3`. If this library is missing, Doppler processing falls back to Python.
 
 ## REFERENCES
-Griffiths, H. D., et al. “Passive Coherent Location RRadar Systems.” IEEE Aerospace & Electronic Systems Magazine, 2017.
+Griffiths, H. D., et al. “Passive Coherent Location Radar Systems.” IEEE Aerospace & Electronic Systems Magazine, 2017.
 
 Jahangir, M., Baker, C. J. “Performance Evaluation of Passive Radar with FM Radio Signals for Air Traffic Control.” IET Radar, Sonar & Navigation, 2016.
 

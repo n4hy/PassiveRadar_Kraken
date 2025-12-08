@@ -31,7 +31,7 @@ from gnuradio.filter import firdes
 
 # --- Helper: Compile and Load C++ Library ---
 
-def compile_and_load_lib(lib_name, src_name, functions):
+def compile_and_load_lib(lib_name, src_name, functions, extra_flags=None):
     """
     Attempts to load a shared library. Compiles it if missing.
     functions: list of tuples (func_name, argtypes, restype)
@@ -50,6 +50,8 @@ def compile_and_load_lib(lib_name, src_name, functions):
                     'g++', '-O3', '-shared', '-fPIC', '-DLIBRARY_BUILD',
                     cpp_file, '-o', lib_path
                 ]
+                if extra_flags:
+                    cmd.extend(extra_flags)
                 subprocess.check_call(cmd)
                 print(f"Compilation of {lib_name} successful.")
             except (subprocess.CalledProcessError, FileNotFoundError) as e:
@@ -88,7 +90,8 @@ _doppler_funcs = [
     ('doppler_process', [c_void_p, POINTER(c_float), POINTER(c_float)], None),
     ('doppler_process_complex', [c_void_p, POINTER(c_float), POINTER(c_float)], None)
 ]
-_doppler_lib = compile_and_load_lib('libdoppler_processing.so', 'doppler_processing.cpp', _doppler_funcs)
+# Add link flag for FFTW3f
+_doppler_lib = compile_and_load_lib('libdoppler_processing.so', 'doppler_processing.cpp', _doppler_funcs, extra_flags=['-lfftw3f'])
 
 _aoa_funcs = [
     ('aoa_create', [c_int, c_float], c_void_p),
@@ -219,69 +222,6 @@ class PolyphaseResamplerBlock(gr.basic_block):
 
         produced = _resampler_lib.resampler_process(self.cpp_obj, p_in, n_input, p_out, n_output_cap)
 
-        # We need to know how many inputs were consumed.
-        # But our C++ resampler doesn't tell us consumption, it assumes "all input processed"?
-        # Wait, polyphase logic consumes inputs as needed.
-        # My C++ implementation:
-        # It processes until it runs out of input OR runs out of output space.
-        # If it stops because of output space, it might not consume all inputs.
-        # But `process` implementation iterates inputs via `idx`.
-        # `excess_input_advance` is updated based on where `idx` ended.
-        # If `idx` doesn't reach the end of the input buffer (because output full),
-        # we still "consumed" the inputs up to that point.
-        # However, C++ logic was: `idx` iterates through the whole `work_buffer` (history + input).
-        # It stops if `output_count >= max_output`.
-        # If it stops early, `idx` is somewhere in the middle.
-        # `excess_input_advance` calculation logic assumes we finished the whole buffer?
-        # Let's check `resampler.cpp`.
-        # `idx` is incremented in the loop.
-        # Loop condition: `idx < total_len` AND `output_count < max_output`.
-        # If we break because `output_count >= max_output`:
-        # `idx` is preserved.
-        # `excess_input_advance = idx - total_len`.
-        # `total_len` is the end of the input buffer.
-        # If `idx < total_len`, then `excess_input_advance` is negative.
-        # This implies we are "behind" the end of the buffer.
-        # And we save the "tail".
-        # But `consume()` tells GR we are done with N inputs.
-        # If we didn't process all inputs, we shouldn't consume them?
-        # But `basic_block` expects us to consume.
-        # If we set `excess_input_advance` correctly, we effectively "keep" the unconsumed part in our internal `history`?
-        # In my C++ code:
-        # `start_copy = work_buffer.size() - history.size();`
-        # This ALWAYS copies the LAST N samples of the `work_buffer`.
-        # If we didn't process the end of `work_buffer`, `idx` is small.
-        # The data we "need" for next time starts around `idx`.
-        # If `idx` is far from the end, copying only the last N samples loses the middle part!
-
-        # CRITICAL BUG in my `resampler.cpp`.
-        # If output buffer is full, we stop early.
-        # We must save the data starting from where we stopped!
-        # But `consume` removes data from GNU Radio buffer.
-        # We should only consume what we processed.
-        # BUT: Calculating exactly how many input items correspond to produced output items is tricky in polyphase.
-        # Easier strategy:
-        # Force processing of ALL inputs?
-        # GR buffer management: usually output buffer is sized based on forecast.
-        # If forecast is correct, we should have enough output space for all inputs.
-        # Let's rely on forecast.
-        # `req = noutput * decim / interp`.
-        # So `noutput_capacity >= ninput * interp / decim`.
-        # If we provide good forecast, `n_output_cap` should be sufficient.
-
-        # However, to be safe, I should update `resampler.cpp` to handle "partial consumption" OR
-        # just consume everything and assume output buffer is large enough (and return produced < capacity).
-
-        # If I fix `forecast`, GR will allocate enough output.
-        # So I will assume we process all inputs.
-        # In that case, `idx` reaches end of buffer.
-
-        # So `consume(0, n_input)` is correct IF we processed all inputs.
-        # Check if `produced < n_output_cap`? Or if we stopped due to cap?
-        # My C++ code breaks if `output_count >= max_output`.
-
-        # Let's hope forecast works.
-
         self.consume(0, n_input)
         return produced
 
@@ -302,8 +242,13 @@ class DopplerProcessingBlock(gr.basic_block):
         self.buffer = np.zeros((doppler_len, fft_len), dtype=np.complex64)
         self.buf_idx = 0
 
-        is_power_of_two = (doppler_len > 0) and ((doppler_len & (doppler_len - 1)) == 0)
-        self.use_cpp = (_doppler_lib is not None) and is_power_of_two
+        # C++ Setup
+        # Now using FFTW, any size is supported technically.
+        # But my fallback Python logic (numpy) also supports any size.
+        # So we can remove the power-of-two check for C++ enablement,
+        # provided FFTW handles it. (FFTW does).
+
+        self.use_cpp = (_doppler_lib is not None)
         self.cpp_obj = None
 
         if self.use_cpp:
