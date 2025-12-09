@@ -254,7 +254,7 @@ If you have the development dependencies installed and want to run the tests:
 
 ```bash
 cd ~/PassiveRadar_Kraken
-python3 -m unittest discover -v
+python3 -m unittest discover -s tests -v
 ```
 
 This will execute:
