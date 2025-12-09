@@ -45,6 +45,7 @@ gnuradio.blocks = blocks
 filter_mod = MagicMock()
 sys.modules["gnuradio.filter"] = filter_mod
 gnuradio.filter = filter_mod
+filter = filter_mod  # Expose as 'filter' so 'from gnuradio import filter' works when gnuradio is mocked by this module
 
 # Mock analog
 analog = MagicMock()

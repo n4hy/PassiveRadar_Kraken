@@ -8,6 +8,11 @@ THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 if THIS_DIR not in sys.path:
     sys.path.insert(0, THIS_DIR)
 
+# Ensure we can find the local 'kraken_passive_radar' OOT python package
+OOT_PYTHON_DIR = os.path.abspath(os.path.join(THIS_DIR, "../gr-kraken_passive_radar/python"))
+if OOT_PYTHON_DIR not in sys.path:
+    sys.path.insert(0, OOT_PYTHON_DIR)
+
 import mock_gnuradio as gnuradio  # noqa: E402
 sys.modules["gnuradio"] = gnuradio
 
