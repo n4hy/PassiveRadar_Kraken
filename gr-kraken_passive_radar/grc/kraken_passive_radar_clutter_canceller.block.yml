@@ -14,15 +14,18 @@ parameters:
     default: 0.1
 
 inputs:
-  - label: reference
+  - id: reference
+    label: reference
     domain: stream
     dtype: complex
-  - label: surveillance
+  - id: surveillance
+    label: surveillance
     domain: stream
     dtype: complex
 
 outputs:
-  - label: error
+  - id: error
+    label: error
     domain: stream
     dtype: complex
 
