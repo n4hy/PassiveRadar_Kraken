@@ -100,7 +100,7 @@ mkdir build
 cd build
 
 # Use the same prefix that GNU Radio uses (typically /usr)
-cmake -DCMAKE_INSTALL_PREFIX=/usr ..
+cmake .. -DCMAKE_INSTALL_PREFIX=/usr ..
 make -j"$(nproc)"
 
 sudo make install
