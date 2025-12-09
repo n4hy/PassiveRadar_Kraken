@@ -162,6 +162,8 @@ In the block tree, you should see a category:
 [Kraken Passive Radar]
 ```
 
+**Note:** OOT modules often appear at the bottom of the block list in GNU Radio Companion. You may need to scroll down to find it.
+
 Under this category, the key blocks are:
 
 1. **Kraken NLMS Clutter Canceller**  
