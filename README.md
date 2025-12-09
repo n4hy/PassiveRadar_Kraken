@@ -82,6 +82,17 @@ gr-kraken_passive_radar/
 
 ### 3.1 Build and install into the system GNU Radio prefix
 
+You can use the provided helper script:
+
+```bash
+cd ~/PassiveRadar_Kraken
+./build_oot.sh
+sudo make install
+sudo ldconfig
+```
+
+Or manually:
+
 ```bash
 cd ~/PassiveRadar_Kraken/gr-kraken_passive_radar
 rm -rf build
