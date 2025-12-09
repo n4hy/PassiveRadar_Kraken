@@ -15,7 +15,7 @@ class ClutterCanceller(gr.basic_block):
 
     Implements classical NLMS:
 
-        w[n+1] = w[n] + mu * e[n] * conj(x[n]) / (||x[n]||^2 + eps)
+        w[n+1] = w[n] + mu * conj(e[n]) * x[n] / (||x[n]||^2 + eps)
 
     where:
         e[n] = d[n] - w^H x[n]
@@ -42,6 +42,10 @@ class ClutterCanceller(gr.basic_block):
         # Small epsilon to prevent division-by-zero
         self.eps = 1e-12
 
+        # History for reference channel (to form tap vector at block boundaries)
+        # We need num_taps-1 past samples.
+        self._ref_history = np.zeros(self.num_taps - 1, dtype=np.complex64)
+
     def general_work(self, input_items, output_items):
         ref = input_items[0]
         surv = input_items[1]
@@ -52,16 +56,33 @@ class ClutterCanceller(gr.basic_block):
         if n_input <= 0:
             return 0
 
-        # Zero-pad reference so we can form full tap windows safely
-        full_ref = np.zeros(n_input + self.num_taps, dtype=np.complex64)
-        full_ref[:n_input] = ref
+        # Construct full reference buffer with history:
+        # [hist_0, ..., hist_M-1, ref_0, ..., ref_N-1]
+        full_ref = np.concatenate((self._ref_history, ref[:n_input]))
+
+        # Update history for next call
+        # We need the last (num_taps - 1) samples from the current full sequence
+        if n_input >= self.num_taps - 1:
+            self._ref_history = ref[n_input - (self.num_taps - 1):n_input]
+        else:
+            # If input is shorter than history length, we roll the buffer
+            # New history is: old_history_tail + ref
+            needed = self.num_taps - 1
+            combined = np.concatenate((self._ref_history, ref[:n_input]))
+            self._ref_history = combined[-needed:]
+
+        # Check weight validity
+        if not np.all(np.isfinite(self.w)):
+            self.w[:] = 0.0
 
         for i in range(n_input):
-            # If weights ever became non-finite, reset before using
-            if not np.all(np.isfinite(self.w)):
-                self.w[:] = 0.0
+            # We want x vector corresponding to time i (which corresponds to ref[i] and surv[i])
+            # The causal window should be [ref[i-(M-1)], ..., ref[i]]
+            # In full_ref:
+            # ref[0] is at index M-1.
+            # ref[i] is at index i + M - 1.
+            # So slice [i : i + M] gives [ref[i-(M-1)] ... ref[i]].
 
-            # Reference vector for this time step
             x = full_ref[i : i + self.num_taps]
 
             # Estimated clutter: y_hat = w^H x
@@ -79,7 +100,8 @@ class ClutterCanceller(gr.basic_block):
                 continue
 
             # Proposed NLMS weight update
-            delta = self.mu * e * np.conj(x) / (norm_x_sq + self.eps)
+            # Use conjugate of error to ensure descent in complex domain: w += mu * conj(e) * x
+            delta = self.mu * np.conj(e) * x / (norm_x_sq + self.eps)
 
             # If the update itself is non-finite, reset and skip
             if not np.all(np.isfinite(delta)):
@@ -92,7 +114,7 @@ class ClutterCanceller(gr.basic_block):
 
             # Final safety check
             if not np.all(np.isfinite(self.w)):
-                self.w[:] = 0.0
+                 self.w[:] = 0.0
 
             out_err[i] = e
 
