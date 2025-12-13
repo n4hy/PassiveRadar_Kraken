@@ -2,7 +2,6 @@
 #include <cmath>
 #include <algorithm>
 
-// Check for ARM architecture to enable NEON
 #if defined(__aarch64__) || defined(__arm__)
     #include <arm_neon.h>
     #define OPTMATH_USE_NEON
@@ -19,44 +18,30 @@ bool is_available() {
 #endif
 }
 
-// =========================================================================
-// Core Intrinsics Implementations
-// =========================================================================
-
 float neon_dot_f32(const float* a, const float* b, std::size_t n) {
 #ifdef OPTMATH_USE_NEON
     float32x4_t vsum = vdupq_n_f32(0.0f);
     size_t i = 0;
-
-    // Unrolled loop 4x
     for (; i + 15 < n; i += 16) {
         float32x4_t a0 = vld1q_f32(a + i);
         float32x4_t b0 = vld1q_f32(b + i);
         vsum = vmlaq_f32(vsum, a0, b0);
-
         float32x4_t a1 = vld1q_f32(a + i + 4);
         float32x4_t b1 = vld1q_f32(b + i + 4);
         vsum = vmlaq_f32(vsum, a1, b1);
-
         float32x4_t a2 = vld1q_f32(a + i + 8);
         float32x4_t b2 = vld1q_f32(b + i + 8);
         vsum = vmlaq_f32(vsum, a2, b2);
-
         float32x4_t a3 = vld1q_f32(a + i + 12);
         float32x4_t b3 = vld1q_f32(b + i + 12);
         vsum = vmlaq_f32(vsum, a3, b3);
     }
-
-    // Residual blocks of 4
     for (; i + 3 < n; i += 4) {
         float32x4_t va = vld1q_f32(a + i);
         float32x4_t vb = vld1q_f32(b + i);
         vsum = vmlaq_f32(vsum, va, vb);
     }
-
     float sum = vaddvq_f32(vsum);
-
-    // Scalar tail
     for (; i < n; ++i) {
         sum += a[i] * b[i];
     }
@@ -190,38 +175,29 @@ float neon_reduce_min_f32(const float* a, std::size_t n) {
 
 void neon_gemm_4x4_f32(float* C, const float* A, std::size_t lda, const float* B, std::size_t ldb, std::size_t ldc) {
 #ifdef OPTMATH_USE_NEON
-    // Load C columns
     float32x4_t c0 = vld1q_f32(C);
     float32x4_t c1 = vld1q_f32(C + ldc);
     float32x4_t c2 = vld1q_f32(C + 2*ldc);
     float32x4_t c3 = vld1q_f32(C + 3*ldc);
-
-    // Load A columns
     float32x4_t a0 = vld1q_f32(A);
     float32x4_t a1 = vld1q_f32(A + lda);
     float32x4_t a2 = vld1q_f32(A + 2*lda);
     float32x4_t a3 = vld1q_f32(A + 3*lda);
-
-    // B is 4x4 block.
-    // Helper to accumulate one column of B into C
     auto accumulate_col = [&](float32x4_t& c_col, const float* b_col_ptr) {
         c_col = vmlaq_n_f32(c_col, a0, b_col_ptr[0]);
         c_col = vmlaq_n_f32(c_col, a1, b_col_ptr[1]);
         c_col = vmlaq_n_f32(c_col, a2, b_col_ptr[2]);
         c_col = vmlaq_n_f32(c_col, a3, b_col_ptr[3]);
     };
-
     accumulate_col(c0, B);
     accumulate_col(c1, B + ldb);
     accumulate_col(c2, B + 2*ldb);
     accumulate_col(c3, B + 3*ldb);
-
     vst1q_f32(C, c0);
     vst1q_f32(C + ldc, c1);
     vst1q_f32(C + 2*ldc, c2);
     vst1q_f32(C + 3*ldc, c3);
 #else
-    // Fallback scalar
     for(int j=0; j<4; ++j) {
         for(int i=0; i<4; ++i) {
             float sum = 0.0f;

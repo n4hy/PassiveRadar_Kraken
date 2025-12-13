@@ -65,14 +65,31 @@ Install core dependencies:
 
 ```bash
 sudo apt update
-sudo apt install -y   gnuradio   gr-osmosdr   python3-numpy   python3-pyqt5   python3-pyqt5.qtsvg   g++ cmake make
+sudo apt install -y   gnuradio   gr-osmosdr   python3-numpy   python3-pyqt5   python3-pyqt5.qtsvg   g++ cmake make libfftw3-dev
 ```
 
 You should already have KrakenSDR tooling and calibration utilities installed separately (not part of this repo).
 
 ---
 
-## 3. Building and Installing the OOT Module
+## 3. Optimizations (NEON)
+
+This repository includes NEON-accelerated kernels for ARM platforms (e.g., Raspberry Pi 4/5). These optimizations significantly improve the performance of:
+
+1.  **ECA-B Clutter Cancellation**: The core matrix operations (autocorrelation and cross-correlation) utilize NEON SIMD instructions to accelerate complex number arithmetic.
+2.  **Polyphase Resampler**: The FIR filtering process is optimized using NEON vector operations for high-throughput decimation. Note: The resampler implementation has been switched to `float` precision to maximize performance on ARM hardware.
+
+### 3.1 Implementation Details
+
+The optimizations leverage a vendored and adapted version of `OptimizedKernelsForRaspberryPi5` (located in `src/optmath/`), specifically tailored for:
+*   **Structure of Arrays (SoA)**: Data is processed in separate Real and Imaginary streams to maximize NEON throughput.
+*   **Reduced Dependencies**: The kernels are implemented using raw pointers and intrinsics, removing external dependencies like Eigen for the core processing loop.
+
+These optimizations are enabled automatically when building on supported architectures (ARM) via the `-march=native` flag in the build system.
+
+---
+
+## 4. Building and Installing the OOT Module
 
 The OOT module lives in:
 
@@ -80,7 +97,7 @@ The OOT module lives in:
 gr-kraken_passive_radar/
 ```
 
-### 3.1 Build and install into the system GNU Radio prefix
+### 4.1 Build and install into the system GNU Radio prefix
 
 You can use the provided helper script:
 
@@ -116,7 +133,7 @@ This installs:
   /usr/share/gnuradio/grc/blocks
   ```
 
-### 3.2 Ensuring Python can import `kraken_passive_radar`
+### 4.2 Ensuring Python can import `kraken_passive_radar`
 
 On some systems, the Python site‑packages directory is under `/usr/local` instead of `/usr`. To confirm:
 
@@ -159,7 +176,7 @@ If this succeeds (no `ModuleNotFoundError`), GNU Radio Companion will also be ab
 
 ---
 
-## 4. GNU Radio Companion (GRC) Blocks
+## 5. GNU Radio Companion (GRC) Blocks
 
 After a successful install, start GRC:
 
@@ -211,7 +228,7 @@ You can inspect or edit these YAML files directly if you need to customize label
 
 ---
 
-## 5. Example GRC Wiring
+## 6. Example GRC Wiring
 
 A minimal passive radar chain in GRC using Kraken blocks:
 
@@ -259,25 +276,24 @@ A minimal passive radar chain in GRC using Kraken blocks:
 
 ---
 
-## 6. Running the Unit Tests (Optional)
+## 7. Running the Unit Tests
 
-If you have the development dependencies installed and want to run the tests:
+The recommended way to run the test suite is to use the `run_tests.sh` script from the project root. This script handles the Python path configuration to ensure that the local OOT module is correctly imported during testing.
 
 ```bash
 cd ~/PassiveRadar_Kraken
 ./run_tests.sh
 ```
 
-This will execute:
+If you attempt to run individual test files (e.g., `tests/test_instantiation.py`) directly from the `tests/` directory without setting `PYTHONPATH`, you may encounter `ModuleNotFoundError`. Always use the runner script or manually add the OOT python directory to your path.
 
+This script executes:
 - C++ kernel tests for AoA, Doppler, and ECA‑B
 - NLMS clutter canceller tests using a mock GNU Radio environment
 
-Note: the tests are designed primarily for development and CI and are not required for operational deployment of the GRC blocks.
-
 ---
 
-## 7. ITAR / Export Control Considerations (Informational, Not Legal Advice)
+## 8. ITAR / Export Control Considerations (Informational, Not Legal Advice)
 
 This repository provides **software signal processing components** for passive radar using broadcast FM/TV illuminators and KrakenSDR hardware. As implemented here:
 
@@ -300,7 +316,7 @@ The repository is intended for **research and commercial non‑military applicat
 
 ---
 
-## 8. License
+## 9. License
 
 See the `LICENSE` file in the repository for the full license text. In typical use, this project is distributed under a permissive license (e.g., MIT), allowing:
 
