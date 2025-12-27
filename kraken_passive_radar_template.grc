@@ -364,3 +364,5 @@ connections:
   - '0'
   - rd_raster
   - '0'
+metadata:
+  file_format: 1
