@@ -34,7 +34,7 @@ blocks:
 - id: variable
   parameters:
     id: samp_rate
-    value: '2400000'
+    value: '2048000'
   states:
     bus_sink: false
     bus_source: false

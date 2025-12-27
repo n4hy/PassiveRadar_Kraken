@@ -7,7 +7,7 @@ class krakensdr_source(gr.hier_block2):
     KrakenSDR Source Block
     Wraps osmosdr.source configured for 5 coherent channels.
     """
-    def __init__(self, frequency=100e6, sample_rate=2.4e6, gain=30.0):
+    def __init__(self, frequency=100e6, sample_rate=2.048e6, gain=30.0):
         gr.hier_block2.__init__(
             self,
             "KrakenSDR Source",
