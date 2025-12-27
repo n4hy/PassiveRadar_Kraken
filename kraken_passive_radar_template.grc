@@ -61,6 +61,20 @@ blocks:
   name: center_freq
 - id: variable
   parameters:
+    id: gain
+    value: '30'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 308
+    - 150
+    rotation: 0
+    state: enabled
+  name: gain
+- id: variable
+  parameters:
     id: fft_len
     value: '4096'
   states:
@@ -115,14 +129,11 @@ blocks:
     rotation: 0
     state: enabled
   name: bpf_bw
-- id: osmosdr_source_c
+- id: kraken_passive_radar_krakensdr_source
   parameters:
-    id: ref_src
-    args: numchan=5,rtl=0
+    frequency: center_freq
+    gain: gain
     sample_rate: samp_rate
-    freq0: center_freq
-    gain0: '30'
-    freq_corr0: '0'
   states:
     bus_sink: false
     bus_source: false
@@ -132,25 +143,7 @@ blocks:
     - 250
     rotation: 0
     state: enabled
-  name: ref_src
-- id: osmosdr_source_c
-  parameters:
-    id: surv_src
-    args: numchan=5,rtl=1
-    sample_rate: samp_rate
-    freq0: center_freq
-    gain0: '30'
-    freq_corr0: '0'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate:
-    - 608
-    - 250
-    rotation: 0
-    state: enabled
-  name: surv_src
+  name: krakensdr_source_0
 - id: freq_xlating_fir_filter_ccc
   parameters:
     id: ref_chan
@@ -332,12 +325,12 @@ blocks:
     state: enabled
   name: rd_raster
 connections:
-- - ref_src
+- - krakensdr_source_0
   - '0'
   - ref_chan
   - '0'
-- - surv_src
-  - '0'
+- - krakensdr_source_0
+  - '1'
   - surv_chan
   - '0'
 - - ref_chan

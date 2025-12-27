@@ -93,7 +93,7 @@ blocks:
     - 150
     rotation: 0
     state: enabled
-  name: krakensdr_source
+  name: krakensdr_source_0
 
 # Sinks Channel 0
 - id: qtgui_time_sink_x
@@ -656,43 +656,43 @@ blocks:
   name: freq_sink_4
 
 connections:
-- - krakensdr_source
+- - krakensdr_source_0
   - '0'
   - freq_sink_0
   - '0'
-- - krakensdr_source
+- - krakensdr_source_0
   - '0'
   - time_sink_0
   - '0'
-- - krakensdr_source
+- - krakensdr_source_0
   - '1'
   - freq_sink_1
   - '0'
-- - krakensdr_source
+- - krakensdr_source_0
   - '1'
   - time_sink_1
   - '0'
-- - krakensdr_source
+- - krakensdr_source_0
   - '2'
   - freq_sink_2
   - '0'
-- - krakensdr_source
+- - krakensdr_source_0
   - '2'
   - time_sink_2
   - '0'
-- - krakensdr_source
+- - krakensdr_source_0
   - '3'
   - freq_sink_3
   - '0'
-- - krakensdr_source
+- - krakensdr_source_0
   - '3'
   - time_sink_3
   - '0'
-- - krakensdr_source
+- - krakensdr_source_0
   - '4'
   - freq_sink_4
   - '0'
-- - krakensdr_source
+- - krakensdr_source_0
   - '4'
   - time_sink_4
   - '0'
