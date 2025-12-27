@@ -44,6 +44,7 @@ blocks:
     - 150
     rotation: 0
     state: enabled
+  name: samp_rate
 - id: variable
   parameters:
     id: center_freq
@@ -57,6 +58,7 @@ blocks:
     - 150
     rotation: 0
     state: enabled
+  name: center_freq
 - id: variable
   parameters:
     id: fft_len
@@ -70,6 +72,7 @@ blocks:
     - 150
     rotation: 0
     state: enabled
+  name: fft_len
 - id: variable
   parameters:
     id: doppler_len
@@ -83,6 +86,7 @@ blocks:
     - 150
     rotation: 0
     state: enabled
+  name: doppler_len
 - id: variable
   parameters:
     id: decim
@@ -96,6 +100,7 @@ blocks:
     - 250
     rotation: 0
     state: enabled
+  name: decim
 - id: variable
   parameters:
     id: bpf_bw
@@ -109,6 +114,7 @@ blocks:
     - 250
     rotation: 0
     state: enabled
+  name: bpf_bw
 - id: osmosdr_source_c
   parameters:
     id: ref_src
@@ -126,6 +132,7 @@ blocks:
     - 250
     rotation: 0
     state: enabled
+  name: ref_src
 - id: osmosdr_source_c
   parameters:
     id: surv_src
@@ -143,6 +150,7 @@ blocks:
     - 250
     rotation: 0
     state: enabled
+  name: surv_src
 - id: freq_xlating_fir_filter_ccc
   parameters:
     id: ref_chan
@@ -159,6 +167,7 @@ blocks:
     - 350
     rotation: 0
     state: enabled
+  name: ref_chan
 - id: freq_xlating_fir_filter_ccc
   parameters:
     id: surv_chan
@@ -175,6 +184,7 @@ blocks:
     - 350
     rotation: 0
     state: enabled
+  name: surv_chan
 - id: dc_blocker_cc
   parameters:
     id: ref_dc
@@ -188,6 +198,7 @@ blocks:
     - 350
     rotation: 0
     state: enabled
+  name: ref_dc
 - id: dc_blocker_cc
   parameters:
     id: surv_dc
@@ -201,6 +212,7 @@ blocks:
     - 350
     rotation: 0
     state: enabled
+  name: surv_dc
 - id: stream_to_vector
   parameters:
     id: ref_vec
@@ -215,6 +227,7 @@ blocks:
     - 450
     rotation: 0
     state: enabled
+  name: ref_vec
 - id: stream_to_vector
   parameters:
     id: surv_vec
@@ -229,6 +242,7 @@ blocks:
     - 450
     rotation: 0
     state: enabled
+  name: surv_vec
 - id: fft_vcc
   parameters:
     id: ref_fft
@@ -243,6 +257,7 @@ blocks:
     - 450
     rotation: 0
     state: enabled
+  name: ref_fft
 - id: fft_vcc
   parameters:
     id: surv_fft
@@ -257,6 +272,7 @@ blocks:
     - 450
     rotation: 0
     state: enabled
+  name: surv_fft
 - id: multiply_conjugate_vcc
   parameters:
     id: mult_conj
@@ -270,6 +286,7 @@ blocks:
     - 550
     rotation: 0
     state: enabled
+  name: mult_conj
 - id: ifft_vcc
   parameters:
     id: ifft
@@ -283,6 +300,7 @@ blocks:
     - 550
     rotation: 0
     state: enabled
+  name: ifft
 - id: complex_to_mag_squared
   parameters:
     id: corr_mag
@@ -296,6 +314,7 @@ blocks:
     - 550
     rotation: 0
     state: enabled
+  name: corr_mag
 - id: qtgui_time_raster_sink_f
   parameters:
     id: rd_raster
@@ -311,6 +330,7 @@ blocks:
     - 550
     rotation: 0
     state: enabled
+  name: rd_raster
 connections:
 - - ref_src
   - '0'
