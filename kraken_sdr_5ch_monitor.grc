@@ -62,21 +62,11 @@ blocks:
     rotation: 0
     state: enabled
   name: center_freq
-- id: qtgui_range
+- id: variable
   parameters:
-    alias: ''
     comment: ''
-    gui_hint: ''
     id: rf_gain
-    label: RF Gain
-    min_len: '200'
-    orient: Qt.Horizontal
-    rangeType: float
-    start: '0'
-    step: '1'
-    stop: '50'
     value: '30'
-    widget: counter_slider
   states:
     bus_sink: false
     bus_source: false
