@@ -1,160 +1,366 @@
-<?xml version="1.0"?>
-<flow_graph>
-  <options>
-    <author>ChatGPT</author>
-    <title>KrakenSDR Passive Radar (FM/TV Illuminator)</title>
-    <description>Two-channel passive radar front-end with FFT cross-correlation and range-time raster.</description>
-    <window_size>1280,800</window_size>
-    <category>Custom</category>
-    <generate_options>qt_gui</generate_options>
-  </options>
-
-  <!-- Variables -->
-  <block>
-    <key>variable</key>
-    <param><key>id</key><value>samp_rate</value></param>
-    <param><key>value</key><value>2400000</value></param>
-  </block>
-  <block>
-    <key>variable</key>
-    <param><key>id</key><value>center_freq</value></param>
-    <param><key>value</key><value>99.5e6</value></param>
-  </block>
-  <block>
-    <key>variable</key>
-    <param><key>id</key><value>fft_len</value></param>
-    <param><key>value</key><value>4096</value></param>
-  </block>
-  <block>
-    <key>variable</key>
-    <param><key>id</key><value>doppler_len</value></param>
-    <param><key>value</key><value>128</value></param>
-  </block>
-  <block>
-    <key>variable</key>
-    <param><key>id</key><value>decim</value></param>
-    <param><key>value</key><value>2</value></param>
-  </block>
-  <block>
-    <key>variable</key>
-    <param><key>id</key><value>bpf_bw</value></param>
-    <param><key>value</key><value>180e3</value></param>
-  </block>
-
-  <!-- Sources (osmosdr) -->
-  <block>
-    <key>osmosdr_source_c</key>
-    <param><key>id</key><value>ref_src</value></param>
-    <param><key>args</key><value>numchan=5,rtl=0</value></param>
-    <param><key>sample_rate</key><value>samp_rate</value></param>
-    <param><key>freq0</key><value>center_freq</value></param>
-    <param><key>gain0</key><value>30</value></param>
-    <param><key>freq_corr0</key><value>0</value></param>
-  </block>
-  <block>
-    <key>osmosdr_source_c</key>
-    <param><key>id</key><value>surv_src</value></param>
-    <param><key>args</key><value>numchan=5,rtl=1</value></param>
-    <param><key>sample_rate</key><value>samp_rate</value></param>
-    <param><key>freq0</key><value>center_freq</value></param>
-    <param><key>gain0</key><value>30</value></param>
-    <param><key>freq_corr0</key><value>0</value></param>
-  </block>
-
-  <!-- Channel filters -->
-  <block>
-    <key>freq_xlating_fir_filter_ccc</key>
-    <param><key>id</key><value>ref_chan</value></param>
-    <param><key>decim</key><value>decim</value></param>
-    <param><key>taps</key><value>firdes.low_pass(1.0, samp_rate, bpf_bw/2, bpf_bw/4, firdes.WIN_HAMMING)</value></param>
-    <param><key>center_freq</key><value>0</value></param>
-    <param><key>sample_rate</key><value>samp_rate</value></param>
-  </block>
-  <block>
-    <key>freq_xlating_fir_filter_ccc</key>
-    <param><key>id</key><value>surv_chan</value></param>
-    <param><key>decim</key><value>decim</value></param>
-    <param><key>taps</key><value>firdes.low_pass(1.0, samp_rate, bpf_bw/2, bpf_bw/4, firdes.WIN_HAMMING)</value></param>
-    <param><key>center_freq</key><value>0</value></param>
-    <param><key>sample_rate</key><value>samp_rate</value></param>
-  </block>
-
-  <!-- DC blockers -->
-  <block>
-    <key>dc_blocker_cc</key>
-    <param><key>id</key><value>ref_dc</value></param>
-    <param><key>length</key><value>128</value></param>
-  </block>
-  <block>
-    <key>dc_blocker_cc</key>
-    <param><key>id</key><value>surv_dc</value></param>
-    <param><key>length</key><value>128</value></param>
-  </block>
-
-  <!-- Vectorize + FFT -->
-  <block>
-    <key>stream_to_vector</key>
-    <param><key>id</key><value>ref_vec</value></param>
-    <param><key>type</key><value>complex</value></param>
-    <param><key>vlen</key><value>fft_len</value></param>
-  </block>
-  <block>
-    <key>stream_to_vector</key>
-    <param><key>id</key><value>surv_vec</value></param>
-    <param><key>type</key><value>complex</value></param>
-    <param><key>vlen</key><value>fft_len</value></param>
-  </block>
-  <block>
-    <key>fft_vcc</key>
-    <param><key>id</key><value>ref_fft</value></param>
-    <param><key>fft_size</key><value>fft_len</value></param>
-    <param><key>forward</key><value>True</value></param>
-  </block>
-  <block>
-    <key>fft_vcc</key>
-    <param><key>id</key><value>surv_fft</value></param>
-    <param><key>fft_size</key><value>fft_len</value></param>
-    <param><key>forward</key><value>True</value></param>
-  </block>
-
-  <!-- Multiply conj, IFFT, magnitude -->
-  <block>
-    <key>multiply_conjugate_vcc</key>
-    <param><key>id</key><value>mult_conj</value></param>
-    <param><key>vlen</key><value>fft_len</value></param>
-  </block>
-  <block>
-    <key>ifft_vcc</key>
-    <param><key>id</key><value>ifft</value></param>
-    <param><key>fft_size</key><value>fft_len</value></param>
-  </block>
-  <block>
-    <key>complex_to_mag_squared</key>
-    <param><key>id</key><value>corr_mag</value></param>
-    <param><key>vlen</key><value>fft_len</value></param>
-  </block>
-
-  <!-- Raster display -->
-  <block>
-    <key>qtgui_time_raster_sink_f</key>
-    <param><key>id</key><value>rd_raster</value></param>
-    <param><key>rows</key><value>fft_len</value></param>
-    <param><key>cols</key><value>512</value></param>
-    <param><key>name</key><value>Range-Time (proxy)</value></param>
-  </block>
-
-  <!-- Connections -->
-  <connection><source>ref_src:0</source><sink>ref_chan:0</sink></connection>
-  <connection><source>surv_src:0</source><sink>surv_chan:0</sink></connection>
-  <connection><source>ref_chan:0</source><sink>ref_dc:0</sink></connection>
-  <connection><source>surv_chan:0</source><sink>surv_dc:0</sink></connection>
-  <connection><source>ref_dc:0</source><sink>ref_vec:0</sink></connection>
-  <connection><source>surv_dc:0</source><sink>surv_vec:0</sink></connection>
-  <connection><source>ref_vec:0</source><sink>ref_fft:0</sink></connection>
-  <connection><source>surv_vec:0</source><sink>surv_fft:0</sink></connection>
-  <connection><source>ref_fft:0</source><sink>mult_conj:0</sink></connection>
-  <connection><source>surv_fft:0</source><sink>mult_conj:1</sink></connection>
-  <connection><source>mult_conj:0</source><sink>ifft:0</sink></connection>
-  <connection><source>ifft:0</source><sink>corr_mag:0</sink></connection>
-  <connection><source>corr_mag:0</source><sink>rd_raster:0</sink></connection>
-</flow_graph>
+options:
+  parameters:
+    author: ChatGPT
+    category: Custom
+    cmake_opt: ''
+    comment: ''
+    copyright: ''
+    description: Two-channel passive radar front-end with FFT cross-correlation and
+      range-time raster.
+    gen_cmake: 'On'
+    gen_linking: dynamic
+    generate_options: qt_gui
+    hier_block_src_path: '.:'
+    id: top_block
+    max_nouts: '0'
+    output_language: python
+    placement: (0,0)
+    qt_qss_theme: ''
+    realtime_scheduling: ''
+    run: 'True'
+    run_command: '{python} -u {filename}'
+    run_options: prompt
+    'sizing_mode:': fixed
+    thread_safe_setters: ''
+    title: KrakenSDR Passive Radar (FM/TV Illuminator)
+    window_size: 1280,800
+  states:
+    coordinate:
+    - 8
+    - 8
+    rotation: 0
+    state: enabled
+blocks:
+- id: variable
+  parameters:
+    id: samp_rate
+    value: '2400000'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 8
+    - 150
+    rotation: 0
+    state: enabled
+- id: variable
+  parameters:
+    id: center_freq
+    value: 99.5e6
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 208
+    - 150
+    rotation: 0
+    state: enabled
+- id: variable
+  parameters:
+    id: fft_len
+    value: '4096'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 408
+    - 150
+    rotation: 0
+    state: enabled
+- id: variable
+  parameters:
+    id: doppler_len
+    value: '128'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 608
+    - 150
+    rotation: 0
+    state: enabled
+- id: variable
+  parameters:
+    id: decim
+    value: '2'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 8
+    - 250
+    rotation: 0
+    state: enabled
+- id: variable
+  parameters:
+    id: bpf_bw
+    value: 180e3
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 208
+    - 250
+    rotation: 0
+    state: enabled
+- id: osmosdr_source_c
+  parameters:
+    id: ref_src
+    args: numchan=5,rtl=0
+    sample_rate: samp_rate
+    freq0: center_freq
+    gain0: '30'
+    freq_corr0: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 408
+    - 250
+    rotation: 0
+    state: enabled
+- id: osmosdr_source_c
+  parameters:
+    id: surv_src
+    args: numchan=5,rtl=1
+    sample_rate: samp_rate
+    freq0: center_freq
+    gain0: '30'
+    freq_corr0: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 608
+    - 250
+    rotation: 0
+    state: enabled
+- id: freq_xlating_fir_filter_ccc
+  parameters:
+    id: ref_chan
+    decim: decim
+    taps: firdes.low_pass(1.0, samp_rate, bpf_bw/2, bpf_bw/4, firdes.WIN_HAMMING)
+    center_freq: '0'
+    sample_rate: samp_rate
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 8
+    - 350
+    rotation: 0
+    state: enabled
+- id: freq_xlating_fir_filter_ccc
+  parameters:
+    id: surv_chan
+    decim: decim
+    taps: firdes.low_pass(1.0, samp_rate, bpf_bw/2, bpf_bw/4, firdes.WIN_HAMMING)
+    center_freq: '0'
+    sample_rate: samp_rate
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 208
+    - 350
+    rotation: 0
+    state: enabled
+- id: dc_blocker_cc
+  parameters:
+    id: ref_dc
+    length: '128'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 408
+    - 350
+    rotation: 0
+    state: enabled
+- id: dc_blocker_cc
+  parameters:
+    id: surv_dc
+    length: '128'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 608
+    - 350
+    rotation: 0
+    state: enabled
+- id: stream_to_vector
+  parameters:
+    id: ref_vec
+    type: complex
+    vlen: fft_len
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 8
+    - 450
+    rotation: 0
+    state: enabled
+- id: stream_to_vector
+  parameters:
+    id: surv_vec
+    type: complex
+    vlen: fft_len
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 208
+    - 450
+    rotation: 0
+    state: enabled
+- id: fft_vcc
+  parameters:
+    id: ref_fft
+    fft_size: fft_len
+    forward: 'True'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 408
+    - 450
+    rotation: 0
+    state: enabled
+- id: fft_vcc
+  parameters:
+    id: surv_fft
+    fft_size: fft_len
+    forward: 'True'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 608
+    - 450
+    rotation: 0
+    state: enabled
+- id: multiply_conjugate_vcc
+  parameters:
+    id: mult_conj
+    vlen: fft_len
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 8
+    - 550
+    rotation: 0
+    state: enabled
+- id: ifft_vcc
+  parameters:
+    id: ifft
+    fft_size: fft_len
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 208
+    - 550
+    rotation: 0
+    state: enabled
+- id: complex_to_mag_squared
+  parameters:
+    id: corr_mag
+    vlen: fft_len
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 408
+    - 550
+    rotation: 0
+    state: enabled
+- id: qtgui_time_raster_sink_f
+  parameters:
+    id: rd_raster
+    rows: fft_len
+    cols: '512'
+    name: Range-Time (proxy)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 608
+    - 550
+    rotation: 0
+    state: enabled
+connections:
+- - ref_src
+  - '0'
+  - ref_chan
+  - '0'
+- - surv_src
+  - '0'
+  - surv_chan
+  - '0'
+- - ref_chan
+  - '0'
+  - ref_dc
+  - '0'
+- - surv_chan
+  - '0'
+  - surv_dc
+  - '0'
+- - ref_dc
+  - '0'
+  - ref_vec
+  - '0'
+- - surv_dc
+  - '0'
+  - surv_vec
+  - '0'
+- - ref_vec
+  - '0'
+  - ref_fft
+  - '0'
+- - surv_vec
+  - '0'
+  - surv_fft
+  - '0'
+- - ref_fft
+  - '0'
+  - mult_conj
+  - '0'
+- - surv_fft
+  - '0'
+  - mult_conj
+  - '1'
+- - mult_conj
+  - '0'
+  - ifft
+  - '0'
+- - ifft
+  - '0'
+  - corr_mag
+  - '0'
+- - corr_mag
+  - '0'
+  - rd_raster
+  - '0'
