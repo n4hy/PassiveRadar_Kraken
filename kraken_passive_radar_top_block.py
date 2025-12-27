@@ -31,7 +31,7 @@ from gnuradio.filter import firdes
 
 # --- Helper: Compile and Load C++ Library ---
 
-def compile_and_load_lib(lib_name, src_name, functions, extra_flags=None):
+def compile_and_load_lib(lib_name, src_name, functions, extra_flags=None, extra_srcs=None):
     """
     Attempts to load a shared library. Compiles it if missing.
     functions: list of tuples (func_name, argtypes, restype)
@@ -48,8 +48,16 @@ def compile_and_load_lib(lib_name, src_name, functions, extra_flags=None):
             try:
                 cmd = [
                     'g++', '-O3', '-shared', '-fPIC', '-DLIBRARY_BUILD',
-                    cpp_file, '-o', lib_path
+                    cpp_file
                 ]
+                if extra_srcs:
+                    for s in extra_srcs:
+                        s_path = os.path.join(src_dir, s)
+                        if os.path.exists(s_path):
+                            cmd.append(s_path)
+
+                cmd.extend(['-o', lib_path])
+
                 if extra_flags:
                     cmd.extend(extra_flags)
                 subprocess.check_call(cmd)
@@ -83,7 +91,7 @@ _eca_funcs = [
     ('eca_b_destroy', [c_void_p], None),
     ('eca_b_process', [c_void_p, POINTER(c_float), POINTER(c_float), POINTER(c_float), c_int], None)
 ]
-_eca_lib = compile_and_load_lib('libeca_b_clutter_canceller.so', 'eca_b_clutter_canceller.cpp', _eca_funcs)
+_eca_lib = compile_and_load_lib('libeca_b_clutter_canceller.so', 'eca_b_clutter_canceller.cpp', _eca_funcs, extra_srcs=['optmath/neon_kernels.cpp'])
 
 _doppler_funcs = [
     ('doppler_create', [c_int, c_int], c_void_p),
@@ -106,7 +114,7 @@ _resampler_funcs = [
     ('resampler_destroy', [c_void_p], None),
     ('resampler_process', [c_void_p, POINTER(c_float), c_int, POINTER(c_float), c_int], c_int)
 ]
-_resampler_lib = compile_and_load_lib('libresampler.so', 'resampler.cpp', _resampler_funcs)
+_resampler_lib = compile_and_load_lib('libresampler.so', 'resampler.cpp', _resampler_funcs, extra_srcs=['optmath/neon_kernels.cpp'])
 
 
 class ECABCanceller(gr.basic_block):

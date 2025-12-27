@@ -31,8 +31,15 @@ class MockBasicBlock:
     def consume(self, port, count):
         pass
 
+class MockHierBlock2:
+    def __init__(self, name, in_sig, out_sig):
+        pass
+    def connect(self, *args):
+        pass
+
 gr.top_block = MockTopBlock
 gr.basic_block = MockBasicBlock
+gr.hier_block2 = MockHierBlock2
 gr.sizeof_gr_complex = 8
 gr.sizeof_float = 4
 
