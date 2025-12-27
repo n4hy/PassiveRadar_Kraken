@@ -8,8 +8,12 @@ rm -rf build
 mkdir build
 cd build
 
-# Configure
-cmake -DCMAKE_INSTALL_PREFIX=/usr ..
+# Detect Python installation directory
+PY_SITE=$(python3 -c "import sysconfig; print(sysconfig.get_paths()['purelib'])")
+echo "Detected Python install dir: $PY_SITE"
+
+# Configure with explicit Python path
+cmake -DCMAKE_INSTALL_PREFIX=/usr -DGR_PYTHON_DIR="$PY_SITE" ..
 
 # Build
 make -j"$(nproc)"
