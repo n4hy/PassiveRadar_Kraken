@@ -207,6 +207,66 @@ blocks:
     rotation: 0
     state: enabled
   name: surv_chan
+- id: freq_xlating_fir_filter_ccc
+  parameters:
+    center_freq: '0'
+    comment: ''
+    decim: decim
+    id: surv_chan_2
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    sample_rate: samp_rate
+    taps: firdes.low_pass(1.0, samp_rate, bpf_bw/2, bpf_bw/4, firdes.WIN_HAMMING)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 208
+    - 750
+    rotation: 0
+    state: enabled
+  name: surv_chan_2
+- id: freq_xlating_fir_filter_ccc
+  parameters:
+    center_freq: '0'
+    comment: ''
+    decim: decim
+    id: surv_chan_3
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    sample_rate: samp_rate
+    taps: firdes.low_pass(1.0, samp_rate, bpf_bw/2, bpf_bw/4, firdes.WIN_HAMMING)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 208
+    - 850
+    rotation: 0
+    state: enabled
+  name: surv_chan_3
+- id: freq_xlating_fir_filter_ccc
+  parameters:
+    center_freq: '0'
+    comment: ''
+    decim: decim
+    id: surv_chan_4
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    sample_rate: samp_rate
+    taps: firdes.low_pass(1.0, samp_rate, bpf_bw/2, bpf_bw/4, firdes.WIN_HAMMING)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 208
+    - 950
+    rotation: 0
+    state: enabled
+  name: surv_chan_4
 - id: dc_blocker_cc
   parameters:
     comment: ''
@@ -243,11 +303,66 @@ blocks:
     rotation: 0
     state: enabled
   name: surv_dc
+- id: dc_blocker_cc
+  parameters:
+    comment: ''
+    id: surv_dc_2
+    length: '128'
+    long_form: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 608
+    - 750
+    rotation: 0
+    state: enabled
+  name: surv_dc_2
+- id: dc_blocker_cc
+  parameters:
+    comment: ''
+    id: surv_dc_3
+    length: '128'
+    long_form: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 608
+    - 850
+    rotation: 0
+    state: enabled
+  name: surv_dc_3
+- id: dc_blocker_cc
+  parameters:
+    comment: ''
+    id: surv_dc_4
+    length: '128'
+    long_form: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 608
+    - 950
+    rotation: 0
+    state: enabled
+  name: surv_dc_4
 - id: kraken_passive_radar_eca_b_clutter_canceller
   parameters:
     comment: ''
     id: eca_canceller
     num_taps: eca_taps
+    num_surv_channels: 4
   states:
     bus_sink: false
     bus_source: false
@@ -258,6 +373,57 @@ blocks:
     rotation: 0
     state: enabled
   name: eca_canceller
+- id: null_sink
+  parameters:
+    bus_structure_sink: '[[0,],]'
+    comment: ''
+    id: null_sink_1
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 300
+    - 600
+    rotation: 0
+    state: enabled
+  name: null_sink_1
+- id: null_sink
+  parameters:
+    bus_structure_sink: '[[0,],]'
+    comment: ''
+    id: null_sink_2
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 300
+    - 650
+    rotation: 0
+    state: enabled
+  name: null_sink_2
+- id: null_sink
+  parameters:
+    bus_structure_sink: '[[0,],]'
+    comment: ''
+    id: null_sink_3
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 300
+    - 700
+    rotation: 0
+    state: enabled
+  name: null_sink_3
 - id: stream_to_vector
   parameters:
     comment: ''
@@ -464,6 +630,18 @@ connections:
   - ch1
   - surv_chan
   - '0'
+- - krakensdr_source_0
+  - ch2
+  - surv_chan_2
+  - '0'
+- - krakensdr_source_0
+  - ch3
+  - surv_chan_3
+  - '0'
+- - krakensdr_source_0
+  - ch4
+  - surv_chan_4
+  - '0'
 - - ref_chan
   - '0'
   - ref_dc
@@ -471,6 +649,18 @@ connections:
 - - surv_chan
   - '0'
   - surv_dc
+  - '0'
+- - surv_chan_2
+  - '0'
+  - surv_dc_2
+  - '0'
+- - surv_chan_3
+  - '0'
+  - surv_dc_3
+  - '0'
+- - surv_chan_4
+  - '0'
+  - surv_dc_4
   - '0'
 - - ref_dc
   - '0'
@@ -480,6 +670,21 @@ connections:
   - '0'
   - eca_canceller
   - surveillance
+- - surv_dc_2
+  - '0'
+  - eca_canceller
+  - surveillance
+  - '1'
+- - surv_dc_3
+  - '0'
+  - eca_canceller
+  - surveillance
+  - '2'
+- - surv_dc_4
+  - '0'
+  - eca_canceller
+  - surveillance
+  - '3'
 - - ref_dc
   - '0'
   - ref_vec
@@ -488,6 +693,21 @@ connections:
   - error
   - surv_vec
   - '0'
+- - eca_canceller
+  - error
+  - null_sink_1
+  - '0'
+  - '1'
+- - eca_canceller
+  - error
+  - null_sink_2
+  - '0'
+  - '2'
+- - eca_canceller
+  - error
+  - null_sink_3
+  - '0'
+  - '3'
 - - ref_vec
   - '0'
   - ref_fft

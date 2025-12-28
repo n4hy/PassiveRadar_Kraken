@@ -8,6 +8,12 @@ parameters:
     label: Number of Taps
     dtype: int
     default: 64
+  - id: num_surv_channels
+    label: Num Surv Channels
+    dtype: int
+    default: 1
+    min: 1
+    max: 4
   - id: lib_path
     label: Library Path (optional)
     dtype: string
@@ -22,24 +28,26 @@ inputs:
     label: surveillance
     domain: stream
     dtype: complex
+    multiplicity: ${num_surv_channels}
 
 outputs:
   - id: error
     label: error
     domain: stream
     dtype: complex
+    multiplicity: ${num_surv_channels}
 
 templates:
   imports: |-
     from kraken_passive_radar import EcaBClutterCanceller
   make: |-
-    EcaBClutterCanceller(num_taps=${num_taps}, lib_path='${lib_path}')
+    EcaBClutterCanceller(num_taps=${num_taps}, num_surv_channels=${num_surv_channels}, lib_path='${lib_path}')
 
 documentation: |-
   Batch ECA-B-based clutter canceller for passive radar.
   Input 0: reference channel (direct-path illuminator signal).
-  Input 1: surveillance channel (direct + clutter + targets).
-  Output: clutter-suppressed surveillance (targets emphasized).
+  Input 1..N: surveillance channels (direct + clutter + targets).
+  Output 0..N-1: clutter-suppressed surveillance (targets emphasized).
   Uses a C++ kernel (libkraken_eca_b_clutter_canceller.so) loaded via ctypes.
 
 file_format: 1

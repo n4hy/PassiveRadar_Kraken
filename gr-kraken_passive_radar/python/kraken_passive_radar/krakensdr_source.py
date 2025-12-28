@@ -1,6 +1,7 @@
 import numpy as np
 from gnuradio import gr
 import osmosdr
+import sys
 
 class krakensdr_source(gr.hier_block2):
     """
@@ -60,3 +61,22 @@ class krakensdr_source(gr.hier_block2):
         self.gain = gain
         for i in range(5):
             self.osmosdr.set_gain(gain, i)
+
+    def set_noise_source(self, enable):
+        """
+        Enables or disables the KrakenSDR internal noise source.
+        The noise source is controlled via GPIO 0 on Device Index 1 (Serial 1001).
+        Device Index 1 corresponds to Channel 1 (since Ch0=1000, Ch1=1001).
+
+        Args:
+            enable (bool): True to enable, False to disable.
+        """
+        val = 1 if enable else 0
+        try:
+            # set_gpio_bit(bank, bit, value, channel)
+            # We assume Bank 0, Bit 0 is the noise source on Channel 1.
+            self.osmosdr.set_gpio_bit(0, 0, val, 1)
+        except AttributeError:
+            print("Warning: osmosdr.source.set_gpio_bit not available. Noise source control failed.", file=sys.stderr)
+        except Exception as e:
+            print(f"Warning: Failed to set noise source: {e}", file=sys.stderr)
