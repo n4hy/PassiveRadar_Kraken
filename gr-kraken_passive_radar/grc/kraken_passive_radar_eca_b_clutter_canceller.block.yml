@@ -15,7 +15,7 @@ parameters:
   - id: lib_path
     label: Library Path (optional)
     dtype: string
-    default: ''
+    default: ""
 
 inputs:
   - id: reference
@@ -39,7 +39,7 @@ templates:
   imports: |-
     from kraken_passive_radar import EcaBClutterCanceller
   make: |-
-    EcaBClutterCanceller(num_taps=${num_taps}, num_surv_channels=${num_surv_channels}, lib_path='${lib_path}')
+    EcaBClutterCanceller(num_taps=${num_taps}, num_surv_channels=${num_surv_channels}, lib_path=${lib_path})
 
 documentation: |-
   Batch ECA-B-based clutter canceller for passive radar.
