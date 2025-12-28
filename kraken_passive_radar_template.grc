@@ -326,11 +326,11 @@ blocks:
   name: rd_raster
 connections:
 - - krakensdr_source_0
-  - '0'
+  - ch0
   - ref_chan
   - '0'
 - - krakensdr_source_0
-  - '1'
+  - ch1
   - surv_chan
   - '0'
 - - ref_chan

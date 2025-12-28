@@ -19,19 +19,24 @@ parameters:
 inputs: []
 
 outputs:
-- label: ch0
+- id: ch0
+  label: ch0
   domain: stream
   dtype: complex
-- label: ch1
+- id: ch1
+  label: ch1
   domain: stream
   dtype: complex
-- label: ch2
+- id: ch2
+  label: ch2
   domain: stream
   dtype: complex
-- label: ch3
+- id: ch3
+  label: ch3
   domain: stream
   dtype: complex
-- label: ch4
+- id: ch4
+  label: ch4
   domain: stream
   dtype: complex
 

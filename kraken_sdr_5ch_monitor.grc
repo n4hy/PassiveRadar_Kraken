@@ -657,42 +657,42 @@ blocks:
 
 connections:
 - - krakensdr_source_0
-  - '0'
+  - ch0
   - freq_sink_0
   - '0'
 - - krakensdr_source_0
-  - '0'
+  - ch0
   - time_sink_0
   - '0'
 - - krakensdr_source_0
-  - '1'
+  - ch1
   - freq_sink_1
   - '0'
 - - krakensdr_source_0
-  - '1'
+  - ch1
   - time_sink_1
   - '0'
 - - krakensdr_source_0
-  - '2'
+  - ch2
   - freq_sink_2
   - '0'
 - - krakensdr_source_0
-  - '2'
+  - ch2
   - time_sink_2
   - '0'
 - - krakensdr_source_0
-  - '3'
+  - ch3
   - freq_sink_3
   - '0'
 - - krakensdr_source_0
-  - '3'
+  - ch3
   - time_sink_3
   - '0'
 - - krakensdr_source_0
-  - '4'
+  - ch4
   - freq_sink_4
   - '0'
 - - krakensdr_source_0
-  - '4'
+  - ch4
   - time_sink_4
   - '0'
