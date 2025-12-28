@@ -16,90 +16,57 @@ Once installed, the user can construct a passive radar processing chain in GRC u
 
 ---
 
-## 1. Architecture Overview
+## 1. Getting Started (Hardware & Setup)
 
-A typical FM/TV‑based passive radar chain using the KrakenSDR looks like:
+### 1.1 Hardware Requirements
 
-1. **KrakenSDR Source (gr‑osmosdr)**  
-   - 5 coherent channels: 4 surveillance + 1 reference
-   - Common sample rate (e.g., 2.048 Msps) and center frequency tuned to the illuminator
+- **KrakenSDR**: 5-channel coherent RTL-SDR array.
+- **Powered USB Hub**: A high-quality hub with at least a **3A power adapter** is **MANDATORY**. The KrakenSDR draws ~2.2A, which exceeds the limit of standard laptop USB ports. Insufficient power causes "PLL not locked" errors and signal drops.
+- **Antennas**: 5 antennas connected to SMA ports CH0-CH4.
+- **Host Computer**: Linux machine (x86_64 or Raspberry Pi 4/5).
 
-2. **Per‑channel preprocessing**  
-   - Complex gain adjustment and DC offset removal (if needed)
-   - Optional band‑limiting around the selected FM/TV carrier
+### 1.2 Channel Mapping
 
-3. **Polyphase resampling**  
-   - High‑rate input (e.g., 2.048 Msps) decimated via a polyphase resampler to a lower analysis rate (e.g., 175 kHz) suitable for CAF / range–Doppler processing
+The software assumes a standard 1-to-1 mapping based on the KrakenSDR's factory-programmed serial numbers:
 
-4. **Adaptive clutter cancellation**  
-   - **NLMS**: `Kraken NLMS Clutter Canceller`
-   - **ECA‑B**: `Kraken ECA-B Clutter Canceller`
-   - Each surveillance channel uses the reference channel as input and outputs a clutter‑reduced surveillance (error signal)
+*   **Software Channel 0** <--> **Physical Port CH0** (Serial 1000)
+*   **Software Channel 1** <--> **Physical Port CH1** (Serial 1001)
+*   **Software Channel 2** <--> **Physical Port CH2** (Serial 1002)
+*   **Software Channel 3** <--> **Physical Port CH3** (Serial 1003)
+*   **Software Channel 4** <--> **Physical Port CH4** (Serial 1004)
 
-5. **Cross‑ambiguity and Doppler processing**  
-   - Range–Doppler map computation (C++ backend + Python front‑end)
-   - AoA processing across multiple surveillance channels (C++ backend)
+### 1.3 System Configuration Script
 
-6. **Display and logging**  
-   - Range–Doppler visualization
-   - Track extraction and export to downstream systems (e.g., ADS‑B fusion, custom track server)
+A setup script is provided to configure permissions and USB limits. You must run this once:
 
-The Kraken-specific blocks are intended to be **drop‑in GRC components** at steps (4) and (5).
+```bash
+cd ~/PassiveRadar_Kraken
+sudo ./setup_krakensdr_permissions.sh
+```
+
+This script performs three critical actions:
+1.  **Blacklists Kernel Driver**: Prevents `dvb_usb_rtl28xxu` from claiming the device.
+2.  **Sets udev Rules**: Grants permission to access the USB device without root.
+3.  **Increases USB Memory Limit**: Sets `usbfs_memory_mb` to 0 (unlimited). **This is required** to stream 5 channels simultaneously without "Failed to allocate zero-copy buffer" errors.
+
+**Reboot** after running the script to ensure all changes take effect.
 
 ---
 
-## 2. System Dependencies
-
-### 2.1 Hardware
-
-- Raspberry Pi 4/5 **or** x86_64 host with enough CPU and RAM for FFT‑heavy processing
-- **KrakenSDR** 5‑channel coherent SDR
-- Stable RF front‑end (LNAs, antenna array, appropriate band filters)
-- Network connectivity (for remote control / data export, optional)
-
-### 2.2 Software (Debian / Raspberry Pi OS)
+## 2. Software Installation
 
 The project is designed for GNU Radio 3.10+ installed from distribution packages.
 
-Install core dependencies:
+### 2.1 Install Dependencies
 
 ```bash
 sudo apt update
-sudo apt install -y   gnuradio   gr-osmosdr   python3-numpy   python3-pyqt5   python3-pyqt5.qtsvg   g++ cmake make libfftw3-dev
+sudo apt install -y gnuradio gr-osmosdr python3-numpy python3-pyqt5 python3-pyqt5.qtsvg g++ cmake make libfftw3-dev soapysdr-tools
 ```
 
-You should already have KrakenSDR tooling and calibration utilities installed separately (not part of this repo).
+### 2.2 Build and Install OOT Module
 
----
-
-## 3. Optimizations (NEON)
-
-This repository includes NEON-accelerated kernels for ARM platforms (e.g., Raspberry Pi 4/5). These optimizations significantly improve the performance of:
-
-1.  **ECA-B Clutter Cancellation**: The core matrix operations (autocorrelation and cross-correlation) utilize NEON SIMD instructions to accelerate complex number arithmetic.
-2.  **Polyphase Resampler**: The FIR filtering process is optimized using NEON vector operations for high-throughput decimation. Note: The resampler implementation has been switched to `float` precision to maximize performance on ARM hardware.
-
-### 3.1 Implementation Details
-
-The optimizations leverage a vendored and adapted version of `OptimizedKernelsForRaspberryPi5` (located in `src/optmath/`), specifically tailored for:
-*   **Structure of Arrays (SoA)**: Data is processed in separate Real and Imaginary streams to maximize NEON throughput.
-*   **Reduced Dependencies**: The kernels are implemented using raw pointers and intrinsics, removing external dependencies like Eigen for the core processing loop.
-
-These optimizations are enabled automatically when building on supported architectures (ARM) via the `-march=native` flag in the build system.
-
----
-
-## 4. Building and Installing the OOT Module
-
-The OOT module lives in:
-
-```text
-gr-kraken_passive_radar/
-```
-
-### 4.1 Build and install into the system GNU Radio prefix
-
-You can use the provided helper script:
+Use the helper script to build and install the custom Kraken blocks:
 
 ```bash
 cd ~/PassiveRadar_Kraken
@@ -108,192 +75,95 @@ sudo make install
 sudo ldconfig
 ```
 
-Or manually:
+---
+
+## 3. Running the Radar
+
+### 3.1 Verify 5-Channel Input
+
+Before running the full radar, verify your signals using the 5-channel monitor flowgraph.
+
+1.  Open **GNU Radio Companion**:
+    ```bash
+    gnuradio-companion kraken_sdr_5ch_monitor.grc
+    ```
+2.  Click the **Generate** button (F5) to create the Python script.
+3.  Run the monitor:
+    ```bash
+    python3 kraken_sdr_5ch_monitor.py
+    ```
+4.  **Tuning**: Use the "RF Gain" variable to adjust gain (Default 10dB). If you are near a strong FM station, keep gain low to avoid overloading Channel 0 (Reference).
+
+### 3.2 Running the Passive Radar
+
+The main radar application computes Range-Doppler maps and cancels clutter.
 
 ```bash
-cd ~/PassiveRadar_Kraken/gr-kraken_passive_radar
-rm -rf build
-mkdir build
-cd build
-
-# Use the same prefix that GNU Radio uses (typically /usr)
-cmake .. -DCMAKE_INSTALL_PREFIX=/usr ..
-make -j"$(nproc)"
-
-sudo make install
-sudo ldconfig
+python3 kraken_passive_radar_top_block.py
 ```
-
-This installs:
-
-- The Python package `kraken_passive_radar` into the system Python site‑packages (via GNU Radio’s CMake helpers, if configured)
-- The GRC block definition files into:
-
-  ```text
-  /usr/share/gnuradio/grc/blocks
-  ```
-
-### 4.2 Ensuring Python can import `kraken_passive_radar`
-
-On some systems, the Python site‑packages directory is under `/usr/local` instead of `/usr`. To confirm:
-
-```bash
-python3 - << 'EOF'
-import sys, sysconfig
-print("Python:", sys.executable)
-print("platlib:", sysconfig.get_paths()["platlib"])
-EOF
-```
-
-If the `platlib` path does not match where CMake installed the package, you can explicitly set the Python install directory when configuring:
-
-```bash
-PY_SITE=$(python3 - << 'EOF'
-import sysconfig
-print(sysconfig.get_paths()["platlib"])
-EOF
-)
-
-cd ~/PassiveRadar_Kraken/gr-kraken_passive_radar
-rm -rf build
-mkdir build
-cd build
-
-cmake   -DCMAKE_INSTALL_PREFIX=/usr   -DGR_PYTHON_DIR="$PY_SITE"   ..
-
-make -j"$(nproc)"
-sudo make install
-sudo ldconfig
-```
-
-You should then verify:
-
-```bash
-python3 -c "import sys, kraken_passive_radar; print(sys.executable); print(kraken_passive_radar.__file__)"
-```
-
-If this succeeds (no `ModuleNotFoundError`), GNU Radio Companion will also be able to import the Kraken blocks.
 
 ---
 
-## 5. GNU Radio Companion (GRC) Blocks
+## 4. Troubleshooting Common Issues
 
-After a successful install, start GRC:
+### 4.1 "PLL not locked" or "Flat Line" Signal
+*   **Cause**: Insufficient power.
+*   **Fix**: Use a **Powered USB Hub** (3A+). Laptop ports are not strong enough.
 
-```bash
-gnuradio-companion
-```
+### 4.2 "Failed to allocate zero-copy buffer"
+*   **Cause**: Linux kernel USB memory limit is too low for 5 channels.
+*   **Fix**: Run `sudo ./setup_krakensdr_permissions.sh` to increase `usbfs_memory_mb`.
 
-In the block tree, you should see a category:
+### 4.3 "Channel 0 is dead" (but others work)
+*   **Cause**: Signal overload (saturation) from a strong local transmitter.
+*   **Fix**: Reduce the **RF Gain** to 10 dB or lower.
 
-```text
-[Kraken Passive Radar]
-```
-
-**Note:** OOT modules often appear at the bottom of the block list in GNU Radio Companion. You may need to scroll down to find it.
-
-Under this category, the key blocks are:
-
-1. **Kraken NLMS Clutter Canceller**  
-   - ID: `kraken_passive_radar_clutter_canceller`
-   - Inputs:
-     - `ref` (complex) – reference channel
-     - `surv` (complex) – surveillance channel
-   - Output:
-     - `err` (complex) – clutter‑reduced surveillance (error signal)
-   - Parameters:
-     - `num_taps` – number of adaptive filter taps (e.g., 16–64)
-     - `mu` – NLMS step size (e.g., 0.01–0.1; smaller is more stable, larger is faster)
-
-2. **Kraken ECA-B Clutter Canceller**  
-   - ID: `kraken_passive_radar_eca_b_clutter_canceller`
-   - Inputs:
-     - `ref` (complex) – reference channel
-     - `surv` (complex) – surveillance channel
-   - Output:
-     - `err` (complex) – clutter‑reduced surveillance
-   - Parameters:
-     - `num_taps` – number of taps per segment
-     - `num_segments` – number of historical segments in the batch (lookback)
-
-These block definitions live in:
-
-```text
-/usr/share/gnuradio/grc/blocks/
-  kraken_passive_radar_clutter_canceller.block.yml
-  kraken_passive_radar_eca_b_clutter_canceller.block.yml
-```
-
-You can inspect or edit these YAML files directly if you need to customize labels, categories, or defaults.
+### 4.4 GRC Warning: "Flow graph may not have flow control"
+*   **Cause**: GRC static analysis doesn't see inside the custom `krakensdr_source` hierarchical block.
+*   **Fix**: Ignore this warning. As long as you don't see "O" (Overflow) or "U" (Underrun) in the console, the flowgraph is timing correctly.
 
 ---
 
-## 6. Example GRC Wiring
+## 5. Architecture Overview
 
-A minimal passive radar chain in GRC using Kraken blocks:
+A typical FM/TV‑based passive radar chain using the KrakenSDR looks like:
 
-1. **Sources**
+1. **KrakenSDR Source (gr‑osmosdr)**
+   - 5 coherent channels: 4 surveillance + 1 reference
+   - Common sample rate (e.g., 2.048 Msps) and center frequency tuned to the illuminator
 
-   - One **KrakenSDR/OSMOSDR Source** configured for 5 coherent channels (4 surveillance + 1 reference)
-   - Set sample rate to **2.048 Msps** (for example) and center frequency to the chosen FM/TV illuminator
+2. **Per‑channel preprocessing**
+   - Complex gain adjustment and DC offset removal (if needed)
+   - Optional band‑limiting around the selected FM/TV carrier
 
-2. **Per‑channel processing**
+3. **Polyphase resampling**
+   - High‑rate input (e.g., 2.048 Msps) decimated via a polyphase resampler to a lower analysis rate (e.g., 175 kHz) suitable for CAF / range–Doppler processing
 
-   - For each channel, add:
-     - `Complex Multiply Const` (optional, for per‑channel gain)
-     - `DC Blocker` (optional)
+4. **Adaptive clutter cancellation**
+   - **NLMS**: `Kraken NLMS Clutter Canceller`
+   - **ECA‑B**: `Kraken ECA-B Clutter Canceller`
+   - Each surveillance channel uses the reference channel as input and outputs a clutter‑reduced surveillance (error signal)
 
-3. **Resampling to analysis rate**
+5. **Cross‑ambiguity and Doppler processing**
+   - Range–Doppler map computation (C++ backend + Python front‑end)
+   - AoA processing across multiple surveillance channels (C++ backend)
 
-   - Use a polyphase resampler or rational resampler to convert from 2.048 Msps to, e.g., **175 kHz** for analysis
-   - The **same resampling chain** must be used for the reference and each surveillance channel so that all streams remain time‑aligned
-
-4. **NLMS clutter cancellation**
-
-   - Insert **Kraken NLMS Clutter Canceller** block
-   - Connect:
-     - `ref` ← resampled reference channel
-     - `surv` ← resampled surveillance channel
-     - `err` → clutter‑reduced output
-   - Start with conservative parameters, e.g.:
-     - `num_taps = 32`
-     - `mu = 0.02`
-
-5. **ECA‑B clutter cancellation (optional)**
-
-   - As an alternative, insert **Kraken ECA-B Clutter Canceller**
-   - Use the same `ref`/`surv` wiring
-   - Typical starting values:
-     - `num_taps = 64`
-     - `num_segments = 8`
-
-6. **Downstream processing**
-
-   - Feed the clutter‑reduced outputs into:
-     - Range–Doppler processing (CFAR / detection)
-     - AoA estimation and track extraction
-   - These components will live in the same OOT family and can be added as needed.
+6. **Display and logging**
+   - Range–Doppler visualization
+   - Track extraction and export to downstream systems (e.g., ADS‑B fusion, custom track server)
 
 ---
 
-## 7. Running the Unit Tests
+## 6. Optimizations (NEON)
 
-The recommended way to run the test suite is to use the `run_tests.sh` script from the project root. This script handles the Python path configuration to ensure that the local OOT module is correctly imported during testing.
+This repository includes NEON-accelerated kernels for ARM platforms (e.g., Raspberry Pi 4/5). These optimizations significantly improve the performance of:
 
-```bash
-cd ~/PassiveRadar_Kraken
-./run_tests.sh
-```
-
-If you attempt to run individual test files (e.g., `tests/test_instantiation.py`) directly from the `tests/` directory without setting `PYTHONPATH`, you may encounter `ModuleNotFoundError`. Always use the runner script or manually add the OOT python directory to your path.
-
-This script executes:
-- C++ kernel tests for AoA, Doppler, and ECA‑B
-- NLMS clutter canceller tests using a mock GNU Radio environment
+1.  **ECA-B Clutter Cancellation**: The core matrix operations (autocorrelation and cross-correlation) utilize NEON SIMD instructions to accelerate complex number arithmetic.
+2.  **Polyphase Resampler**: The FIR filtering process is optimized using NEON vector operations for high-throughput decimation. Note: The resampler implementation has been switched to `float` precision to maximize performance on ARM hardware.
 
 ---
 
-## 8. ITAR / Export Control Considerations (Informational, Not Legal Advice)
+## 7. ITAR / Export Control Considerations (Informational, Not Legal Advice)
 
 This repository provides **software signal processing components** for passive radar using broadcast FM/TV illuminators and KrakenSDR hardware. As implemented here:
 
@@ -316,7 +186,7 @@ The repository is intended for **research and commercial non‑military applicat
 
 ---
 
-## 9. License
+## 8. License
 
 See the `LICENSE` file in the repository for the full license text. In typical use, this project is distributed under a permissive license (e.g., MIT), allowing:
 
