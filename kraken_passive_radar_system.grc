@@ -154,6 +154,7 @@ blocks:
   name: eca_taps
 - id: kraken_passive_radar_krakensdr_source
   parameters:
+    id: krakensdr_source_0
     frequency: center_freq
     gain: rf_gain
     sample_rate: samp_rate

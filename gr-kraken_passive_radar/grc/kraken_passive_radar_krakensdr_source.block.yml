@@ -3,6 +3,9 @@ label: KrakenSDR Source
 category: '[Kraken Passive Radar]'
 
 parameters:
+- id: id
+  label: ID
+  dtype: id
 - id: frequency
   label: Center Frequency
   dtype: float
