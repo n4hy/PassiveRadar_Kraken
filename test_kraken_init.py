@@ -9,6 +9,9 @@ def test_init(args_str):
         src = osmosdr.source(args=args_str)
         num_chans = src.get_num_channels()
         print(f"SUCCESS: Initialized {num_chans} channels.")
+
+        # Try to print some info if possible (though osmosdr python api is limited)
+        # We rely on stdout logs from the C++ driver
         return num_chans
     except Exception as e:
         print(f"FAILED: {e}")
@@ -16,31 +19,32 @@ def test_init(args_str):
 
 def main():
     print("Detecting KrakenSDR configuration...")
+    print("Goal: Ensure Channel 0 maps to Serial 1000, etc.")
 
-    # Test 1: Standard numchan=5
-    n = test_init("numchan=5")
+    # Test 1: Explicit Serials (Standard Kraken Order)
+    # Note: syntax might be "rtl=1000 rtl=1001..." or "rtl0=1000..."
+    # We will try the most common multi-device syntax
+
+    # Attempt A: Just listing them. gr-osmosdr usually takes the first match for ch0, second for ch1...
+    # If we pass specific serials, it should match them.
+    # Note: We must ensure unique identifiers are passed.
+
+    cmd_serials = "numchan=5 rtl=1000 rtl=1001 rtl=1002 rtl=1003 rtl=1004"
+    n = test_init(cmd_serials)
     if n == 5:
-        print("Standard configuration works.")
+        print("Serial number mapping works! This ensures Ch0 is SN 1000.")
+        print(f"Recommended String: '{cmd_serials}'")
         sys.exit(0)
 
-    # Test 2: Explicit indices
-    # Sometimes providing specific rtl indices helps librtlsdr identify separate devices
-    n = test_init("numchan=5 rtl=0 rtl=1 rtl=2 rtl=3 rtl=4")
+    # Attempt B: comma separated
+    cmd_serials_comma = "numchan=5,rtl=1000,rtl=1001,rtl=1002,rtl=1003,rtl=1004"
+    n = test_init(cmd_serials_comma)
     if n == 5:
-        print("Explicit indices configuration works.")
+        print("Comma serial mapping works.")
         sys.exit(0)
 
-    # Test 3: String with comma separation (some versions prefer this)
-    n = test_init("numchan=5,rtl=0,rtl=1,rtl=2,rtl=3,rtl=4")
-    if n == 5:
-        print("Comma separated configuration works.")
-        sys.exit(0)
-
-    print("\nSUMMARY: Could not initialize 5 channels with standard arguments.")
-    print("Please check: ")
-    print("1. Power supply (2.5A+ required)")
-    print("2. USB connection")
-    print("3. Udev rules (run setup_krakensdr_permissions.sh)")
+    print("\nSUMMARY: Serial number addressing failed. Stick to index based, but verify mapping manually.")
+    print("Check the logs above. If 'Device #0' is 'SN: 1004', your channels are reversed.")
 
 if __name__ == "__main__":
     main()

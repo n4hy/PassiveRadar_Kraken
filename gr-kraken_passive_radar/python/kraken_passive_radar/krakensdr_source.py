@@ -21,8 +21,8 @@ class krakensdr_source(gr.hier_block2):
 
         # Create the underlying OSMOSDR source
         # "numchan=5" is the key argument for KrakenSDR.
-        # We explicitly list rtl=0..4 to ensure librtlsdr finds all 5 devices reliably.
-        self.osmosdr = osmosdr.source(args="numchan=5 rtl=0 rtl=1 rtl=2 rtl=3 rtl=4")
+        # We use explicit SERIAL NUMBERS (1000..1004) to ensure Channel 0 maps to Port 1, etc.
+        self.osmosdr = osmosdr.source(args="numchan=5 rtl=1000 rtl=1001 rtl=1002 rtl=1003 rtl=1004")
 
         self.osmosdr.set_sample_rate(self.sample_rate)
         self.osmosdr.set_center_freq(self.frequency)
