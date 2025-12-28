@@ -23,8 +23,7 @@ parameters:
 inputs: []
 
 outputs:
-- id: ch
-  label: ch
+- label: ch
   domain: stream
   dtype: complex
   multiplicity: 5
