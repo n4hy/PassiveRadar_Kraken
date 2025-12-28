@@ -12,8 +12,6 @@ parameters:
     label: Num Surv Channels
     dtype: int
     default: 1
-    min: 1
-    max: 4
   - id: lib_path
     label: Library Path (optional)
     dtype: string

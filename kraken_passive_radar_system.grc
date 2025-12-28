@@ -673,18 +673,15 @@ connections:
 - - surv_dc_2
   - '0'
   - eca_canceller
-  - surveillance
-  - '1'
+  - surveillance1
 - - surv_dc_3
   - '0'
   - eca_canceller
-  - surveillance
-  - '2'
+  - surveillance2
 - - surv_dc_4
   - '0'
   - eca_canceller
-  - surveillance
-  - '3'
+  - surveillance3
 - - ref_dc
   - '0'
   - ref_vec
@@ -694,20 +691,17 @@ connections:
   - surv_vec
   - '0'
 - - eca_canceller
-  - error
+  - error1
   - null_sink_1
   - '0'
-  - '1'
 - - eca_canceller
-  - error
+  - error2
   - null_sink_2
   - '0'
-  - '2'
 - - eca_canceller
-  - error
+  - error3
   - null_sink_3
   - '0'
-  - '3'
 - - ref_vec
   - '0'
   - ref_fft
