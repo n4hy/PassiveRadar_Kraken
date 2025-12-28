@@ -61,8 +61,8 @@ blocks:
   name: center_freq
 - id: variable
   parameters:
-    id: gain
-    value: '30'
+    id: rf_gain
+    value: '10'
   states:
     bus_sink: false
     bus_source: false
@@ -72,7 +72,7 @@ blocks:
     - 150
     rotation: 0
     state: enabled
-  name: gain
+  name: rf_gain
 - id: variable
   parameters:
     id: fft_len
@@ -132,7 +132,7 @@ blocks:
 - id: kraken_passive_radar_krakensdr_source
   parameters:
     frequency: center_freq
-    gain: gain
+    gain: rf_gain
     sample_rate: samp_rate
   states:
     bus_sink: false
