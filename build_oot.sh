@@ -20,4 +20,7 @@ make -j"$(nproc)"
 
 echo ""
 echo "Build successful."
-echo "Now run: sudo make install && sudo ldconfig"
+echo "Now running: sudo make install && sudo ldconfig"
+sudo make install && sudo ldconfig
+cd -
+
