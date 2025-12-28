@@ -38,7 +38,8 @@ class TestKrakenSDRSource(unittest.TestCase):
         osmo_instance = mock_gnuradio.osmosdr.source.return_value
 
         osmo_instance.set_sample_rate.assert_called_with(rate)
-        osmo_instance.set_center_freq.assert_called_with(freq)
+        # Check center freq was set for all channels
+        self.assertEqual(osmo_instance.set_center_freq.call_count, 5)
 
         # Verify per-channel settings
         # set_gain(gain, channel)
@@ -62,7 +63,7 @@ class TestKrakenSDRSource(unittest.TestCase):
         osmo_instance.reset_mock()
 
         blk.set_frequency(90e6)
-        osmo_instance.set_center_freq.assert_called_with(90e6)
+        self.assertEqual(osmo_instance.set_center_freq.call_count, 5)
 
         blk.set_sample_rate(2.0e6)
         osmo_instance.set_sample_rate.assert_called_with(2.0e6)

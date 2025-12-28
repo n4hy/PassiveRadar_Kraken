@@ -25,10 +25,10 @@ class krakensdr_source(gr.hier_block2):
         self.osmosdr = osmosdr.source(args="numchan=5 rtl=1000 rtl=1001 rtl=1002 rtl=1003 rtl=1004")
 
         self.osmosdr.set_sample_rate(self.sample_rate)
-        self.osmosdr.set_center_freq(self.frequency)
 
         # Configure all 5 channels
         for i in range(5):
+            self.osmosdr.set_center_freq(self.frequency, i)
             # Explicitly enable Manual Gain mode so the set_gain() call is respected.
             # For RTL-SDR in gr-osmosdr: set_gain_mode(False) = Manual Gain.
             self.osmosdr.set_gain_mode(False, i)
@@ -43,7 +43,8 @@ class krakensdr_source(gr.hier_block2):
 
     def set_frequency(self, freq):
         self.frequency = freq
-        self.osmosdr.set_center_freq(freq)
+        for i in range(5):
+            self.osmosdr.set_center_freq(freq, i)
 
     def set_sample_rate(self, rate):
         self.sample_rate = rate
