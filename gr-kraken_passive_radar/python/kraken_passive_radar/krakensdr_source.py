@@ -29,10 +29,14 @@ class krakensdr_source(gr.hier_block2):
 
         # Configure all 5 channels
         for i in range(5):
+            # Explicitly enable Manual Gain mode so the set_gain() call is respected.
+            # For RTL-SDR in gr-osmosdr: set_gain_mode(False) = Manual Gain.
+            self.osmosdr.set_gain_mode(False, i)
             self.osmosdr.set_gain(self.gain, i)
+            self.osmosdr.set_bandwidth(0, i) # 0 = Auto
             self.osmosdr.set_freq_corr(0, i)
-            self.osmosdr.set_dc_offset_mode(0, i)
-            self.osmosdr.set_iq_balance_mode(0, i)
+            self.osmosdr.set_dc_offset_mode(0, i) # 0 = Off (Manual)
+            self.osmosdr.set_iq_balance_mode(0, i) # 0 = Off (Manual)
 
             # Connect the internal osmosdr ports to the hier block outputs
             self.connect((self.osmosdr, i), (self, i))
