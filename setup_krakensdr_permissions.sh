@@ -28,4 +28,16 @@ echo "Reloading udev rules..."
 udevadm control --reload-rules
 udevadm trigger
 
+# 4. Increase USBFS memory buffer (Critical for 5-channel operation)
+# Default is 16MB, which is insufficient for 5 RTL-SDRs. 0 means unlimited/auto.
+echo "Increasing usbfs_memory_mb to unlimited (0)..."
+if [ -d "/sys/module/usbcore/parameters" ]; then
+    echo 0 > /sys/module/usbcore/parameters/usbfs_memory_mb
+    # Make it persistent across reboots via GRUB or modprobe.d?
+    # For now, let's verify it works for the session.
+    echo "USB buffer limit removed."
+else
+    echo "Warning: /sys/module/usbcore/parameters/usbfs_memory_mb not found."
+fi
+
 echo "Done. You may need to unplug and replug your KrakenSDR."
