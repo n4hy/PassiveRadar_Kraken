@@ -475,17 +475,17 @@ connections:
 - - ref_dc
   - '0'
   - eca_canceller
-  - '0'
+  - reference
 - - surv_dc
   - '0'
   - eca_canceller
-  - '1'
+  - surveillance
 - - ref_dc
   - '0'
   - ref_vec
   - '0'
 - - eca_canceller
-  - '0'
+  - error
   - surv_vec
   - '0'
 - - ref_vec
