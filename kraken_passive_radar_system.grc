@@ -625,23 +625,23 @@ blocks:
   name: rd_raster
 connections:
 - - krakensdr_source_0
-  - '0'
+  - ch0
   - ref_chan
   - '0'
 - - krakensdr_source_0
-  - '1'
+  - ch1
   - surv_chan
   - '0'
 - - krakensdr_source_0
-  - '2'
+  - ch2
   - surv_chan_2
   - '0'
 - - krakensdr_source_0
-  - '3'
+  - ch3
   - surv_chan_3
   - '0'
 - - krakensdr_source_0
-  - '4'
+  - ch4
   - surv_chan_4
   - '0'
 - - ref_chan
