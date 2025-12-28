@@ -38,6 +38,12 @@ class krakensdr_source(gr.hier_block2):
             self.osmosdr.set_dc_offset_mode(0, i) # 0 = Off (Manual)
             self.osmosdr.set_iq_balance_mode(0, i) # 0 = Off (Manual)
 
+            # Ensure proper clock source (internal) and antenna selection
+            try:
+                self.osmosdr.set_clock_source("internal", i)
+            except Exception:
+                pass # Some drivers might not implement this for RTL
+
             # Connect the internal osmosdr ports to the hier block outputs
             self.connect((self.osmosdr, i), (self, i))
 
