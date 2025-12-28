@@ -23,26 +23,11 @@ parameters:
 inputs: []
 
 outputs:
-- id: ch0
-  label: ch0
+- id: ch
+  label: ch
   domain: stream
   dtype: complex
-- id: ch1
-  label: ch1
-  domain: stream
-  dtype: complex
-- id: ch2
-  label: ch2
-  domain: stream
-  dtype: complex
-- id: ch3
-  label: ch3
-  domain: stream
-  dtype: complex
-- id: ch4
-  label: ch4
-  domain: stream
-  dtype: complex
+  multiplicity: 5
 
 templates:
   imports: from kraken_passive_radar import krakensdr_source

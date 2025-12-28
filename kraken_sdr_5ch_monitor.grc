@@ -81,6 +81,7 @@ blocks:
 # Source (Using the new Custom Block)
 - id: kraken_passive_radar_krakensdr_source
   parameters:
+    id: krakensdr_source_0
     frequency: center_freq
     gain: rf_gain
     sample_rate: samp_rate
@@ -657,42 +658,42 @@ blocks:
 
 connections:
 - - krakensdr_source_0
-  - ch0
+  - '0'
   - freq_sink_0
   - '0'
 - - krakensdr_source_0
-  - ch0
+  - '0'
   - time_sink_0
   - '0'
 - - krakensdr_source_0
-  - ch1
+  - '1'
   - freq_sink_1
   - '0'
 - - krakensdr_source_0
-  - ch1
+  - '1'
   - time_sink_1
   - '0'
 - - krakensdr_source_0
-  - ch2
+  - '2'
   - freq_sink_2
   - '0'
 - - krakensdr_source_0
-  - ch2
+  - '2'
   - time_sink_2
   - '0'
 - - krakensdr_source_0
-  - ch3
+  - '3'
   - freq_sink_3
   - '0'
 - - krakensdr_source_0
-  - ch3
+  - '3'
   - time_sink_3
   - '0'
 - - krakensdr_source_0
-  - ch4
+  - '4'
   - freq_sink_4
   - '0'
 - - krakensdr_source_0
-  - ch4
+  - '4'
   - time_sink_4
   - '0'

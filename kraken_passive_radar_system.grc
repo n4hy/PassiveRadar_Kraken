@@ -364,6 +364,7 @@ blocks:
     id: eca_canceller
     num_taps: eca_taps
     num_surv_channels: 4
+    lib_path: ""
   states:
     bus_sink: false
     bus_source: false
@@ -624,23 +625,23 @@ blocks:
   name: rd_raster
 connections:
 - - krakensdr_source_0
-  - ch0
+  - '0'
   - ref_chan
   - '0'
 - - krakensdr_source_0
-  - ch1
+  - '1'
   - surv_chan
   - '0'
 - - krakensdr_source_0
-  - ch2
+  - '2'
   - surv_chan_2
   - '0'
 - - krakensdr_source_0
-  - ch3
+  - '3'
   - surv_chan_3
   - '0'
 - - krakensdr_source_0
-  - ch4
+  - '4'
   - surv_chan_4
   - '0'
 - - ref_chan
