@@ -667,41 +667,41 @@ connections:
 - - ref_dc
   - '0'
   - eca_canceller
-  - reference
+  - '0'
 - - surv_dc
   - '0'
   - eca_canceller
-  - surveillance
+  - '1'
 - - surv_dc_2
   - '0'
   - eca_canceller
-  - surveillance1
+  - '2'
 - - surv_dc_3
   - '0'
   - eca_canceller
-  - surveillance2
+  - '3'
 - - surv_dc_4
   - '0'
   - eca_canceller
-  - surveillance3
+  - '4'
 - - ref_dc
   - '0'
   - ref_vec
   - '0'
 - - eca_canceller
-  - error
+  - '0'
   - surv_vec
   - '0'
 - - eca_canceller
-  - error1
+  - '1'
   - null_sink_1
   - '0'
 - - eca_canceller
-  - error2
+  - '2'
   - null_sink_2
   - '0'
 - - eca_canceller
-  - error3
+  - '3'
   - null_sink_3
   - '0'
 - - ref_vec

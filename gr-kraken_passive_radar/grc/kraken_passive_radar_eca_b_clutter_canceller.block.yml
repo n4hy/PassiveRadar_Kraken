@@ -18,19 +18,16 @@ parameters:
     default: ""
 
 inputs:
-  - id: reference
-    label: reference
+  - label: reference
     domain: stream
     dtype: complex
-  - id: surveillance
-    label: surveillance
+  - label: surveillance
     domain: stream
     dtype: complex
     multiplicity: ${num_surv_channels}
 
 outputs:
-  - id: error
-    label: error
+  - label: error
     domain: stream
     dtype: complex
     multiplicity: ${num_surv_channels}
