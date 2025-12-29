@@ -168,6 +168,26 @@ blocks:
     rotation: 0
     state: enabled
   name: krakensdr_source_0
+- id: qtgui_check_box
+  parameters:
+    alias: ''
+    comment: ''
+    default: '0'
+    gui_hint: ''
+    id: noise_source
+    label: Noise Source
+    type: int
+    value: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 750
+    - 150
+    rotation: 0
+    state: enabled
+  name: noise_source
 - id: freq_xlating_fir_filter_ccc
   parameters:
     center_freq: '0'
@@ -644,6 +664,10 @@ connections:
   - '4'
   - surv_chan_4
   - '0'
+- - noise_source
+  - value
+  - krakensdr_source_0
+  - noise_source
 - - ref_chan
   - '0'
   - ref_dc
