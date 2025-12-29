@@ -97,9 +97,13 @@ class EcaBClutterCanceller(gr.basic_block):
         )
 
     def forecast(self, noutput_items, ninput_items_required):
-        # All inputs need noutput_items
-        for i in range(len(ninput_items_required)):
-            ninput_items_required[i] = noutput_items
+        # Handle potential list vs int mismatch for ninput_items_required
+        if isinstance(ninput_items_required, list):
+            for i in range(len(ninput_items_required)):
+                ninput_items_required[i] = noutput_items
+        else:
+            # Fallback debug: this shouldn't happen for basic_block with in_sig set
+            pass
 
     def general_work(self, input_items, output_items):
         ref = input_items[0]
