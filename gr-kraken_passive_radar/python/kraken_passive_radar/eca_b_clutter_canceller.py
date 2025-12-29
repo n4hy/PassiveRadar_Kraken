@@ -66,6 +66,13 @@ class EcaBClutterCanceller(gr.basic_block):
             candidates.append(lib_path)
 
         base_dir = os.path.dirname(__file__)
+        # DEBUG: Print contents of base_dir
+        print(f"DEBUG: EcaBClutterCanceller base_dir: {base_dir}")
+        try:
+            print(f"DEBUG: Files in base_dir: {os.listdir(base_dir)}")
+        except Exception as e:
+            print(f"DEBUG: Could not list base_dir: {e}")
+
         candidates.extend(
             [
                 os.path.join(base_dir, "libkraken_eca_b_clutter_canceller.so"),
@@ -78,9 +85,11 @@ class EcaBClutterCanceller(gr.basic_block):
         last_err = None
         for candidate in candidates:
             try:
+                print(f"DEBUG: Attempting to load {candidate}")
                 return ctypes.cdll.LoadLibrary(candidate)
             except OSError as e:
                 last_err = e
+                print(f"DEBUG: Failed to load {candidate}: {e}")
                 continue
 
         raise OSError(
