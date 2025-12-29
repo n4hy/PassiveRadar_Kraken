@@ -2,7 +2,7 @@ import os
 import ctypes
 import numpy as np
 from gnuradio import gr
-
+import sys
 
 class EcaBClutterCanceller(gr.basic_block):
     """
@@ -66,13 +66,6 @@ class EcaBClutterCanceller(gr.basic_block):
             candidates.append(lib_path)
 
         base_dir = os.path.dirname(__file__)
-        # DEBUG: Print contents of base_dir
-        print(f"DEBUG: EcaBClutterCanceller base_dir: {base_dir}")
-        try:
-            print(f"DEBUG: Files in base_dir: {os.listdir(base_dir)}")
-        except Exception as e:
-            print(f"DEBUG: Could not list base_dir: {e}")
-
         candidates.extend(
             [
                 os.path.join(base_dir, "libkraken_eca_b_clutter_canceller.so"),
@@ -85,24 +78,32 @@ class EcaBClutterCanceller(gr.basic_block):
         last_err = None
         for candidate in candidates:
             try:
-                print(f"DEBUG: Attempting to load {candidate}")
+                # Debug output removed to reduce noise in working system, enabled on failure
                 return ctypes.cdll.LoadLibrary(candidate)
             except OSError as e:
                 last_err = e
-                print(f"DEBUG: Failed to load {candidate}: {e}")
                 continue
 
+        # If we reach here, we failed. Print diagnostics.
+        print(f"DEBUG: EcaBClutterCanceller failed to load library from base_dir: {base_dir}", file=sys.stderr)
+        try:
+            print(f"DEBUG: Files in base_dir: {os.listdir(base_dir)}", file=sys.stderr)
+        except Exception:
+            pass
         raise OSError(
             f"Could not load ECA-B library. Tried: {candidates!r}. Last error: {last_err}"
         )
 
     def forecast(self, noutput_items, ninput_items_required):
-        # Handle potential list vs int mismatch for ninput_items_required
+        # ninput_items_required is a list of integers that we must set.
+        # If it is not a list, something is wrong with GR runtime, but we try to handle gracefully.
         if isinstance(ninput_items_required, list):
             for i in range(len(ninput_items_required)):
                 ninput_items_required[i] = noutput_items
         else:
-            # Fallback debug: this shouldn't happen for basic_block with in_sig set
+            # Fallback: if we received a scalar (should happen only in broken env), we can't set it.
+            # Logging an error might be appropriate, but returning None is standard.
+            # print(f"WARNING: forecast received non-list requirement: {type(ninput_items_required)}", file=sys.stderr)
             pass
 
     def general_work(self, input_items, output_items):
