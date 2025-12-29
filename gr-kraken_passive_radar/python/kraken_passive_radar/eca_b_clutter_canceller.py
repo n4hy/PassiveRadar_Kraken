@@ -31,6 +31,10 @@ class EcaBClutterCanceller(gr.sync_block):
         )
 
         self.num_taps = int(num_taps)
+
+        # Optimize performance by enforcing larger block sizes
+        self.set_output_multiple(4096)
+
         self._lib = self._load_library(lib_path)
 
         # Configure C API signatures
@@ -78,12 +82,12 @@ class EcaBClutterCanceller(gr.sync_block):
         last_err = None
         for candidate in candidates:
             try:
-                # Debug output removed for stable run
                 return ctypes.cdll.LoadLibrary(candidate)
             except OSError as e:
                 last_err = e
                 continue
 
+        # If failed, print debug info
         print(f"DEBUG: EcaBClutterCanceller failed to load library from base_dir: {base_dir}", file=sys.stderr)
         try:
             print(f"DEBUG: Files in base_dir: {os.listdir(base_dir)}", file=sys.stderr)
@@ -97,51 +101,41 @@ class EcaBClutterCanceller(gr.sync_block):
         try:
             ref = input_items[0]
             n = len(ref)
-            # print(f"DEBUG: Enter work. n={n}", file=sys.stderr)
 
             if n == 0:
-                # print("DEBUG: Returning 0 (empty input)", file=sys.stderr)
                 return 0
 
-            # Prepare Reference (used for all)
-            ref_c = np.ascontiguousarray(ref, dtype=np.complex64)
-            ref_f = ref_c.view(np.float32)
-            ref_ptr = ref_f.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+            # Direct pointer access avoids copy if contiguous (GR buffers usually are)
+            # complex64 is 2 floats. Cast directly to float* for the C API.
+            ref_ptr = ref.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
 
             # Process each surveillance channel
             for i in range(self.num_surv_channels):
-                # Check input bounds
+                # Safety check
                 if i + 1 >= len(input_items):
-                    print(f"ERROR: Missing input channel {i+1}", file=sys.stderr)
                     continue
 
                 surv = input_items[1 + i]
                 out_err = output_items[i]
 
-                surv_c = np.ascontiguousarray(surv[:n], dtype=np.complex64)
-                # Ensure output buffer is contiguous (output_items usually are)
-                out_c = np.ascontiguousarray(out_err[:n], dtype=np.complex64)
-
-                surv_f = surv_c.view(np.float32)
-                out_f = out_c.view(np.float32)
+                # Direct pointers
+                surv_ptr = surv.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+                out_ptr = out_err.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
 
                 self._lib.eca_b_process(
                     self._states[i],
                     ref_ptr,
-                    surv_f.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
-                    out_f.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
+                    surv_ptr,
+                    out_ptr,
                     n,
                 )
 
-                out_err[:n] = out_c
-
-            # print(f"DEBUG: Exit work. Returning {n}", file=sys.stderr)
             return n
         except Exception as e:
             print(f"ERROR: Exception in work: {e}", file=sys.stderr)
             import traceback
             traceback.print_exc()
-            return 0 # Fail gracefully
+            return 0
 
     def __del__(self):
         try:
@@ -151,5 +145,4 @@ class EcaBClutterCanceller(gr.sync_block):
                         self._lib.eca_b_destroy(state)
                 self._states = []
         except Exception:
-            # Destructors must never raise
             pass
