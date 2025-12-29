@@ -4,7 +4,7 @@ import numpy as np
 from gnuradio import gr
 import sys
 
-class EcaBClutterCanceller(gr.basic_block):
+class EcaBClutterCanceller(gr.sync_block):
     """
     ECA-B-based clutter canceller using an external C++ kernel loaded via ctypes.
 
@@ -23,7 +23,7 @@ class EcaBClutterCanceller(gr.basic_block):
         if self.num_surv_channels < 1:
             raise ValueError("Number of surveillance channels must be at least 1")
 
-        gr.basic_block.__init__(
+        gr.sync_block.__init__(
             self,
             name="EcaBClutterCanceller",
             in_sig=[np.complex64] * (1 + self.num_surv_channels),
@@ -78,13 +78,12 @@ class EcaBClutterCanceller(gr.basic_block):
         last_err = None
         for candidate in candidates:
             try:
-                # Debug output removed to reduce noise in working system, enabled on failure
+                # Debug output removed for stable run
                 return ctypes.cdll.LoadLibrary(candidate)
             except OSError as e:
                 last_err = e
                 continue
 
-        # If we reach here, we failed. Print diagnostics.
         print(f"DEBUG: EcaBClutterCanceller failed to load library from base_dir: {base_dir}", file=sys.stderr)
         try:
             print(f"DEBUG: Files in base_dir: {os.listdir(base_dir)}", file=sys.stderr)
@@ -94,66 +93,55 @@ class EcaBClutterCanceller(gr.basic_block):
             f"Could not load ECA-B library. Tried: {candidates!r}. Last error: {last_err}"
         )
 
-    def forecast(self, noutput_items, ninput_items_required):
-        # ninput_items_required is a list of integers that we must set.
-        # If it is not a list, something is wrong with GR runtime, but we try to handle gracefully.
-        if isinstance(ninput_items_required, list):
-            for i in range(len(ninput_items_required)):
-                ninput_items_required[i] = noutput_items
-        else:
-            # Fallback: if we received a scalar (should happen only in broken env), we can't set it.
-            # Logging an error might be appropriate, but returning None is standard.
-            # print(f"WARNING: forecast received non-list requirement: {type(ninput_items_required)}", file=sys.stderr)
-            pass
+    def work(self, input_items, output_items):
+        try:
+            ref = input_items[0]
+            n = len(ref)
+            # print(f"DEBUG: Enter work. n={n}", file=sys.stderr)
 
-    def general_work(self, input_items, output_items):
-        ref = input_items[0]
-        # Determine minimum common length available across all relevant buffers
-        # Reference + All Surveillance inputs + All Outputs
-        min_len = len(ref)
+            if n == 0:
+                # print("DEBUG: Returning 0 (empty input)", file=sys.stderr)
+                return 0
 
-        # Check surveillance inputs
-        for i in range(self.num_surv_channels):
-            if len(input_items[1 + i]) < min_len:
-                min_len = len(input_items[1 + i])
-            if len(output_items[i]) < min_len:
-                min_len = len(output_items[i])
+            # Prepare Reference (used for all)
+            ref_c = np.ascontiguousarray(ref, dtype=np.complex64)
+            ref_f = ref_c.view(np.float32)
+            ref_ptr = ref_f.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
 
-        if min_len <= 0:
-            return 0
+            # Process each surveillance channel
+            for i in range(self.num_surv_channels):
+                # Check input bounds
+                if i + 1 >= len(input_items):
+                    print(f"ERROR: Missing input channel {i+1}", file=sys.stderr)
+                    continue
 
-        # Prepare Reference (used for all)
-        ref_c = np.ascontiguousarray(ref[:min_len], dtype=np.complex64)
-        ref_f = ref_c.view(np.float32)
-        ref_ptr = ref_f.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+                surv = input_items[1 + i]
+                out_err = output_items[i]
 
-        # Process each surveillance channel
-        for i in range(self.num_surv_channels):
-            surv = input_items[1 + i]
-            out_err = output_items[i]
+                surv_c = np.ascontiguousarray(surv[:n], dtype=np.complex64)
+                # Ensure output buffer is contiguous (output_items usually are)
+                out_c = np.ascontiguousarray(out_err[:n], dtype=np.complex64)
 
-            surv_c = np.ascontiguousarray(surv[:min_len], dtype=np.complex64)
-            out_c = np.ascontiguousarray(out_err[:min_len], dtype=np.complex64)
+                surv_f = surv_c.view(np.float32)
+                out_f = out_c.view(np.float32)
 
-            surv_f = surv_c.view(np.float32)
-            out_f = out_c.view(np.float32)
+                self._lib.eca_b_process(
+                    self._states[i],
+                    ref_ptr,
+                    surv_f.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
+                    out_f.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
+                    n,
+                )
 
-            self._lib.eca_b_process(
-                self._states[i],
-                ref_ptr,
-                surv_f.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
-                out_f.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
-                min_len,
-            )
+                out_err[:n] = out_c
 
-            out_err[:min_len] = out_c
-
-        # Consume items on all inputs
-        self.consume(0, min_len) # Reference
-        for i in range(self.num_surv_channels):
-            self.consume(1 + i, min_len) # Surveillance channels
-
-        return min_len
+            # print(f"DEBUG: Exit work. Returning {n}", file=sys.stderr)
+            return n
+        except Exception as e:
+            print(f"ERROR: Exception in work: {e}", file=sys.stderr)
+            import traceback
+            traceback.print_exc()
+            return 0 # Fail gracefully
 
     def __del__(self):
         try:
