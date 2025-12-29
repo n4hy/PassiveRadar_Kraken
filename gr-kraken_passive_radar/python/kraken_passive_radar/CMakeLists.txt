@@ -8,6 +8,11 @@ GR_PYTHON_INSTALL(
         range_doppler_widget.py
         eca_b_clutter_canceller.py
         krakensdr_source.py
+    DESTINATION ${GR_PYTHON_DIR}/kraken_passive_radar
+)
+
+install(
+    FILES
         libkraken_eca_b_clutter_canceller.so
         libkraken_doppler_processing.so
         libkraken_aoa_processing.so
