@@ -158,7 +158,6 @@ blocks:
     frequency: center_freq
     gain: rf_gain
     sample_rate: samp_rate
-    noise_source: noise_source
   states:
     bus_sink: false
     bus_source: false
@@ -169,26 +168,6 @@ blocks:
     rotation: 0
     state: enabled
   name: krakensdr_source_0
-- id: qtgui_check_box
-  parameters:
-    alias: ''
-    comment: ''
-    default: '0'
-    gui_hint: ''
-    id: noise_source
-    label: Noise Source
-    type: int
-    value: '0'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate:
-    - 750
-    - 150
-    rotation: 0
-    state: enabled
-  name: noise_source
 - id: freq_xlating_fir_filter_ccc
   parameters:
     center_freq: '0'

@@ -19,10 +19,6 @@ parameters:
   label: Gain (dB)
   dtype: float
   default: 30.0
-- id: noise_source
-  label: Noise Source
-  dtype: bool
-  default: False
 
 inputs: []
 
@@ -39,6 +35,5 @@ templates:
   - set_frequency(${frequency})
   - set_sample_rate(${sample_rate})
   - set_gain(${gain})
-  - set_noise_source(${noise_source})
 
 file_format: 1
