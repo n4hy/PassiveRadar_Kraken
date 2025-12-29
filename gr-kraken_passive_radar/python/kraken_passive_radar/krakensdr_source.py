@@ -23,7 +23,8 @@ class krakensdr_source(gr.hier_block2):
         # Create the underlying OSMOSDR source
         # "numchan=5" is the key argument for KrakenSDR.
         # We use explicit SERIAL NUMBERS (1000..1004) to ensure Channel 0 maps to Port 1, etc.
-        self.osmosdr = osmosdr.source(args="numchan=5 rtl=1000 rtl=1001 rtl=1002 rtl=1003 rtl=1004")
+        # Added buffers=100 buflen=65536 to prevent overflows
+        self.osmosdr = osmosdr.source(args="numchan=5 rtl=1000 rtl=1001 rtl=1002 rtl=1003 rtl=1004 buffers=100 buflen=65536")
 
         self.osmosdr.set_sample_rate(self.sample_rate)
 
