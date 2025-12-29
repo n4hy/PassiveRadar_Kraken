@@ -2,10 +2,10 @@ CXX = g++
 CXXFLAGS = -O3 -fPIC -shared -Wall -march=native
 INCLUDES = -I. -Ioptmath
 
-TARGET_ECA = libeca_b_clutter_canceller.so
-TARGET_DOPPLER = libdoppler_processing.so
-TARGET_AOA = libaoa_processing.so
-TARGET_RESAMPLER = libresampler.so
+TARGET_ECA = libkraken_eca_b_clutter_canceller.so
+TARGET_DOPPLER = libkraken_doppler_processing.so
+TARGET_AOA = libkraken_aoa_processing.so
+TARGET_RESAMPLER = libkraken_resampler.so
 
 SRC_ECA = eca_b_clutter_canceller.cpp
 SRC_DOPPLER = doppler_processing.cpp
