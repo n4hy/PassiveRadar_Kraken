@@ -19,12 +19,12 @@ parameters:
   label: Gain (dB)
   dtype: float
   default: 30.0
-
-inputs:
 - id: noise_source
   label: Noise Source
-  domain: message
-  optional: true
+  dtype: bool
+  default: False
+
+inputs: []
 
 outputs:
 - label: ch

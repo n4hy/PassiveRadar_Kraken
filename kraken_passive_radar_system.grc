@@ -158,6 +158,7 @@ blocks:
     frequency: center_freq
     gain: rf_gain
     sample_rate: samp_rate
+    noise_source: noise_source
   states:
     bus_sink: false
     bus_source: false
@@ -664,10 +665,6 @@ connections:
   - '4'
   - surv_chan_4
   - '0'
-- - noise_source
-  - value
-  - krakensdr_source_0
-  - noise_source
 - - ref_chan
   - '0'
   - ref_dc
