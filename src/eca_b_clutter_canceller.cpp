@@ -5,6 +5,11 @@
 #include <iostream>
 #include "optmath/neon_kernels.hpp"
 
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__)
+#include <xmmintrin.h>
+#include <pmmintrin.h>
+#endif
+
 using Complex = std::complex<float>;
 
 // Helper for solving Ax = b using Cholesky Decomposition
@@ -70,6 +75,12 @@ private:
 
 public:
     ECABCanceller(int taps) : num_taps(taps), diagonal_loading(1e-6f) {
+        // Enable Flush-to-Zero and Denormals-Are-Zero on x86 to prevent performance cliff
+        #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__)
+        _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
+        _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
+        #endif
+
         // Pre-fill history with zeros
         ref_history.resize(num_taps - 1, Complex(0.0f, 0.0f));
     }
