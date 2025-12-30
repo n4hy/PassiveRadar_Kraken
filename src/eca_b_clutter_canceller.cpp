@@ -162,12 +162,16 @@ public:
         }
 
         // 2. Compute Autocorrelation Matrix R
-        for (int j = 0; j < num_taps; ++j) {
+        // Optimized O(M*N + M^2) implementation exploiting Toeplitz-like structure
+
+        // Step 2a: Compute first row (j=0, k=0..M-1)
+        {
+            int j = 0;
             int offset_j = num_taps - 1 - j;
             const float* r_re_j = ref_re.data() + offset_j;
             const float* r_im_j = ref_im.data() + offset_j;
 
-            for (int k = j; k < num_taps; ++k) {
+            for (int k = 0; k < num_taps; ++k) {
                 int offset_k = num_taps - 1 - k;
                 const float* r_re_k = ref_re.data() + offset_k;
                 const float* r_im_k = ref_im.data() + offset_k;
@@ -177,15 +181,62 @@ public:
                 float ri = dot_prod(r_re_j, r_im_k, n_samples);
                 float ir = dot_prod(r_im_j, r_re_k, n_samples);
 
+                // R[0, k] = dot(r_0, r_k)
                 float real_part = rr + ii;
                 float imag_part = ri - ir;
-
-                R[j * num_taps + k] = Complex(real_part, imag_part);
-
-                if (j != k) {
-                    R[k * num_taps + j] = Complex(real_part, -imag_part);
-                }
+                R[k] = Complex(real_part, imag_part); // R[0*M + k]
             }
+        }
+
+        // Step 2b: Update subsequent diagonals
+        // R[j+1, k+1] = R[j, k] + u[-1-j]*conj(u[-1-k]) - u[N-1-j]*conj(u[N-1-k])
+        // Iterate for each diagonal starting at Row 0
+        for (int k_start = 0; k_start < num_taps; ++k_start) {
+            // Propagate along diagonal starting at R[0, k_start]
+            // We need to compute R[1, k_start+1], R[2, k_start+2], ...
+            // Max index is num_taps-1
+
+            // Loop runs as long as j+1 < num_taps and k+1 < num_taps
+            // Since we start at j=0, k=k_start, loop limit is determined by k_start
+            int max_steps = num_taps - 1 - k_start;
+
+            for (int i = 0; i < max_steps; ++i) {
+                int j = i;       // Current row
+                int k = k_start + i; // Current col
+
+                // Current Value R[j, k]
+                Complex curr = R[j * num_taps + k];
+
+                // Calculate update terms
+                // u[-1-j] -> full_ref[num_taps - 1 - 1 - j]
+                // u[N-1-j] -> full_ref[num_taps - 1 + n_samples - 1 - j]
+
+                int idx_prev_j = num_taps - 2 - j;
+                int idx_prev_k = num_taps - 2 - k;
+                int idx_last_j = num_taps + n_samples - 2 - j;
+                int idx_last_k = num_taps + n_samples - 2 - k;
+
+                // These indices are guaranteed to be >= 0 because j < num_taps-1
+                // And we have sufficient history (num_taps-1) in full_ref
+
+                Complex u_prev_j = full_ref[idx_prev_j];
+                Complex u_prev_k = full_ref[idx_prev_k];
+                Complex u_last_j = full_ref[idx_last_j];
+                Complex u_last_k = full_ref[idx_last_k];
+
+                Complex next_val = curr + (u_prev_j * std::conj(u_prev_k)) - (u_last_j * std::conj(u_last_k));
+
+                // Store R[j+1, k+1]
+                R[(j + 1) * num_taps + (k + 1)] = next_val;
+            }
+        }
+
+        // Step 2c: Fill lower triangle using Hermitian symmetry
+        for (int j = 0; j < num_taps; ++j) {
+            for (int k = 0; k < j; ++k) {
+                R[j * num_taps + k] = std::conj(R[k * num_taps + j]);
+            }
+            // Add diagonal loading
             R[j * num_taps + j] += diagonal_loading;
         }
 

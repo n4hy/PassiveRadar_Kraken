@@ -19,7 +19,7 @@ class EcaBClutterCanceller(gr.sync_block):
     0..N-1: Clutter-suppressed surveillance (complex64)
     """
 
-    def __init__(self, num_taps=64, num_surv_channels=1, lib_path=""):
+    def __init__(self, num_taps=16, num_surv_channels=1, lib_path=""):
         self.num_surv_channels = int(num_surv_channels)
         if self.num_surv_channels < 1:
             raise ValueError("Number of surveillance channels must be at least 1")
@@ -153,10 +153,11 @@ class EcaBClutterCanceller(gr.sync_block):
                 # CPU Load Estimate: if avg_us > (1/sample_rate), we overflow.
                 # At 250kSPS, limit is 4us. At 2MSPS, limit is 0.5us.
 
-                log_msg = f"[ECA] Rate: {rate_msps:.3f} MSPS | Avg Proc: {avg_us:.2f} us/sample | Load: {avg_us * rate_msps * 100:.1f}%\n"
+                log_msg = f"[ECA] Rate: {rate_msps:.3f} MSPS | Avg Proc: {avg_us:.2f} us/sample | Load: {avg_us * rate_msps * 100:.1f}%"
+                print(log_msg, flush=True)
                 try:
                     with open("eca_stats.txt", "a") as f:
-                        f.write(log_msg)
+                        f.write(log_msg + "\n")
                 except Exception:
                     pass # Don't crash on logging
 
