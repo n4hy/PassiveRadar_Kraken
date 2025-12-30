@@ -32,7 +32,7 @@ class EcaBClutterCanceller(gr.sync_block):
         )
 
         self.num_taps = int(num_taps)
-        self.chunk_size = 1024 # Smaller chunks to fit in L1 cache
+        self.chunk_size = 4096 # Larger chunks to reduce overhead, fits in L2
 
         # Enforce minimum block size
         self.set_output_multiple(self.chunk_size)
@@ -153,7 +153,12 @@ class EcaBClutterCanceller(gr.sync_block):
                 # CPU Load Estimate: if avg_us > (1/sample_rate), we overflow.
                 # At 250kSPS, limit is 4us. At 2MSPS, limit is 0.5us.
 
-                print(f"[ECA] Rate: {rate_msps:.3f} MSPS | Avg Proc: {avg_us:.2f} us/sample | Load: {avg_us * rate_msps * 100:.1f}%", flush=True)
+                log_msg = f"[ECA] Rate: {rate_msps:.3f} MSPS | Avg Proc: {avg_us:.2f} us/sample | Load: {avg_us * rate_msps * 100:.1f}%\n"
+                try:
+                    with open("eca_stats.txt", "a") as f:
+                        f.write(log_msg)
+                except Exception:
+                    pass # Don't crash on logging
 
                 self.last_log_time = now
                 self.items_processed = 0

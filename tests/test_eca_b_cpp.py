@@ -16,14 +16,14 @@ class TestEcaBCpp(unittest.TestCase):
         # Build the shared library if it does not exist
         if not lib_path.exists():
             cpp_file = src_dir / "eca_b_clutter_canceller.cpp"
-            neon_file = src_dir / "optmath/neon_kernels.cpp"
             cmd = [
                 "g++",
                 "-O3",
+                "-march=native",
+                "-ffast-math",
                 "-fPIC",
                 "-shared",
                 str(cpp_file),
-                str(neon_file),
                 "-o",
                 str(lib_path),
             ]

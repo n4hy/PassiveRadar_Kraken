@@ -3,11 +3,21 @@
 #include <cmath>
 #include <algorithm>
 #include <iostream>
-#include "optmath/neon_kernels.hpp"
 
 #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__)
 #include <xmmintrin.h>
 #include <pmmintrin.h>
+#include <immintrin.h>
+#endif
+
+#if defined(__aarch64__) || defined(__arm__)
+#include <arm_neon.h>
+#endif
+
+#if defined(_MSC_VER)
+    #define FORCE_INLINE __forceinline
+#else
+    #define FORCE_INLINE inline __attribute__((always_inline))
 #endif
 
 using Complex = std::complex<float>;
@@ -84,6 +94,22 @@ private:
     std::vector<Complex> solver_L;
     std::vector<Complex> solver_y;
 
+    // Inline Dot Product for max compiler optimization
+    static FORCE_INLINE float dot_prod(const float* a, const float* b, int n) {
+        float sum = 0.0f;
+        // The compiler auto-vectorizer does a great job here with -O3 -ffast-math
+        // We unroll slightly to encourage it
+        int i = 0;
+        for (; i <= n - 8; i += 8) {
+            sum += a[i] * b[i] + a[i+1] * b[i+1] + a[i+2] * b[i+2] + a[i+3] * b[i+3] +
+                   a[i+4] * b[i+4] + a[i+5] * b[i+5] + a[i+6] * b[i+6] + a[i+7] * b[i+7];
+        }
+        for (; i < n; ++i) {
+            sum += a[i] * b[i];
+        }
+        return sum;
+    }
+
 public:
     ECABCanceller(int taps) : num_taps(taps), diagonal_loading(1e-6f) {
         // Enable FTZ/DAZ on x86
@@ -102,6 +128,7 @@ public:
         w_im.resize(num_taps);
         solver_L.resize(num_taps * num_taps);
         solver_y.resize(num_taps);
+        full_ref.reserve(65536); // Reserve capacity
     }
 
     void process(const Complex* ref_in, const Complex* surv_in, Complex* out_err, int n_samples) {
@@ -135,9 +162,6 @@ public:
         }
 
         // 2. Compute Autocorrelation Matrix R
-        // Zero out R logic handled by assignment in loop? No, need explicit clear or overwrite.
-        // We overwrite every element, so no need to clear first.
-
         for (int j = 0; j < num_taps; ++j) {
             int offset_j = num_taps - 1 - j;
             const float* r_re_j = ref_re.data() + offset_j;
@@ -148,10 +172,10 @@ public:
                 const float* r_re_k = ref_re.data() + offset_k;
                 const float* r_im_k = ref_im.data() + offset_k;
 
-                float rr = optmath::neon::neon_dot_f32(r_re_j, r_re_k, n_samples);
-                float ii = optmath::neon::neon_dot_f32(r_im_j, r_im_k, n_samples);
-                float ri = optmath::neon::neon_dot_f32(r_re_j, r_im_k, n_samples);
-                float ir = optmath::neon::neon_dot_f32(r_im_j, r_re_k, n_samples);
+                float rr = dot_prod(r_re_j, r_re_k, n_samples);
+                float ii = dot_prod(r_im_j, r_im_k, n_samples);
+                float ri = dot_prod(r_re_j, r_im_k, n_samples);
+                float ir = dot_prod(r_im_j, r_re_k, n_samples);
 
                 float real_part = rr + ii;
                 float imag_part = ri - ir;
@@ -174,10 +198,10 @@ public:
             const float* r_re_j = ref_re.data() + offset_j;
             const float* r_im_j = ref_im.data() + offset_j;
 
-            float rr = optmath::neon::neon_dot_f32(r_re_j, s_re, n_samples);
-            float ii = optmath::neon::neon_dot_f32(r_im_j, s_im, n_samples);
-            float ri = optmath::neon::neon_dot_f32(r_re_j, s_im, n_samples);
-            float ir = optmath::neon::neon_dot_f32(r_im_j, s_re, n_samples);
+            float rr = dot_prod(r_re_j, s_re, n_samples);
+            float ii = dot_prod(r_im_j, s_im, n_samples);
+            float ri = dot_prod(r_re_j, s_im, n_samples);
+            float ir = dot_prod(r_im_j, s_re, n_samples);
 
             p[j] = Complex(rr + ii, ri - ir);
         }
@@ -199,10 +223,10 @@ public:
             const float* r_ptr_re = ref_re.data() + n;
             const float* r_ptr_im = ref_im.data() + n;
 
-            float dot_wr_rr = optmath::neon::neon_dot_f32(w_re.data(), r_ptr_re, num_taps);
-            float dot_wi_ri = optmath::neon::neon_dot_f32(w_im.data(), r_ptr_im, num_taps);
-            float dot_wr_ri = optmath::neon::neon_dot_f32(w_re.data(), r_ptr_im, num_taps);
-            float dot_wi_rr = optmath::neon::neon_dot_f32(w_im.data(), r_ptr_re, num_taps);
+            float dot_wr_rr = dot_prod(w_re.data(), r_ptr_re, num_taps);
+            float dot_wi_ri = dot_prod(w_im.data(), r_ptr_im, num_taps);
+            float dot_wr_ri = dot_prod(w_re.data(), r_ptr_im, num_taps);
+            float dot_wi_rr = dot_prod(w_im.data(), r_ptr_re, num_taps);
 
             float y_re = dot_wr_rr - dot_wi_ri;
             float y_im = dot_wr_ri + dot_wi_rr;
