@@ -69,6 +69,7 @@ class EcaBClutterCanceller(gr.sync_block):
         # Metrics
         self.last_log_time = time.time()
         self.items_processed = 0
+        self.total_proc_time = 0.0
         self.log_interval = 2.0 # Seconds
 
     def _load_library(self, lib_path: str):
@@ -128,6 +129,7 @@ class EcaBClutterCanceller(gr.sync_block):
                     surv_ptr = surv_chunk.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
                     out_ptr = out_chunk.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
 
+                    t0 = time.time()
                     self._lib.eca_b_process(
                         self._states[i],
                         ref_ptr,
@@ -135,16 +137,27 @@ class EcaBClutterCanceller(gr.sync_block):
                         out_ptr,
                         current_n,
                     )
+                    self.total_proc_time += (time.time() - t0)
 
             # Update stats
             self.items_processed += n
             now = time.time()
             dt = now - self.last_log_time
             if dt > self.log_interval:
-                rate = (self.items_processed / dt) / 1e6
-                print(f"[ECA] Rate: {rate:.3f} MSPS | Batch: {n}", flush=True)
+                rate_msps = (self.items_processed / dt) / 1e6
+                # Average processing time per sample (across all channels)
+                # total_proc_time is sum of 4 calls per chunk.
+                # Avg time per sample = total_time / items_processed
+                avg_us = (self.total_proc_time / self.items_processed) * 1e6
+
+                # CPU Load Estimate: if avg_us > (1/sample_rate), we overflow.
+                # At 250kSPS, limit is 4us. At 2MSPS, limit is 0.5us.
+
+                print(f"[ECA] Rate: {rate_msps:.3f} MSPS | Avg Proc: {avg_us:.2f} us/sample | Load: {avg_us * rate_msps * 100:.1f}%", flush=True)
+
                 self.last_log_time = now
                 self.items_processed = 0
+                self.total_proc_time = 0.0
 
             return n
         except Exception as e:

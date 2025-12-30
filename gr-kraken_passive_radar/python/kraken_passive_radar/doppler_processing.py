@@ -48,6 +48,7 @@ class DopplerProcessingBlock(gr.basic_block):
         # Metrics
         self.last_log_time = time.time()
         self.frames_processed = 0
+        self.total_proc_time = 0.0
         self.log_interval = 2.0 # Seconds
 
     def _load_library(self):
@@ -74,49 +75,36 @@ class DopplerProcessingBlock(gr.basic_block):
         if isinstance(ninput_items_required, list):
             ninput_items_required[0] = req
         else:
-            # Should not happen
             pass
 
     def general_work(self, input_items, output_items):
         in0 = input_items[0]
         out0 = output_items[0]
 
-        # Number of FULL matrices we can process
-        # in0 shape is (N_in, fft_len) complex64
-        # out0 shape is (N_out, fft_len * doppler_len) float32
-
         n_in = len(in0)
         n_out = len(out0)
 
         # Determine how many full blocks we can process
-        # We need doppler_len inputs for 1 output
         num_blocks = min(n_out, n_in // self.doppler_len)
 
         if num_blocks == 0:
-            # Not enough data yet
             self.consume(0, 0)
             return 0
 
         # Process blocks
         for i in range(num_blocks):
-            # Input slice for this block: doppler_len vectors
             in_start = i * self.doppler_len
             in_end = in_start + self.doppler_len
 
-            # Get pointers
-            # Input: (doppler_len, fft_len) complex -> cast to float* (2x size)
-            # Output: (1, fft_len*doppler_len) float
-
-            # Since basic_block inputs are contiguous arrays of items,
-            # and items are vectors (fft_len), the slice is contiguous in memory.
-
             in_slice = in0[in_start : in_end]
-            out_slice = out0[i] # This is a vector of size fft_len*doppler_len
+            out_slice = out0[i]
 
             in_ptr = in_slice.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
             out_ptr = out_slice.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
 
+            t0 = time.time()
             self._lib.doppler_process(self._state, in_ptr, out_ptr)
+            self.total_proc_time += (time.time() - t0)
 
         # Consume the inputs we used
         self.consume(0, num_blocks * self.doppler_len)
@@ -127,9 +115,12 @@ class DopplerProcessingBlock(gr.basic_block):
         dt = now - self.last_log_time
         if dt > self.log_interval:
             rate = self.frames_processed / dt
-            print(f"[Doppler] Rate: {rate:.2f} frames/sec", flush=True)
+            # Avg time per frame
+            avg_ms = (self.total_proc_time / self.frames_processed) * 1000
+            print(f"[Doppler] Rate: {rate:.2f} frames/sec | Avg Proc: {avg_ms:.2f} ms/frame", flush=True)
             self.last_log_time = now
             self.frames_processed = 0
+            self.total_proc_time = 0.0
 
         return num_blocks
 
