@@ -31,9 +31,9 @@ class EcaBClutterCanceller(gr.sync_block):
         )
 
         self.num_taps = int(num_taps)
-        self.chunk_size = 4096 # Process in chunks to stay in CPU cache
+        self.chunk_size = 1024 # Smaller chunks to fit in L1 cache
 
-        # Enforce minimum block size to amortize overhead
+        # Enforce minimum block size
         self.set_output_multiple(self.chunk_size)
 
         self._lib = self._load_library(lib_path)
@@ -110,11 +110,10 @@ class EcaBClutterCanceller(gr.sync_block):
                 current_n = min(self.chunk_size, n - offset)
 
                 # Get pointers to the current chunk
-                # Note: numpy slicing returns a view/copy, but we need the pointer to the original buffer at offset
-                # Creating a slice view creates a new python object but points to same data?
-                # Actually, input_items[0] is a numpy array. input_items[0][offset:] is a slice view.
-                # ctypes.data returns address of the slice start. Safe.
+                # ctypes.data_as is fast and zero-copy for contiguous arrays
+                # input_items from GR are guaranteed contiguous
 
+                # Numpy slicing creates a view, ctypes.data returns address of start of view.
                 ref_chunk = ref[offset : offset+current_n]
                 ref_ptr = ref_chunk.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
 
