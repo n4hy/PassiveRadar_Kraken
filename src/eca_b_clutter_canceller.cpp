@@ -13,14 +13,14 @@
 using Complex = std::complex<float>;
 
 // Helper for solving Ax = b using Cholesky Decomposition
-// A must be Hermitian and Positive Definite
 class LinearSolver {
 public:
-    static bool solve_cholesky(const std::vector<Complex>& A, const std::vector<Complex>& b, std::vector<Complex>& x, int N) {
-        // 1. Cholesky Decomposition: A = L * L^H
-        // L is lower triangular
-        std::vector<Complex> L(N * N, 0.0f);
+    static bool solve_cholesky(const std::vector<Complex>& A, const std::vector<Complex>& b, std::vector<Complex>& x, int N, std::vector<Complex>& L, std::vector<Complex>& y) {
+        // Reuse L and y vectors passed from caller to avoid allocation
+        L.assign(N * N, 0.0f);
+        y.resize(N);
 
+        // 1. Cholesky Decomposition: A = L * L^H
         for (int i = 0; i < N; ++i) {
             for (int j = 0; j <= i; ++j) {
                 Complex sum = 0.0f;
@@ -29,19 +29,16 @@ public:
                 }
 
                 if (i == j) {
-                    // Diagonal element
                     float val = std::real(A[i * N + i] - sum);
-                    if (val <= 0.0f) return false; // Not positive definite
+                    if (val <= 0.0f) return false;
                     L[i * N + j] = std::sqrt(val);
                 } else {
-                    // Off-diagonal
-                    L[i * N + j] = (A[i * N + j] - sum) / L[j * N + j]; // L[j,j] is real
+                    L[i * N + j] = (A[i * N + j] - sum) / L[j * N + j];
                 }
             }
         }
 
         // 2. Forward Substitution: L * y = b
-        std::vector<Complex> y(N);
         for (int i = 0; i < N; ++i) {
             Complex sum = 0.0f;
             for (int j = 0; j < i; ++j) {
@@ -51,14 +48,12 @@ public:
         }
 
         // 3. Backward Substitution: L^H * x = y
-        // L^H is upper triangular
         for (int i = N - 1; i >= 0; --i) {
             Complex sum = 0.0f;
             for (int j = i + 1; j < N; ++j) {
-                // (L^H)_{ij} = conj(L_{ji})
                 sum += std::conj(L[j * N + i]) * x[j];
             }
-            x[i] = (y[i] - sum) / std::conj(L[i * N + i]); // Diagonal of L is real, so conj is same
+            x[i] = (y[i] - sum) / std::conj(L[i * N + i]);
         }
 
         return true;
@@ -70,66 +65,89 @@ private:
     int num_taps;
     float diagonal_loading;
 
-    // History buffer
+    // Persistent buffers to avoid re-allocation churn
     std::vector<Complex> ref_history;
+
+    // Scratch buffers for process()
+    std::vector<Complex> full_ref;
+    std::vector<float> ref_re;
+    std::vector<float> ref_im;
+    std::vector<float> surv_re;
+    std::vector<float> surv_im;
+    std::vector<Complex> R;
+    std::vector<Complex> p;
+    std::vector<Complex> w;
+    std::vector<float> w_re;
+    std::vector<float> w_im;
+
+    // Scratch buffers for LinearSolver
+    std::vector<Complex> solver_L;
+    std::vector<Complex> solver_y;
 
 public:
     ECABCanceller(int taps) : num_taps(taps), diagonal_loading(1e-6f) {
-        // Enable Flush-to-Zero and Denormals-Are-Zero on x86 to prevent performance cliff
+        // Enable FTZ/DAZ on x86
         #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__)
         _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
         _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
         #endif
 
-        // Pre-fill history with zeros
         ref_history.resize(num_taps - 1, Complex(0.0f, 0.0f));
+
+        // Pre-allocate fixed size buffers
+        R.resize(num_taps * num_taps);
+        p.resize(num_taps);
+        w.resize(num_taps);
+        w_re.resize(num_taps);
+        w_im.resize(num_taps);
+        solver_L.resize(num_taps * num_taps);
+        solver_y.resize(num_taps);
     }
 
-    // Process a block
-    // ref_in: Reference signal (Regressor)
-    // surv_in: Surveillance signal (Desired)
-    // out_err: Output (Error signal)
-    // n_samples: Block size
     void process(const Complex* ref_in, const Complex* surv_in, Complex* out_err, int n_samples) {
         if (n_samples == 0) return;
 
-        // 1. Prepare Reference Data with History
-        std::vector<Complex> full_ref;
-        full_ref.reserve(ref_history.size() + n_samples);
-        full_ref.insert(full_ref.end(), ref_history.begin(), ref_history.end());
-        full_ref.insert(full_ref.end(), ref_in, ref_in + n_samples);
+        // 1. Prepare Reference Data
+        // Resize scratch buffers to match current n_samples if needed
+        int full_ref_len = ref_history.size() + n_samples;
 
-        // Convert full_ref and surv_in to SoA for NEON operations
-        int full_ref_len = full_ref.size();
-        std::vector<float> ref_re(full_ref_len);
-        std::vector<float> ref_im(full_ref_len);
+        // Use assign/resize/copy to reuse memory
+        full_ref.resize(full_ref_len);
 
+        // Copy history
+        std::copy(ref_history.begin(), ref_history.end(), full_ref.begin());
+        // Copy new input
+        std::copy(ref_in, ref_in + n_samples, full_ref.begin() + ref_history.size());
+
+        ref_re.resize(full_ref_len);
+        ref_im.resize(full_ref_len);
+        surv_re.resize(n_samples);
+        surv_im.resize(n_samples);
+
+        // SoA conversion loop
         for(int i=0; i<full_ref_len; ++i) {
             ref_re[i] = full_ref[i].real();
             ref_im[i] = full_ref[i].imag();
         }
-
-        std::vector<float> surv_re(n_samples);
-        std::vector<float> surv_im(n_samples);
         for(int i=0; i<n_samples; ++i) {
             surv_re[i] = surv_in[i].real();
             surv_im[i] = surv_in[i].imag();
         }
 
-        // 2. Compute Autocorrelation Matrix R (num_taps x num_taps)
-        std::vector<Complex> R(num_taps * num_taps, 0.0f);
+        // 2. Compute Autocorrelation Matrix R
+        // Zero out R logic handled by assignment in loop? No, need explicit clear or overwrite.
+        // We overwrite every element, so no need to clear first.
 
         for (int j = 0; j < num_taps; ++j) {
             int offset_j = num_taps - 1 - j;
             const float* r_re_j = ref_re.data() + offset_j;
             const float* r_im_j = ref_im.data() + offset_j;
 
-            for (int k = j; k < num_taps; ++k) { // Upper triangle
+            for (int k = j; k < num_taps; ++k) {
                 int offset_k = num_taps - 1 - k;
                 const float* r_re_k = ref_re.data() + offset_k;
                 const float* r_im_k = ref_im.data() + offset_k;
 
-                // 4 dot products
                 float rr = optmath::neon::neon_dot_f32(r_re_j, r_re_k, n_samples);
                 float ii = optmath::neon::neon_dot_f32(r_im_j, r_im_k, n_samples);
                 float ri = optmath::neon::neon_dot_f32(r_re_j, r_im_k, n_samples);
@@ -144,13 +162,10 @@ public:
                     R[k * num_taps + j] = Complex(real_part, -imag_part);
                 }
             }
-            // Diagonal Loading
             R[j * num_taps + j] += diagonal_loading;
         }
 
-        // 3. Compute Cross-correlation vector p (num_taps x 1)
-        std::vector<Complex> p(num_taps, 0.0f);
-
+        // 3. Compute Cross-correlation p
         const float* s_re = surv_re.data();
         const float* s_im = surv_im.data();
 
@@ -159,7 +174,6 @@ public:
             const float* r_re_j = ref_re.data() + offset_j;
             const float* r_im_j = ref_im.data() + offset_j;
 
-            // dot(conj(ref), surv)
             float rr = optmath::neon::neon_dot_f32(r_re_j, s_re, n_samples);
             float ii = optmath::neon::neon_dot_f32(r_im_j, s_im, n_samples);
             float ri = optmath::neon::neon_dot_f32(r_re_j, s_im, n_samples);
@@ -169,23 +183,15 @@ public:
         }
 
         // 4. Solve R * w = p
-        std::vector<Complex> w(num_taps);
-        if (!LinearSolver::solve_cholesky(R, p, w, num_taps)) {
+        if (!LinearSolver::solve_cholesky(R, p, w, num_taps, solver_L, solver_y)) {
             std::fill(w.begin(), w.end(), 0.0f);
         }
 
         // 5. Compute Output
-        // e[n] = surv[n] - y[n]
-        // y[n] = sum_{k=0}^{P-1} w_k * ref[n-k]
-
-        std::vector<float> w_re(num_taps);
-        std::vector<float> w_im(num_taps);
         for(int k=0; k<num_taps; ++k) {
             w_re[k] = w[k].real();
             w_im[k] = w[k].imag();
         }
-
-        // Reverse weights for dot product (convolution)
         std::reverse(w_re.begin(), w_re.end());
         std::reverse(w_im.begin(), w_im.end());
 
@@ -206,9 +212,8 @@ public:
 
         // 6. Update History
         int start_copy = full_ref.size() - (num_taps - 1);
-        for (int i = 0; i < num_taps - 1; ++i) {
-            ref_history[i] = full_ref[start_copy + i];
-        }
+        // Use copy instead of manual loop for speed
+        std::copy(full_ref.begin() + start_copy, full_ref.end(), ref_history.begin());
     }
 };
 
