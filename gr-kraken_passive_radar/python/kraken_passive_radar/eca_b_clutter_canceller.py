@@ -31,9 +31,10 @@ class EcaBClutterCanceller(gr.sync_block):
         )
 
         self.num_taps = int(num_taps)
+        self.chunk_size = 4096 # Process in chunks to stay in CPU cache
 
-        # Optimize performance by enforcing larger block sizes
-        self.set_output_multiple(4096)
+        # Enforce minimum block size to amortize overhead
+        self.set_output_multiple(self.chunk_size)
 
         self._lib = self._load_library(lib_path)
 
@@ -87,7 +88,6 @@ class EcaBClutterCanceller(gr.sync_block):
                 last_err = e
                 continue
 
-        # If failed, print debug info
         print(f"DEBUG: EcaBClutterCanceller failed to load library from base_dir: {base_dir}", file=sys.stderr)
         try:
             print(f"DEBUG: Files in base_dir: {os.listdir(base_dir)}", file=sys.stderr)
@@ -105,30 +105,36 @@ class EcaBClutterCanceller(gr.sync_block):
             if n == 0:
                 return 0
 
-            # Direct pointer access avoids copy if contiguous (GR buffers usually are)
-            # complex64 is 2 floats. Cast directly to float* for the C API.
-            ref_ptr = ref.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+            # Process in chunks to maintain cache locality and prevent processing spikes
+            for offset in range(0, n, self.chunk_size):
+                current_n = min(self.chunk_size, n - offset)
 
-            # Process each surveillance channel
-            for i in range(self.num_surv_channels):
-                # Safety check
-                if i + 1 >= len(input_items):
-                    continue
+                # Get pointers to the current chunk
+                # Note: numpy slicing returns a view/copy, but we need the pointer to the original buffer at offset
+                # Creating a slice view creates a new python object but points to same data?
+                # Actually, input_items[0] is a numpy array. input_items[0][offset:] is a slice view.
+                # ctypes.data returns address of the slice start. Safe.
 
-                surv = input_items[1 + i]
-                out_err = output_items[i]
+                ref_chunk = ref[offset : offset+current_n]
+                ref_ptr = ref_chunk.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
 
-                # Direct pointers
-                surv_ptr = surv.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-                out_ptr = out_err.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+                for i in range(self.num_surv_channels):
+                    if i + 1 >= len(input_items):
+                        continue
 
-                self._lib.eca_b_process(
-                    self._states[i],
-                    ref_ptr,
-                    surv_ptr,
-                    out_ptr,
-                    n,
-                )
+                    surv_chunk = input_items[1 + i][offset : offset+current_n]
+                    out_chunk = output_items[i][offset : offset+current_n]
+
+                    surv_ptr = surv_chunk.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+                    out_ptr = out_chunk.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+
+                    self._lib.eca_b_process(
+                        self._states[i],
+                        ref_ptr,
+                        surv_ptr,
+                        out_ptr,
+                        current_n,
+                    )
 
             return n
         except Exception as e:
