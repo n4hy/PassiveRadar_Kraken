@@ -7,7 +7,7 @@ parameters:
   - id: num_taps
     label: Number of Taps
     dtype: int
-    default: 64
+    default: 16
   - id: num_surv_channels
     label: Num Surv Channels
     dtype: int

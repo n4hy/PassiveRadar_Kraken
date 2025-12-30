@@ -141,7 +141,7 @@ blocks:
   parameters:
     comment: ''
     id: eca_taps
-    value: '64'
+    value: '16'
   states:
     bus_sink: false
     bus_source: false
@@ -544,13 +544,12 @@ blocks:
     rotation: 0
     state: enabled
   name: ifft
-- id: complex_to_mag_squared
+- id: kraken_passive_radar_doppler_processing
   parameters:
     comment: ''
-    id: corr_mag
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    vlen: fft_len
+    doppler_len: doppler_len
+    fft_len: fft_len
+    id: doppler_proc
   states:
     bus_sink: false
     bus_source: false
@@ -560,7 +559,26 @@ blocks:
     - 550
     rotation: 0
     state: enabled
-  name: corr_mag
+  name: doppler_proc
+- id: blocks_vector_to_stream
+  parameters:
+    comment: ''
+    id: vec_to_stream
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_items: fft_len * doppler_len
+    type: float
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 808
+    - 550
+    rotation: 0
+    state: enabled
+  name: vec_to_stream
 - id: qtgui_time_raster_sink_f
   parameters:
     alpha1: '1.0'
@@ -599,17 +617,17 @@ blocks:
     label8: ''
     label9: ''
     mult: '1.0'
-    name: Range-Time (CAF)
-    ncols: '512'
+    name: Range-Doppler (CAF)
+    ncols: fft_len
     nconnections: '1'
-    nrows: fft_len
+    nrows: doppler_len
     offset: '0.0'
-    samp_rate: samp_rate/fft_len
+    samp_rate: '1.0'
     type: msg_float
     update_time: '0.10'
-    x_axis_label: Slow Time
+    x_axis_label: Range Bins
     x_axis_scale: '1.0'
-    y_axis_label: Range Bins
+    y_axis_label: Doppler Bins
     y_axis_scale: '1.0'
     zmax: '100'
     zmin: '0'
@@ -726,9 +744,13 @@ connections:
   - '0'
 - - ifft
   - '0'
-  - corr_mag
+  - doppler_proc
   - '0'
-- - corr_mag
+- - doppler_proc
+  - '0'
+  - vec_to_stream
+  - '0'
+- - vec_to_stream
   - '0'
   - rd_raster
   - '0'

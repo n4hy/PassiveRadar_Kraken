@@ -1,0 +1,29 @@
+id: kraken_passive_radar_doppler_processing
+label: Doppler Processing (C++)
+category: '[Kraken Passive Radar]'
+
+parameters:
+- id: fft_len
+  label: FFT Length
+  dtype: int
+  default: 1024
+- id: doppler_len
+  label: Doppler Length
+  dtype: int
+  default: 128
+
+inputs:
+- label: in
+  domain: stream
+  dtype: complex
+  vlen: ${fft_len}
+
+outputs:
+- label: out
+  domain: stream
+  dtype: float
+  vlen: ${fft_len * doppler_len}
+
+templates:
+  imports: from kraken_passive_radar.doppler_processing import DopplerProcessingBlock
+  make: DopplerProcessingBlock(fft_len=${fft_len}, doppler_len=${doppler_len})
