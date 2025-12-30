@@ -3,6 +3,7 @@ import ctypes
 import numpy as np
 from gnuradio import gr
 import sys
+import time
 
 class EcaBClutterCanceller(gr.sync_block):
     """
@@ -65,6 +66,11 @@ class EcaBClutterCanceller(gr.sync_block):
                 raise RuntimeError("Failed to create ECA-B canceller state")
             self._states.append(state)
 
+        # Metrics
+        self.last_log_time = time.time()
+        self.items_processed = 0
+        self.log_interval = 2.0 # Seconds
+
     def _load_library(self, lib_path: str):
         candidates = []
         if lib_path:
@@ -109,11 +115,6 @@ class EcaBClutterCanceller(gr.sync_block):
             for offset in range(0, n, self.chunk_size):
                 current_n = min(self.chunk_size, n - offset)
 
-                # Get pointers to the current chunk
-                # ctypes.data_as is fast and zero-copy for contiguous arrays
-                # input_items from GR are guaranteed contiguous
-
-                # Numpy slicing creates a view, ctypes.data returns address of start of view.
                 ref_chunk = ref[offset : offset+current_n]
                 ref_ptr = ref_chunk.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
 
@@ -134,6 +135,16 @@ class EcaBClutterCanceller(gr.sync_block):
                         out_ptr,
                         current_n,
                     )
+
+            # Update stats
+            self.items_processed += n
+            now = time.time()
+            dt = now - self.last_log_time
+            if dt > self.log_interval:
+                rate = (self.items_processed / dt) / 1e6
+                print(f"[ECA] Rate: {rate:.3f} MSPS | Batch: {n}", flush=True)
+                self.last_log_time = now
+                self.items_processed = 0
 
             return n
         except Exception as e:

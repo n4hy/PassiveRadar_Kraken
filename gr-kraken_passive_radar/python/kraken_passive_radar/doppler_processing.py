@@ -3,6 +3,7 @@ import ctypes
 import numpy as np
 from gnuradio import gr
 import sys
+import time
 
 class DopplerProcessingBlock(gr.basic_block):
     """
@@ -43,6 +44,11 @@ class DopplerProcessingBlock(gr.basic_block):
         self._state = self._lib.doppler_create(self.fft_len, self.doppler_len)
         if not self._state:
             raise RuntimeError("Failed to create Doppler processor state")
+
+        # Metrics
+        self.last_log_time = time.time()
+        self.frames_processed = 0
+        self.log_interval = 2.0 # Seconds
 
     def _load_library(self):
         # Helper to load the shared library
@@ -114,6 +120,16 @@ class DopplerProcessingBlock(gr.basic_block):
 
         # Consume the inputs we used
         self.consume(0, num_blocks * self.doppler_len)
+
+        # Update stats
+        self.frames_processed += num_blocks
+        now = time.time()
+        dt = now - self.last_log_time
+        if dt > self.log_interval:
+            rate = self.frames_processed / dt
+            print(f"[Doppler] Rate: {rate:.2f} frames/sec", flush=True)
+            self.last_log_time = now
+            self.frames_processed = 0
 
         return num_blocks
 
