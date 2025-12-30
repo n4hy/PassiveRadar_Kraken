@@ -12,8 +12,8 @@ cd build
 PY_SITE=$(python3 -c "import sysconfig; print(sysconfig.get_paths()['purelib'])")
 echo "Detected Python install dir: $PY_SITE"
 
-# Configure with explicit Python path
-cmake -DCMAKE_INSTALL_PREFIX=/usr -DGR_PYTHON_DIR="$PY_SITE" ..
+# Configure with explicit Python path and RELEASE build type for performance
+cmake -DCMAKE_INSTALL_PREFIX=/usr -DGR_PYTHON_DIR="$PY_SITE" -DCMAKE_BUILD_TYPE=Release ..
 
 # Build
 make -j"$(nproc)"
@@ -23,4 +23,3 @@ echo "Build successful."
 echo "Now running: sudo make install && sudo ldconfig"
 sudo make install && sudo ldconfig
 cd -
-
