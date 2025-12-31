@@ -27,7 +27,7 @@ graph TD
 
         ECA_REF & ECA_SURV --> ECA_BLOCK[ECA-B Clutter Canceller]
 
-        note1[C++ Accelerated\nFast Covariance Algo\nO(MN) Complexity]
+        note1["C++ Accelerated\nFast Covariance Algo\nO(MN) Complexity"]
         ECA_BLOCK -.- note1
     end
 
@@ -43,7 +43,7 @@ graph TD
         IFFT --> DOPPLER[Doppler Processor]
         DOPPLER --> RASTER[Range-Doppler Map]
 
-        note2[Accumulates M pulses\nPerforms Slow-Time FFT\nLog-Magnitude Output]
+        note2["Accumulates M pulses\nPerforms Slow-Time FFT\nLog-Magnitude Output"]
         DOPPLER -.- note2
     end
 ```
