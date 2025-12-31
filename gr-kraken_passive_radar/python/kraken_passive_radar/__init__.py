@@ -1,5 +1,3 @@
 from .doppler_processing import DopplerProcessingBlock
-from .range_doppler_widget import RangeDopplerWidget
-from .clutter_cancellation import ClutterCanceller
 from .eca_b_clutter_canceller import EcaBClutterCanceller
 from .krakensdr_source import krakensdr_source

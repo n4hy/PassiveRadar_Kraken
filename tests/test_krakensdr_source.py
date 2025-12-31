@@ -31,7 +31,8 @@ class TestKrakenSDRSource(unittest.TestCase):
         blk = krakensdr_source(frequency=freq, sample_rate=rate, gain=gain)
 
         # Verify osmosdr.source was called with numchan=5 and explicit SERIALS
-        mock_gnuradio.osmosdr.source.assert_called_with(args="numchan=5 rtl=1000 rtl=1001 rtl=1002 rtl=1003 rtl=1004")
+        expected_args = "numchan=5 rtl=1000,buffers=128,buflen=65536 rtl=1001,buffers=128,buflen=65536 rtl=1002,buffers=128,buflen=65536 rtl=1003,buffers=128,buflen=65536 rtl=1004,buffers=128,buflen=65536"
+        mock_gnuradio.osmosdr.source.assert_called_with(args=expected_args)
 
         # Verify settings were applied
         # We need to get the instance returned by osmosdr.source()

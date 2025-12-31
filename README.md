@@ -1,197 +1,170 @@
-# PassiveRadar_Kraken
+# KrakenSDR Passive Radar
 
-PassiveRadar_Kraken is a GNU Radio–based passive radar processing chain designed for use with the KrakenSDR (5 coherent channels: 4 surveillance + 1 reference).  
-The primary use case is **aircraft detection and tracking** using high‑power illuminators of opportunity (FM broadcast and digital/analog TV transmitters) as the non‑cooperative transmitters.
+A high-performance, GPU/CPU-accelerated Passive Radar system for the KrakenSDR 5-channel coherent receiver. This project implements a full signal processing pipeline from raw IQ ingestion to Range-Doppler map generation, capable of detecting aircraft and other moving targets using commercial FM broadcast or TV signals as illuminators of opportunity.
 
-The project provides:
-
-- A GNU Radio OOT module: **`gr-kraken_passive_radar`**
-- Python blocks for:
-  - **NLMS adaptive clutter cancellation** (`ClutterCanceller`)
-  - **ECA‑B clutter cancellation** (`EcaBClutterCanceller`, driven by a C++ kernel)
-  - Doppler and angle‑of‑arrival (AoA) processing (via C++ backends)
-- GNU Radio Companion (GRC) blocks under the category **`[Kraken Passive Radar]`**
-
-Once installed, the user can construct a passive radar processing chain in GRC using the Kraken-specific blocks and standard GNU Radio / gr‑osmosdr source blocks.
+![Status](https://img.shields.io/badge/Status-Operational-green)
+![Build](https://img.shields.io/badge/Build-CMake-blue)
+![License](https://img.shields.io/badge/License-MIT-green)
 
 ---
 
-## 1. Getting Started (Hardware & Setup)
+## 📡 Architecture & Signal Flow
 
-### 1.1 Hardware Requirements
+The system is built on **GNU Radio** but relies heavily on custom **C++ Optimized OOT (Out-of-Tree)** blocks to achieve real-time performance. The flowgraph `kraken_passive_radar_system.grc` implements the following pipeline:
 
-- **KrakenSDR**: 5-channel coherent RTL-SDR array.
-- **Powered USB Hub**: A high-quality hub with at least a **3A power adapter** is **MANDATORY**. The KrakenSDR draws ~2.2A, which exceeds the limit of standard laptop USB ports. Insufficient power causes "PLL not locked" errors and signal drops.
-- **Antennas**: 5 antennas connected to SMA ports CH0-CH4.
-- **Host Computer**: Linux machine (x86_64 or Raspberry Pi 4/5).
+```mermaid
+graph TD
+    ANT[Antennas 0-4] --> KRAKEN[KrakenSDR Source]
 
-### 1.2 Channel Mapping
+    subgraph "Preprocessing"
+        KRAKEN -- CH0 (Ref) --> FIR0[Freq Xlating FIR] --> DC0[DC Blocker]
+        KRAKEN -- CH1..4 (Surv) --> FIR1[Freq Xlating FIR] --> DC1[DC Blocker]
+    end
 
-The software assumes a standard 1-to-1 mapping based on the KrakenSDR's factory-programmed serial numbers:
+    subgraph "Clutter Cancellation"
+        DC0 --> ECA_REF[ECA-B Reference In]
+        DC1 --> ECA_SURV[ECA-B Surveillance In]
 
-*   **Software Channel 0** <--> **Physical Port CH0** (Serial 1000)
-*   **Software Channel 1** <--> **Physical Port CH1** (Serial 1001)
-*   **Software Channel 2** <--> **Physical Port CH2** (Serial 1002)
-*   **Software Channel 3** <--> **Physical Port CH3** (Serial 1003)
-*   **Software Channel 4** <--> **Physical Port CH4** (Serial 1004)
+        ECA_REF & ECA_SURV --> ECA_BLOCK[ECA-B Clutter Canceller]
 
-### 1.3 System Configuration Script
+        note1[C++ Accelerated\nFast Covariance Algo\nO(MN) Complexity]
+        ECA_BLOCK -.- note1
+    end
 
-A setup script is provided to configure permissions and USB limits. You must run this once:
+    subgraph "Cross-Ambiguity Function (CAF)"
+        ECA_BLOCK -- Clean Surv --> S_VEC[To Vector] --> S_FFT[FFT]
+        DC0 -- Ref Copy --> R_VEC[To Vector] --> R_FFT[FFT]
+
+        S_FFT & R_FFT --> MULT[Multiply Conjugate]
+        MULT --> IFFT[IFFT (Range Profile)]
+    end
+
+    subgraph "Doppler Processing"
+        IFFT --> DOPPLER[Doppler Processor]
+        DOPPLER --> RASTER[Range-Doppler Map]
+
+        note2[Accumulates M pulses\nPerforms Slow-Time FFT\nLog-Magnitude Output]
+        DOPPLER -.- note2
+    end
+```
+
+### Key Components
+
+#### 1. KrakenSDR Source (`krakensdr_source`)
+*   **Type:** Hierarchical Python Block
+*   **Function:** Wraps the standard `osmosdr_source`. It explicitly maps the 5 physical ports (Serial 1000-1004) to logical channels 0-4.
+*   **Optimization:** Uses large buffers (128 x 64kB) to prevent USB packet drops.
+
+#### 2. ECA-B Clutter Canceller (`kraken_passive_radar_eca_b_clutter_canceller`)
+*   **Type:** C++ Accelerated Block
+*   **Function:** Removes the direct-path signal and static ground clutter from the surveillance channels.
+*   **Algorithm:** **Extensive Cancellation Algorithm (Batch)** using a **Fast Covariance Update**.
+    *   Instead of the naive $O(M^2 N)$ matrix calculation, it uses a recursive Toeplitz update $O(MN)$ to compute the autocorrelation matrix $R$.
+    *   Solves the Wiener-Hopf equation $Rw = p$ using Cholesky Decomposition.
+    *   Compiles with `-O3 -march=native` to utilize AVX/NEON vector instructions automatically.
+
+#### 3. Doppler Processor (`kraken_passive_radar_doppler_processing`)
+*   **Type:** C++ Accelerated Block
+*   **Function:** Takes a stream of Range Profiles (output of IFFT), accumulates a block of pulses (Slow Time), and performs an FFT across the pulse dimension.
+*   **Output:** A flattened vector representing the Range-Doppler map (Log Magnitude), suitable for visualization.
+
+---
+
+## 🛠️ Hardware Setup
+
+1.  **Power Supply:** A **Powered USB 3.0 Hub (3A+)** is **REQUIRED**. The KrakenSDR draws ~2.2A, exceeding standard port limits.
+2.  **Antennas:** Connect 5 matched antennas to ports CH0-CH4.
+3.  **Host:** Linux PC (x86_64) or Raspberry Pi 4/5 (aarch64).
+
+### System Configuration
+You must configure USB permissions and memory limits before running the software.
 
 ```bash
-cd ~/PassiveRadar_Kraken
+# Run once
 sudo ./setup_krakensdr_permissions.sh
 ```
-
-This script performs three critical actions:
-1.  **Blacklists Kernel Driver**: Prevents `dvb_usb_rtl28xxu` from claiming the device.
-2.  **Sets udev Rules**: Grants permission to access the USB device without root.
-3.  **Increases USB Memory Limit**: Sets `usbfs_memory_mb` to 0 (unlimited). **This is required** to stream 5 channels simultaneously without "Failed to allocate zero-copy buffer" errors.
-
-**Reboot** after running the script to ensure all changes take effect.
+*   **Blacklists** `dvb_usb_rtl28xxu` kernel driver.
+*   **Sets** `usbfs_memory_mb` to 0 (unlimited) to support 5 concurrent streams.
+*   **Reboot** after running.
 
 ---
 
-## 2. Software Installation
+## 📦 Installation
 
-The project is designed for GNU Radio 3.10+ installed from distribution packages.
-
-### 2.1 Install Dependencies
-
+### 1. Install Dependencies
 ```bash
 sudo apt update
-sudo apt install -y gnuradio gr-osmosdr python3-numpy python3-pyqt5 python3-pyqt5.qtsvg g++ cmake make libfftw3-dev soapysdr-tools
+sudo apt install -y gnuradio gr-osmosdr python3-numpy python3-pyqt5 g++ cmake make libfftw3-dev soapysdr-tools
 ```
 
-### 2.2 Build and Install OOT Module
-
-Use the helper script to build and install the custom Kraken blocks:
+### 2. Build & Install OOT Module
+The project contains custom C++ blocks that must be compiled.
 
 ```bash
-cd ~/PassiveRadar_Kraken
 ./build_oot.sh
-sudo make install
-sudo ldconfig
 ```
+This script will:
+1.  Detect your Python installation.
+2.  Compile the C++ kernels (`libkraken_eca_b_clutter_canceller.so`, `libkraken_doppler_processing.so`) with **Release** optimizations.
+3.  Install the Python blocks and GRC definitions to `/usr/local/`.
+
+**Note:** If you modify the C++ code or GRC block definitions, run `./reinstall_oot.sh` to update the system.
 
 ---
 
-## 3. Running the Radar
+## 🚀 Usage
 
-### 3.1 Verify 5-Channel Input
+### 1. Monitor Input Signals
+Verify that all 5 channels are active and not saturated.
 
-Before running the full radar, verify your signals using the 5-channel monitor flowgraph.
+1.  Open `kraken_sdr_5ch_monitor.grc` in GNU Radio Companion.
+2.  Run the flowgraph.
+3.  Adjust **RF Gain** (default 10-14 dB). Ensure the Reference signal (CH0) is strong but not clipping.
 
-1.  Open **GNU Radio Companion**:
-    ```bash
-    gnuradio-companion kraken_sdr_5ch_monitor.grc
-    ```
-2.  Click the **Generate** button (F5) to create the Python script.
-3.  Run the monitor:
-    ```bash
-    python3 kraken_sdr_5ch_monitor.py
-    ```
-4.  **Tuning**: Use the "RF Gain" variable to adjust gain (Default 10dB). If you are near a strong FM station, keep gain low to avoid overloading Channel 0 (Reference).
+### 2. Run Passive Radar
+1.  Open `kraken_passive_radar_system.grc`.
+2.  **Parameters:**
+    *   `freq`: Tuning frequency (e.g., 98.5 MHz for FM).
+    *   `eca_taps`: Number of filter taps (Default: 16).
+    *   `doppler_len`: Number of pulses for Doppler integration (Default: 128).
+3.  Run the flowgraph.
+4.  **Visualization:** A "Range-Doppler (CAF)" window will appear.
+    *   **X-Axis:** Range Bins (Distance).
+    *   **Y-Axis:** Doppler Bins (Velocity).
+    *   **Bright Spots:** Detected targets.
 
-### 3.2 Running the Passive Radar
+---
 
-The main radar application computes Range-Doppler maps and cancels clutter.
+## 🧪 Testing
+
+The repository includes a suite of unit tests to verify the signal processing kernels.
 
 ```bash
-python3 kraken_passive_radar_top_block.py
+# Run all tests
+./run_tests.sh
 ```
 
----
-
-## 4. Troubleshooting Common Issues
-
-### 4.1 "PLL not locked" or "Flat Line" Signal
-*   **Cause**: Insufficient power.
-*   **Fix**: Use a **Powered USB Hub** (3A+). Laptop ports are not strong enough.
-
-### 4.2 "Failed to allocate zero-copy buffer"
-*   **Cause**: Linux kernel USB memory limit is too low for 5 channels.
-*   **Fix**: Run `sudo ./setup_krakensdr_permissions.sh` to increase `usbfs_memory_mb`.
-
-### 4.3 "Channel 0 is dead" (but others work)
-*   **Cause**: Signal overload (saturation) from a strong local transmitter.
-*   **Fix**: Reduce the **RF Gain** to 10 dB or lower.
-
-### 4.4 GRC Warning: "Flow graph may not have flow control"
-*   **Cause**: GRC static analysis doesn't see inside the custom `krakensdr_source` hierarchical block.
-*   **Fix**: Ignore this warning. As long as you don't see "O" (Overflow) or "U" (Underrun) in the console, the flowgraph is timing correctly.
+**Key Tests:**
+*   `tests/test_eca_b_cpp.py`: Verifies the C++ ECA-B kernel achieves >10dB clutter suppression on synthetic data.
+*   `tests/test_doppler_cpp.py`: Verifies the Doppler processing FFT logic.
+*   `tests/test_krakensdr_source.py`: Checks the Python source block logic.
 
 ---
 
-## 5. Architecture Overview
+## ⚡ Performance Optimizations
 
-A typical FM/TV‑based passive radar chain using the KrakenSDR looks like:
-
-1. **KrakenSDR Source (gr‑osmosdr)**
-   - 5 coherent channels: 4 surveillance + 1 reference
-   - Common sample rate (e.g., 2.048 Msps) and center frequency tuned to the illuminator
-
-2. **Per‑channel preprocessing**
-   - Complex gain adjustment and DC offset removal (if needed)
-   - Optional band‑limiting around the selected FM/TV carrier
-
-3. **Polyphase resampling**
-   - High‑rate input (e.g., 2.048 Msps) decimated via a polyphase resampler to a lower analysis rate (e.g., 175 kHz) suitable for CAF / range–Doppler processing
-
-4. **Adaptive clutter cancellation**
-   - **NLMS**: `Kraken NLMS Clutter Canceller`
-   - **ECA‑B**: `Kraken ECA-B Clutter Canceller`
-   - Each surveillance channel uses the reference channel as input and outputs a clutter‑reduced surveillance (error signal)
-
-5. **Cross‑ambiguity and Doppler processing**
-   - Range–Doppler map computation (C++ backend + Python front‑end)
-   - AoA processing across multiple surveillance channels (C++ backend)
-
-6. **Display and logging**
-   - Range–Doppler visualization
-   - Track extraction and export to downstream systems (e.g., ADS‑B fusion, custom track server)
+*   **Fast Covariance Algorithm:** The ECA-B block uses a specialized algorithm to update the covariance matrix $R$ in linear time relative to the number of taps, enabling real-time processing even with large tap counts (e.g., 64).
+*   **Zero-Copy Logic:** The Python wrappers (`eca_b_clutter_canceller.py`) pass pointers directly to C++ to avoid memory copying overhead.
+*   **Vectorization:** The build system forces `-O3 -march=native -ffast-math`, allowing the compiler to auto-vectorize loops using AVX (x86) or NEON (ARM) instructions.
 
 ---
 
-## 6. Optimizations (NEON)
+## ⚠️ Troubleshooting
 
-This repository includes NEON-accelerated kernels for ARM platforms (e.g., Raspberry Pi 4/5). These optimizations significantly improve the performance of:
+| Symptom | Cause | Solution |
+| :--- | :--- | :--- |
+| **"PLL not locked"** | Insufficient Power | Use a powered USB hub (3A+). |
+| **"Failed to allocate zero-copy buffer"** | Kernel Limit | Run `setup_krakensdr_permissions.sh`. |
+| **"O" (Overflow) printing to console** | CPU Overload | Reduce sample rate or `eca_taps`. Ensure you ran `./build_oot.sh` (Optimized build). |
+| **FlowGraph Error: 'file_format'** | Old GRC | Ensure GRC is 3.10+. |
 
-1.  **ECA-B Clutter Cancellation**: The core matrix operations (autocorrelation and cross-correlation) utilize NEON SIMD instructions to accelerate complex number arithmetic.
-2.  **Polyphase Resampler**: The FIR filtering process is optimized using NEON vector operations for high-throughput decimation. Note: The resampler implementation has been switched to `float` precision to maximize performance on ARM hardware.
-
----
-
-## 7. ITAR / Export Control Considerations (Informational, Not Legal Advice)
-
-This repository provides **software signal processing components** for passive radar using broadcast FM/TV illuminators and KrakenSDR hardware. As implemented here:
-
-- The code:
-  - Operates on **publicly available broadcast waveforms** (FM radio, TV)
-  - Uses standard adaptive filtering and correlation methods widely known in the open literature
-  - Is not coupled to any specific weapons system or classified sensor
-
-- Typical use:
-  - Aircraft detection and tracking for situational awareness, research, and spectrum monitoring
-  - Operation with **commercially available hardware** and **commercial broadcast emitters**
-
-Based on these characteristics, the software is **likely to be treated as EAR99** (catch‑all classification) under U.S. export control, and in many cases can be shared publicly (e.g., on GitHub) without a specific export license. However:
-
-- This is **not legal advice**.
-- Final jurisdiction and classification determinations rest with the relevant export control authorities (e.g., U.S. BIS/DDTC).
-- If you intend to deploy this system in a defense, government, or international context, you should seek an official classification (e.g., a Commodity Jurisdiction request) and/or consult with export control counsel.
-
-The repository is intended for **research and commercial non‑military applications**, and it is licensed under a permissive open‑source license (e.g., MIT or BSD, as declared in the LICENSE file).
-
----
-
-## 8. License
-
-See the `LICENSE` file in the repository for the full license text. In typical use, this project is distributed under a permissive license (e.g., MIT), allowing:
-
-- Use, modification, and redistribution
-- Inclusion in larger systems
-- Commercial and non‑commercial usage
-
-subject to the conditions specified in the LICENSE file.

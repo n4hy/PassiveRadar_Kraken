@@ -3,7 +3,18 @@
 #include <cmath>
 #include <iostream>
 #include <algorithm>
-#include "optmath/neon_kernels.hpp"
+
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__)
+#include <xmmintrin.h>
+#include <pmmintrin.h>
+#include <immintrin.h>
+#endif
+
+#if defined(_MSC_VER)
+    #define FORCE_INLINE __forceinline
+#else
+    #define FORCE_INLINE inline __attribute__((always_inline))
+#endif
 
 using ComplexFloat = std::complex<float>;
 
@@ -25,6 +36,22 @@ private:
     // State
     int current_phase;
     int excess_input_advance;
+
+    // Inline Dot Product for max compiler optimization
+    static FORCE_INLINE float dot_prod(const float* a, const float* b, int n) {
+        float sum = 0.0f;
+        // The compiler auto-vectorizer does a great job here with -O3 -ffast-math
+        // We unroll slightly to encourage it
+        int i = 0;
+        for (; i <= n - 8; i += 8) {
+            sum += a[i] * b[i] + a[i+1] * b[i+1] + a[i+2] * b[i+2] + a[i+3] * b[i+3] +
+                   a[i+4] * b[i+4] + a[i+5] * b[i+5] + a[i+6] * b[i+6] + a[i+7] * b[i+7];
+        }
+        for (; i < n; ++i) {
+            sum += a[i] * b[i];
+        }
+        return sum;
+    }
 
 public:
     PolyphaseResampler(int interp, int decim, const float* taps_in, int n_taps)
@@ -95,8 +122,8 @@ public:
 
             const std::vector<float>& phase_taps = poly_taps[current_phase];
 
-            float val_re = optmath::neon::neon_dot_f32(re_ptr + start_idx, phase_taps.data(), taps_per_phase);
-            float val_im = optmath::neon::neon_dot_f32(im_ptr + start_idx, phase_taps.data(), taps_per_phase);
+            float val_re = dot_prod(re_ptr + start_idx, phase_taps.data(), taps_per_phase);
+            float val_im = dot_prod(im_ptr + start_idx, phase_taps.data(), taps_per_phase);
 
             output[output_count++] = ComplexFloat(val_re, val_im);
 
