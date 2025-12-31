@@ -32,11 +32,11 @@ graph TD
     end
 
     subgraph "Cross-Ambiguity Function (CAF)"
-        ECA_BLOCK -- Clean Surv --> S_VEC[To Vector] --> S_FFT[FFT]
-        DC0 -- Ref Copy --> R_VEC[To Vector] --> R_FFT[FFT]
+        ECA_BLOCK -- Clean Surv --> S_VEC["To Vector"] --> S_FFT["FFT"]
+        DC0 -- Ref Copy --> R_VEC["To Vector"] --> R_FFT["FFT"]
 
-        S_FFT & R_FFT --> MULT[Multiply Conjugate]
-        MULT --> IFFT[IFFT (Range Profile)]
+        S_FFT & R_FFT --> MULT["Multiply Conjugate"]
+        MULT --> IFFT["IFFT (Range Profile)"]
     end
 
     subgraph "Doppler Processing"
