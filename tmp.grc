@@ -85,7 +85,7 @@ blocks:
   id: variable
   parameters:
     comment: ''
-    value: '16'
+    value: '64'
   states:
     bus_sink: false
     bus_source: false
@@ -129,16 +129,14 @@ blocks:
     coordinate: [8, 150]
     rotation: 0
     state: enabled
-- name: doppler_proc
-  id: kraken_passive_radar_doppler_processing
+- name: corr_mag
+  id: complex_to_mag_squared
   parameters:
-    affinity: ''
     alias: ''
     comment: ''
-    doppler_len: doppler_len
-    fft_len: fft_len
     maxoutbuf: '0'
     minoutbuf: '0'
+    vlen: fft_len
   states:
     bus_sink: false
     bus_source: false
@@ -161,7 +159,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [728, 224.0]
+    coordinate: [768, 240.0]
     rotation: 0
     state: enabled
 - name: ifft
@@ -261,6 +259,122 @@ blocks:
     coordinate: [300, 700]
     rotation: 0
     state: enabled
+- name: qtgui_sink_x_0
+  id: qtgui_sink_x
+  parameters:
+    affinity: ''
+    alias: ''
+    bw: samp_rate
+    comment: ''
+    fc: '0'
+    fftsize: '1024'
+    gui_hint: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    name: '""'
+    plotconst: 'True'
+    plotfreq: 'True'
+    plottime: 'True'
+    plotwaterfall: 'True'
+    rate: '10'
+    showports: 'False'
+    showrf: 'False'
+    type: complex
+    wintype: window.WIN_BLACKMAN_hARRIS
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1128, 120.0]
+    rotation: 0
+    state: enabled
+- name: qtgui_sink_x_0_0
+  id: qtgui_sink_x
+  parameters:
+    affinity: ''
+    alias: ''
+    bw: samp_rate
+    comment: ''
+    fc: '0'
+    fftsize: '1024'
+    gui_hint: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    name: '""'
+    plotconst: 'True'
+    plotfreq: 'True'
+    plottime: 'True'
+    plotwaterfall: 'True'
+    rate: '10'
+    showports: 'False'
+    showrf: 'False'
+    type: complex
+    wintype: window.WIN_BLACKMAN_hARRIS
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1152, 272.0]
+    rotation: 0
+    state: enabled
+- name: qtgui_sink_x_0_1
+  id: qtgui_sink_x
+  parameters:
+    affinity: ''
+    alias: ''
+    bw: samp_rate
+    comment: ''
+    fc: '0'
+    fftsize: '1024'
+    gui_hint: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    name: '""'
+    plotconst: 'True'
+    plotfreq: 'True'
+    plottime: 'True'
+    plotwaterfall: 'True'
+    rate: '10'
+    showports: 'False'
+    showrf: 'False'
+    type: complex
+    wintype: window.WIN_BLACKMAN_hARRIS
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1120, 440.0]
+    rotation: 0
+    state: enabled
+- name: qtgui_sink_x_0_2
+  id: qtgui_sink_x
+  parameters:
+    affinity: ''
+    alias: ''
+    bw: samp_rate
+    comment: ''
+    fc: '0'
+    fftsize: '1024'
+    gui_hint: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    name: '""'
+    plotconst: 'True'
+    plotfreq: 'True'
+    plottime: 'True'
+    plotwaterfall: 'True'
+    rate: '10'
+    showports: 'False'
+    showrf: 'False'
+    type: complex
+    wintype: window.WIN_BLACKMAN_hARRIS
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1136, 608.0]
+    rotation: 0
+    state: enabled
 - name: rd_raster
   id: qtgui_time_raster_sink_f
   parameters:
@@ -300,17 +414,17 @@ blocks:
     label8: ''
     label9: ''
     mult: '1.0'
-    name: Range-Doppler (CAF)
-    ncols: fft_len
+    name: Range-Time (CAF)
+    ncols: '512'
     nconnections: '1'
-    nrows: doppler_len
+    nrows: fft_len
     offset: '0.0'
-    samp_rate: '1.0'
+    samp_rate: samp_rate/fft_len
     type: msg_float
     update_time: '0.10'
-    x_axis_label: Range Bins
+    x_axis_label: Slow Time
     x_axis_scale: '1.0'
-    y_axis_label: Doppler Bins
+    y_axis_label: Range Bins
     y_axis_scale: '1.0'
     zmax: '100'
     zmin: '0'
@@ -563,32 +677,18 @@ blocks:
     coordinate: [408, 450]
     rotation: 0
     state: enabled
-- name: vec_to_stream
-  id: blocks_vector_to_stream
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: ''
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    num_items: fft_len * doppler_len
-    type: float
-    vlen: '1'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [808, 550]
-    rotation: 0
-    state: enabled
 
 connections:
-- [doppler_proc, '0', vec_to_stream, '0']
+- [corr_mag, '0', rd_raster, '0']
+- [eca_canceller, '0', qtgui_sink_x_0, '0']
 - [eca_canceller, '0', surv_vec, '0']
 - [eca_canceller, '1', null_sink_1, '0']
+- [eca_canceller, '1', qtgui_sink_x_0_0, '0']
 - [eca_canceller, '2', null_sink_2, '0']
+- [eca_canceller, '2', qtgui_sink_x_0_1, '0']
 - [eca_canceller, '3', null_sink_3, '0']
-- [ifft, '0', doppler_proc, '0']
+- [eca_canceller, '3', qtgui_sink_x_0_2, '0']
+- [ifft, '0', corr_mag, '0']
 - [krakensdr_source_0, '0', eca_canceller, '0']
 - [krakensdr_source_0, '0', ref_chan, '0']
 - [krakensdr_source_0, '1', eca_canceller, '1']
@@ -615,7 +715,6 @@ connections:
 - [surv_dc_4, '0', eca_canceller, '4']
 - [surv_fft, '0', mult_conj, '1']
 - [surv_vec, '0', surv_fft, '0']
-- [vec_to_stream, '0', rd_raster, '0']
 
 metadata:
   file_format: 1
