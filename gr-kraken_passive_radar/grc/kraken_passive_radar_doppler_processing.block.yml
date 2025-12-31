@@ -27,3 +27,5 @@ outputs:
 templates:
   imports: from kraken_passive_radar.doppler_processing import DopplerProcessingBlock
   make: DopplerProcessingBlock(fft_len=${fft_len}, doppler_len=${doppler_len})
+
+file_format: 1
