@@ -42,7 +42,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [208, 250]
+    coordinate: [208.0, 250.0]
     rotation: 0
     state: enabled
 - name: center_freq
@@ -54,7 +54,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [208, 150]
+    coordinate: [208.0, 150.0]
     rotation: 0
     state: enabled
 - name: decim
@@ -66,7 +66,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8, 250]
+    coordinate: [8.0, 250.0]
     rotation: 0
     state: enabled
 - name: doppler_len
@@ -78,7 +78,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [608, 150]
+    coordinate: [608.0, 150.0]
     rotation: 0
     state: enabled
 - name: eca_taps
@@ -90,7 +90,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [308, 250]
+    coordinate: [308.0, 250.0]
     rotation: 0
     state: enabled
 - name: fft_len
@@ -102,7 +102,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [408, 150]
+    coordinate: [408.0, 150.0]
     rotation: 0
     state: enabled
 - name: rf_gain
@@ -114,7 +114,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [308, 150]
+    coordinate: [308.0, 150.0]
     rotation: 0
     state: enabled
 - name: samp_rate
@@ -126,7 +126,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8, 150]
+    coordinate: [8.0, 150.0]
     rotation: 0
     state: enabled
 - name: blocks_multiply_conjugate_cc_0
@@ -142,7 +142,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1144, 224.0]
+    coordinate: [1744.0, 224.0]
     rotation: 0
     state: enabled
 - name: blocks_multiply_conjugate_cc_0_0
@@ -158,7 +158,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1144, 336.0]
+    coordinate: [1744.0, 336.0]
     rotation: 0
     state: enabled
 - name: blocks_multiply_conjugate_cc_0_1
@@ -174,7 +174,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1152, 440.0]
+    coordinate: [1752.0, 440.0]
     rotation: 0
     state: enabled
 - name: blocks_multiply_conjugate_cc_0_2
@@ -190,7 +190,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1160, 568.0]
+    coordinate: [1760.0, 568.0]
     rotation: 0
     state: enabled
 - name: blocks_stream_to_vector_0
@@ -208,7 +208,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [584, 360.0]
+    coordinate: [1184.0, 360.0]
     rotation: 0
     state: enabled
 - name: blocks_stream_to_vector_0_0
@@ -226,7 +226,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [584, 424.0]
+    coordinate: [1184.0, 424.0]
     rotation: 0
     state: enabled
 - name: blocks_stream_to_vector_0_1
@@ -244,7 +244,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [584, 392.0]
+    coordinate: [1184.0, 392.0]
     rotation: 0
     state: enabled
 - name: blocks_stream_to_vector_0_2
@@ -262,7 +262,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [592, 456.0]
+    coordinate: [1192.0, 456.0]
     rotation: 0
     state: enabled
 - name: blocks_stream_to_vector_0_3
@@ -280,7 +280,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [560, 272.0]
+    coordinate: [1160.0, 272.0]
     rotation: 0
     state: enabled
 - name: doppler_proc
@@ -297,7 +297,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1552, 224.0]
+    coordinate: [2152.0, 224.0]
     rotation: 0
     state: enabled
 - name: doppler_proc_0
@@ -314,7 +314,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1536, 440.0]
+    coordinate: [2136.0, 440.0]
     rotation: 0
     state: enabled
 - name: doppler_proc_1
@@ -331,7 +331,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1560, 560.0]
+    coordinate: [2160.0, 560.0]
     rotation: 0
     state: enabled
 - name: doppler_proc_2
@@ -348,7 +348,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [608, 1200]
+    coordinate: [1208.0, 1200.0]
     rotation: 0
     state: enabled
 - name: doppler_proc_3
@@ -365,7 +365,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [608, 1500]
+    coordinate: [1208.0, 1500.0]
     rotation: 0
     state: enabled
 - name: doppler_proc_4
@@ -382,7 +382,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [608, 1800]
+    coordinate: [1208.0, 1800.0]
     rotation: 0
     state: enabled
 - name: doppler_proc_5
@@ -399,7 +399,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1552, 336.0]
+    coordinate: [2152.0, 336.0]
     rotation: 0
     state: enabled
 - name: eca_canceller
@@ -417,11 +417,11 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [256, 344.0]
+    coordinate: [650, 344.0]
     rotation: 0
     state: enabled
 - name: fft_vxx_0
-  id: fft_vxx
+  id: fft_vcc
   parameters:
     affinity: ''
     alias: ''
@@ -438,11 +438,11 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [824, 320.0]
+    coordinate: [1424.0, 320.0]
     rotation: 0
     state: enabled
 - name: fft_vxx_0_0
-  id: fft_vxx
+  id: fft_vcc
   parameters:
     affinity: ''
     alias: ''
@@ -459,11 +459,11 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [824, 432.0]
+    coordinate: [1424.0, 432.0]
     rotation: 0
     state: enabled
 - name: fft_vxx_0_1
-  id: fft_vxx
+  id: fft_vcc
   parameters:
     affinity: ''
     alias: ''
@@ -480,11 +480,11 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [824, 552.0]
+    coordinate: [1424.0, 552.0]
     rotation: 0
     state: enabled
 - name: fft_vxx_0_2
-  id: fft_vxx
+  id: fft_vcc
   parameters:
     affinity: ''
     alias: ''
@@ -501,11 +501,11 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [824, 672.0]
+    coordinate: [1424.0, 672.0]
     rotation: 0
     state: enabled
 - name: fft_vxx_0_3
-  id: fft_vxx
+  id: fft_vcc
   parameters:
     affinity: ''
     alias: ''
@@ -522,11 +522,11 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [824, 208.0]
+    coordinate: [1424.0, 208.0]
     rotation: 0
     state: enabled
 - name: fft_vxx_1
-  id: fft_vxx
+  id: fft_vcc
   parameters:
     affinity: ''
     alias: ''
@@ -543,11 +543,11 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1328, 200.0]
+    coordinate: [1928.0, 200.0]
     rotation: 0
     state: enabled
 - name: fft_vxx_1_0
-  id: fft_vxx
+  id: fft_vcc
   parameters:
     affinity: ''
     alias: ''
@@ -564,11 +564,11 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1328, 544.0]
+    coordinate: [1928.0, 544.0]
     rotation: 0
     state: enabled
 - name: fft_vxx_1_1
-  id: fft_vxx
+  id: fft_vcc
   parameters:
     affinity: ''
     alias: ''
@@ -585,11 +585,11 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1320, 416.0]
+    coordinate: [1920.0, 416.0]
     rotation: 0
     state: enabled
 - name: fft_vxx_1_2
-  id: fft_vxx
+  id: fft_vcc
   parameters:
     affinity: ''
     alias: ''
@@ -606,7 +606,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1312, 312.0]
+    coordinate: [1912.0, 312.0]
     rotation: 0
     state: enabled
 - name: ifft
@@ -625,7 +625,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [408, 550]
+    coordinate: [1008.0, 550.0]
     rotation: 0
     state: enabled
 - name: ifft_2
@@ -644,7 +644,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [408, 1200]
+    coordinate: [1008.0, 1200.0]
     rotation: 0
     state: enabled
 - name: ifft_3
@@ -663,7 +663,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [408, 1500]
+    coordinate: [1008.0, 1500.0]
     rotation: 0
     state: enabled
 - name: ifft_4
@@ -682,7 +682,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [408, 1800]
+    coordinate: [1008.0, 1800.0]
     rotation: 0
     state: enabled
 - name: krakensdr_source_0
@@ -715,7 +715,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [208, 550]
+    coordinate: [808.0, 550.0]
     rotation: 0
     state: enabled
 - name: mult_conj_2
@@ -730,7 +730,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [208, 1200]
+    coordinate: [808.0, 1200.0]
     rotation: 0
     state: enabled
 - name: mult_conj_3
@@ -745,7 +745,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [208, 1500]
+    coordinate: [808.0, 1500.0]
     rotation: 0
     state: enabled
 - name: mult_conj_4
@@ -760,7 +760,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [208, 1800]
+    coordinate: [808.0, 1800.0]
     rotation: 0
     state: enabled
 - name: rd_raster
@@ -820,7 +820,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8, 650]
+    coordinate: [8.0, 650.0]
     rotation: 0
     state: enabled
 - name: rd_raster_2
@@ -880,7 +880,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8, 1300]
+    coordinate: [8.0, 1300.0]
     rotation: 0
     state: enabled
 - name: rd_raster_3
@@ -940,7 +940,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8, 1600]
+    coordinate: [8.0, 1600.0]
     rotation: 0
     state: enabled
 - name: rd_raster_4
@@ -1000,7 +1000,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8, 1900]
+    coordinate: [8.0, 1900.0]
     rotation: 0
     state: enabled
 - name: ref_chan
@@ -1018,7 +1018,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8, 350]
+    coordinate: [250, 350.0]
     rotation: 0
     state: enabled
 - name: ref_dc
@@ -1034,7 +1034,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [408, 350]
+    coordinate: [1008.0, 350.0]
     rotation: 0
     state: enabled
 - name: ref_fft
@@ -1053,7 +1053,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [608, 450]
+    coordinate: [1208.0, 450.0]
     rotation: 0
     state: enabled
 - name: ref_vec
@@ -1070,7 +1070,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [208, 450]
+    coordinate: [808.0, 450.0]
     rotation: 0
     state: enabled
 - name: surv_chan
@@ -1088,7 +1088,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [208, 350]
+    coordinate: [250, 350.0]
     rotation: 0
     state: enabled
 - name: surv_chan_2
@@ -1106,7 +1106,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [208, 750]
+    coordinate: [250, 750.0]
     rotation: 0
     state: enabled
 - name: surv_chan_3
@@ -1124,7 +1124,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [208, 850]
+    coordinate: [250, 850.0]
     rotation: 0
     state: enabled
 - name: surv_chan_4
@@ -1142,7 +1142,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [208, 950]
+    coordinate: [250, 950.0]
     rotation: 0
     state: enabled
 - name: surv_dc
@@ -1158,7 +1158,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [608, 350]
+    coordinate: [1208.0, 350.0]
     rotation: 0
     state: enabled
 - name: surv_dc_2
@@ -1174,7 +1174,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [608, 750]
+    coordinate: [1208.0, 750.0]
     rotation: 0
     state: enabled
 - name: surv_dc_3
@@ -1190,7 +1190,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [608, 850]
+    coordinate: [1208.0, 850.0]
     rotation: 0
     state: enabled
 - name: surv_dc_4
@@ -1206,7 +1206,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [608, 950]
+    coordinate: [1208.0, 950.0]
     rotation: 0
     state: enabled
 - name: surv_fft
@@ -1225,7 +1225,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8, 550]
+    coordinate: [8.0, 550.0]
     rotation: 0
     state: enabled
 - name: surv_fft_2
@@ -1244,7 +1244,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8, 1200]
+    coordinate: [8.0, 1200.0]
     rotation: 0
     state: enabled
 - name: surv_fft_3
@@ -1263,7 +1263,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8, 1500]
+    coordinate: [8.0, 1500.0]
     rotation: 0
     state: enabled
 - name: surv_fft_4
@@ -1282,7 +1282,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8, 1800]
+    coordinate: [8.0, 1800.0]
     rotation: 0
     state: enabled
 - name: surv_vec
@@ -1299,7 +1299,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [408, 450]
+    coordinate: [1008.0, 450.0]
     rotation: 0
     state: enabled
 - name: surv_vec_2
@@ -1316,7 +1316,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [408, 1100]
+    coordinate: [1008.0, 1100.0]
     rotation: 0
     state: enabled
 - name: surv_vec_3
@@ -1333,7 +1333,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [408, 1400]
+    coordinate: [1008.0, 1400.0]
     rotation: 0
     state: enabled
 - name: surv_vec_4
@@ -1350,7 +1350,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [408, 1700]
+    coordinate: [1008.0, 1700.0]
     rotation: 0
     state: enabled
 - name: vec_to_stream
@@ -1368,7 +1368,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1784, 240.0]
+    coordinate: [2384.0, 240.0]
     rotation: 0
     state: enabled
 - name: vec_to_stream_0
@@ -1386,7 +1386,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1776, 456.0]
+    coordinate: [2376.0, 456.0]
     rotation: 0
     state: enabled
 - name: vec_to_stream_1
@@ -1404,7 +1404,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1776, 576.0]
+    coordinate: [2376.0, 576.0]
     rotation: 0
     state: enabled
 - name: vec_to_stream_2
@@ -1422,7 +1422,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [808, 1200]
+    coordinate: [1408.0, 1200.0]
     rotation: 0
     state: enabled
 - name: vec_to_stream_3
@@ -1440,7 +1440,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [808, 1500]
+    coordinate: [1408.0, 1500.0]
     rotation: 0
     state: enabled
 - name: vec_to_stream_4
@@ -1458,7 +1458,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [808, 1800]
+    coordinate: [1408.0, 1800.0]
     rotation: 0
     state: enabled
 - name: vec_to_stream_5
@@ -1476,7 +1476,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1776, 352.0]
+    coordinate: [2376.0, 352.0]
     rotation: 0
     state: enabled
 
@@ -1522,15 +1522,10 @@ connections:
 - [ifft_3, '0', doppler_proc_3, '0']
 - [ifft_4, '0', doppler_proc_4, '0']
 - [krakensdr_source_0, '0', blocks_stream_to_vector_0_3, '0']
-- [krakensdr_source_0, '0', eca_canceller, '0']
 - [krakensdr_source_0, '0', ref_chan, '0']
-- [krakensdr_source_0, '1', eca_canceller, '1']
 - [krakensdr_source_0, '1', surv_chan, '0']
-- [krakensdr_source_0, '2', eca_canceller, '2']
 - [krakensdr_source_0, '2', surv_chan_2, '0']
-- [krakensdr_source_0, '3', eca_canceller, '3']
 - [krakensdr_source_0, '3', surv_chan_3, '0']
-- [krakensdr_source_0, '4', eca_canceller, '4']
 - [krakensdr_source_0, '4', surv_chan_4, '0']
 - [mult_conj, '0', ifft, '0']
 - [mult_conj_2, '0', ifft_2, '0']
