@@ -25,7 +25,6 @@ def format_yaml(data):
     for k, v in data['options']['parameters'].items():
         val = str(v)
         # Quote string values that are empty or contain special chars
-        # { } : # are special in YAML
         if isinstance(v, str):
             if val == '' or any(c in val for c in "{}:#[]"):
                 val = f"'{val}'"
@@ -48,7 +47,6 @@ def format_yaml(data):
         for k, v in b['parameters'].items():
             val = str(v)
             if isinstance(v, str):
-                 # Specifically checking for empty or special chars is safer
                  if val == '' or any(c in val for c in "{}:#[]"):
                     val = f"'{val}'"
             output.append(f"    {k}: {val}")
@@ -200,6 +198,8 @@ def generate():
         connections.append((filt_name, '0', dc_name, '0'))
 
         # Connect DC to ECA
+        # Input 0: Reference
+        # Input 1..4: Surveillance
         connections.append((dc_name, '0', eca_name, str(i)))
 
         # --- Post-ECA Chain ---
@@ -210,8 +210,19 @@ def generate():
             {'type': 'complex', 'num_items': 'fft_len', 'vlen': '1', 'comment': ''},
             [START_X + C_S2V*COL_W, row_y]
         ))
-        # Connection from ECA Output
-        connections.append((eca_name, str(i), s2v_name, '0'))
+
+        # Connection from ECA Output or DC Bypass
+        if i == 0:
+            # Reference: Bypass ECA output, take signal directly from DC block (or filter if preferred)
+            # This ensures we have the Reference signal for cross-correlation
+            connections.append((dc_name, '0', s2v_name, '0'))
+        else:
+            # Surveillance: Take from ECA Output
+            # ECA Output 0 -> Surv 1 (i=1)
+            # ECA Output 1 -> Surv 2 (i=2)
+            # ...
+            # Output index is i - 1
+            connections.append((eca_name, str(i-1), s2v_name, '0'))
 
         # 4. FFT
         blocks.append(create_block(
