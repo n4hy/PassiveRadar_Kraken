@@ -42,7 +42,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [208.0, 250.0]
+    coordinate: [8, 8]
     rotation: 0
     state: enabled
 - name: center_freq
@@ -54,7 +54,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [208.0, 150.0]
+    coordinate: [158, 8]
     rotation: 0
     state: enabled
 - name: decim
@@ -66,7 +66,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8.0, 250.0]
+    coordinate: [308, 8]
     rotation: 0
     state: enabled
 - name: doppler_len
@@ -78,7 +78,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [608.0, 150.0]
+    coordinate: [458, 8]
     rotation: 0
     state: enabled
 - name: eca_taps
@@ -90,7 +90,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [308.0, 250.0]
+    coordinate: [608, 8]
     rotation: 0
     state: enabled
 - name: fft_len
@@ -102,7 +102,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [408.0, 150.0]
+    coordinate: [758, 8]
     rotation: 0
     state: enabled
 - name: rf_gain
@@ -114,7 +114,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [308.0, 150.0]
+    coordinate: [908, 8]
     rotation: 0
     state: enabled
 - name: samp_rate
@@ -126,71 +126,87 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8.0, 150.0]
+    coordinate: [1058, 8]
     rotation: 0
     state: enabled
-- name: blocks_multiply_conjugate_cc_0
-  id: multiply_conjugate_vcc
+- name: ref_dc
+  id: dc_blocker_cc
   parameters:
-    affinity: ''
     alias: ''
     comment: ''
+    length: '128'
+    long_form: 'True'
     maxoutbuf: '0'
     minoutbuf: '0'
-    vlen: fft_len
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1744.0, 224.0]
+    coordinate: [508, 350]
     rotation: 0
     state: enabled
-- name: blocks_multiply_conjugate_cc_0_0
-  id: multiply_conjugate_vcc
+- name: surv_dc
+  id: dc_blocker_cc
   parameters:
-    affinity: ''
     alias: ''
     comment: ''
+    length: '128'
+    long_form: 'True'
     maxoutbuf: '0'
     minoutbuf: '0'
-    vlen: fft_len
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1744.0, 336.0]
+    coordinate: [508, 550]
     rotation: 0
     state: enabled
-- name: blocks_multiply_conjugate_cc_0_1
-  id: multiply_conjugate_vcc
+- name: surv_dc_2
+  id: dc_blocker_cc
   parameters:
-    affinity: ''
     alias: ''
     comment: ''
+    length: '128'
+    long_form: 'True'
     maxoutbuf: '0'
     minoutbuf: '0'
-    vlen: fft_len
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1752.0, 440.0]
+    coordinate: [508, 750]
     rotation: 0
     state: enabled
-- name: blocks_multiply_conjugate_cc_0_2
-  id: multiply_conjugate_vcc
+- name: surv_dc_3
+  id: dc_blocker_cc
   parameters:
-    affinity: ''
     alias: ''
     comment: ''
+    length: '128'
+    long_form: 'True'
     maxoutbuf: '0'
     minoutbuf: '0'
-    vlen: fft_len
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1760.0, 568.0]
+    coordinate: [508, 950]
+    rotation: 0
+    state: enabled
+- name: surv_dc_4
+  id: dc_blocker_cc
+  parameters:
+    alias: ''
+    comment: ''
+    length: '128'
+    long_form: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [508, 1150]
     rotation: 0
     state: enabled
 - name: blocks_stream_to_vector_0
@@ -208,7 +224,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1184.0, 360.0]
+    coordinate: [1008, 250]
     rotation: 0
     state: enabled
 - name: blocks_stream_to_vector_0_0
@@ -226,7 +242,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1184.0, 424.0]
+    coordinate: [1008, 450]
     rotation: 0
     state: enabled
 - name: blocks_stream_to_vector_0_1
@@ -244,7 +260,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1184.0, 392.0]
+    coordinate: [1008, 650]
     rotation: 0
     state: enabled
 - name: blocks_stream_to_vector_0_2
@@ -262,7 +278,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1192.0, 456.0]
+    coordinate: [1008, 850]
     rotation: 0
     state: enabled
 - name: blocks_stream_to_vector_0_3
@@ -280,144 +296,92 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1160.0, 272.0]
+    coordinate: [1008, 1050]
     rotation: 0
     state: enabled
-- name: doppler_proc
-  id: kraken_passive_radar_doppler_processing
+- name: ref_vec
+  id: stream_to_vector
   parameters:
-    affinity: ''
     alias: ''
     comment: ''
-    doppler_len: doppler_len
-    fft_len: fft_len
     maxoutbuf: '0'
     minoutbuf: '0'
+    num_items: fft_len
+    type: complex
+    vlen: '1'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2152.0, 224.0]
+    coordinate: [1008, 1250]
     rotation: 0
     state: enabled
-- name: doppler_proc_0
-  id: kraken_passive_radar_doppler_processing
+- name: surv_vec
+  id: stream_to_vector
   parameters:
-    affinity: ''
     alias: ''
     comment: ''
-    doppler_len: doppler_len
-    fft_len: fft_len
     maxoutbuf: '0'
     minoutbuf: '0'
+    num_items: fft_len
+    type: complex
+    vlen: '1'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2136.0, 440.0]
+    coordinate: [1008, 1450]
     rotation: 0
     state: enabled
-- name: doppler_proc_1
-  id: kraken_passive_radar_doppler_processing
+- name: surv_vec_2
+  id: stream_to_vector
   parameters:
-    affinity: ''
     alias: ''
     comment: ''
-    doppler_len: doppler_len
-    fft_len: fft_len
     maxoutbuf: '0'
     minoutbuf: '0'
+    num_items: fft_len
+    type: complex
+    vlen: '1'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2160.0, 560.0]
+    coordinate: [1008, 1650]
     rotation: 0
     state: enabled
-- name: doppler_proc_2
-  id: kraken_passive_radar_doppler_processing
+- name: surv_vec_3
+  id: stream_to_vector
   parameters:
-    affinity: ''
     alias: ''
     comment: ''
-    doppler_len: doppler_len
-    fft_len: fft_len
     maxoutbuf: '0'
     minoutbuf: '0'
+    num_items: fft_len
+    type: complex
+    vlen: '1'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1208.0, 1200.0]
+    coordinate: [1008, 1850]
     rotation: 0
     state: enabled
-- name: doppler_proc_3
-  id: kraken_passive_radar_doppler_processing
+- name: surv_vec_4
+  id: stream_to_vector
   parameters:
-    affinity: ''
     alias: ''
     comment: ''
-    doppler_len: doppler_len
-    fft_len: fft_len
     maxoutbuf: '0'
     minoutbuf: '0'
+    num_items: fft_len
+    type: complex
+    vlen: '1'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1208.0, 1500.0]
-    rotation: 0
-    state: enabled
-- name: doppler_proc_4
-  id: kraken_passive_radar_doppler_processing
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: ''
-    doppler_len: doppler_len
-    fft_len: fft_len
-    maxoutbuf: '0'
-    minoutbuf: '0'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1208.0, 1800.0]
-    rotation: 0
-    state: enabled
-- name: doppler_proc_5
-  id: kraken_passive_radar_doppler_processing
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: ''
-    doppler_len: doppler_len
-    fft_len: fft_len
-    maxoutbuf: '0'
-    minoutbuf: '0'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [2152.0, 336.0]
-    rotation: 0
-    state: enabled
-- name: eca_canceller
-  id: kraken_passive_radar_eca_b_clutter_canceller
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: ''
-    lib_path: ''
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    num_surv_channels: '4'
-    num_taps: eca_taps
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [650, 344.0]
+    coordinate: [1008, 2050]
     rotation: 0
     state: enabled
 - name: fft_vxx_0
@@ -438,7 +402,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1424.0, 320.0]
+    coordinate: [1258, 250]
     rotation: 0
     state: enabled
 - name: fft_vxx_0_0
@@ -459,7 +423,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1424.0, 432.0]
+    coordinate: [1258, 450]
     rotation: 0
     state: enabled
 - name: fft_vxx_0_1
@@ -480,7 +444,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1424.0, 552.0]
+    coordinate: [1258, 650]
     rotation: 0
     state: enabled
 - name: fft_vxx_0_2
@@ -501,7 +465,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1424.0, 672.0]
+    coordinate: [1258, 850]
     rotation: 0
     state: enabled
 - name: fft_vxx_0_3
@@ -522,7 +486,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1424.0, 208.0]
+    coordinate: [1258, 1050]
     rotation: 0
     state: enabled
 - name: fft_vxx_1
@@ -543,7 +507,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1928.0, 200.0]
+    coordinate: [1258, 1250]
     rotation: 0
     state: enabled
 - name: fft_vxx_1_0
@@ -564,7 +528,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1928.0, 544.0]
+    coordinate: [1258, 1450]
     rotation: 0
     state: enabled
 - name: fft_vxx_1_1
@@ -585,7 +549,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1920.0, 416.0]
+    coordinate: [1258, 1650]
     rotation: 0
     state: enabled
 - name: fft_vxx_1_2
@@ -606,7 +570,226 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1912.0, 312.0]
+    coordinate: [1258, 1850]
+    rotation: 0
+    state: enabled
+- name: ref_fft
+  id: fft_vcc
+  parameters:
+    alias: ''
+    comment: ''
+    fft_size: fft_len
+    forward: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    nthreads: '1'
+    shift: 'True'
+    window: window.blackmanharris(fft_len)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1258, 2050]
+    rotation: 0
+    state: enabled
+- name: surv_fft
+  id: fft_vcc
+  parameters:
+    alias: ''
+    comment: ''
+    fft_size: fft_len
+    forward: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    nthreads: '1'
+    shift: 'True'
+    window: window.blackmanharris(fft_len)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1258, 2250]
+    rotation: 0
+    state: enabled
+- name: surv_fft_2
+  id: fft_vcc
+  parameters:
+    alias: ''
+    comment: ''
+    fft_size: fft_len
+    forward: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    nthreads: '1'
+    shift: 'True'
+    window: window.blackmanharris(fft_len)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1258, 2450]
+    rotation: 0
+    state: enabled
+- name: surv_fft_3
+  id: fft_vcc
+  parameters:
+    alias: ''
+    comment: ''
+    fft_size: fft_len
+    forward: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    nthreads: '1'
+    shift: 'True'
+    window: window.blackmanharris(fft_len)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1258, 2650]
+    rotation: 0
+    state: enabled
+- name: surv_fft_4
+  id: fft_vcc
+  parameters:
+    alias: ''
+    comment: ''
+    fft_size: fft_len
+    forward: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    nthreads: '1'
+    shift: 'True'
+    window: window.blackmanharris(fft_len)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1258, 2850]
+    rotation: 0
+    state: enabled
+- name: blocks_multiply_conjugate_cc_0
+  id: multiply_conjugate_vcc
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    vlen: fft_len
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1508, 250]
+    rotation: 0
+    state: enabled
+- name: blocks_multiply_conjugate_cc_0_0
+  id: multiply_conjugate_vcc
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    vlen: fft_len
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1508, 450]
+    rotation: 0
+    state: enabled
+- name: blocks_multiply_conjugate_cc_0_1
+  id: multiply_conjugate_vcc
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    vlen: fft_len
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1508, 650]
+    rotation: 0
+    state: enabled
+- name: blocks_multiply_conjugate_cc_0_2
+  id: multiply_conjugate_vcc
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    vlen: fft_len
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1508, 850]
+    rotation: 0
+    state: enabled
+- name: mult_conj
+  id: multiply_conjugate_vcc
+  parameters:
+    alias: ''
+    comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    vlen: fft_len
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1508, 1050]
+    rotation: 0
+    state: enabled
+- name: mult_conj_2
+  id: multiply_conjugate_vcc
+  parameters:
+    alias: ''
+    comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    vlen: fft_len
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1508, 1250]
+    rotation: 0
+    state: enabled
+- name: mult_conj_3
+  id: multiply_conjugate_vcc
+  parameters:
+    alias: ''
+    comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    vlen: fft_len
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1508, 1450]
+    rotation: 0
+    state: enabled
+- name: mult_conj_4
+  id: multiply_conjugate_vcc
+  parameters:
+    alias: ''
+    comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    vlen: fft_len
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1508, 1650]
     rotation: 0
     state: enabled
 - name: ifft
@@ -625,7 +808,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1008.0, 550.0]
+    coordinate: [1758, 250]
     rotation: 0
     state: enabled
 - name: ifft_2
@@ -644,7 +827,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1008.0, 1200.0]
+    coordinate: [1758, 450]
     rotation: 0
     state: enabled
 - name: ifft_3
@@ -663,7 +846,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1008.0, 1500.0]
+    coordinate: [1758, 650]
     rotation: 0
     state: enabled
 - name: ifft_4
@@ -682,87 +865,255 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1008.0, 1800.0]
+    coordinate: [1758, 850]
     rotation: 0
     state: enabled
-- name: krakensdr_source_0
-  id: kraken_passive_radar_krakensdr_source
+- name: doppler_proc
+  id: kraken_passive_radar_doppler_processing
   parameters:
     affinity: ''
     alias: ''
     comment: ''
-    frequency: center_freq
-    gain: rf_gain
+    doppler_len: doppler_len
+    fft_len: fft_len
     maxoutbuf: '0'
     minoutbuf: '0'
-    sample_rate: samp_rate
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8, 344.0]
+    coordinate: [2008, 250]
     rotation: 0
     state: enabled
-- name: mult_conj
-  id: multiply_conjugate_vcc
+- name: doppler_proc_0
+  id: kraken_passive_radar_doppler_processing
   parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    doppler_len: doppler_len
+    fft_len: fft_len
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2008, 450]
+    rotation: 0
+    state: enabled
+- name: doppler_proc_1
+  id: kraken_passive_radar_doppler_processing
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    doppler_len: doppler_len
+    fft_len: fft_len
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2008, 650]
+    rotation: 0
+    state: enabled
+- name: doppler_proc_2
+  id: kraken_passive_radar_doppler_processing
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    doppler_len: doppler_len
+    fft_len: fft_len
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2008, 850]
+    rotation: 0
+    state: enabled
+- name: doppler_proc_3
+  id: kraken_passive_radar_doppler_processing
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    doppler_len: doppler_len
+    fft_len: fft_len
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2008, 1050]
+    rotation: 0
+    state: enabled
+- name: doppler_proc_4
+  id: kraken_passive_radar_doppler_processing
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    doppler_len: doppler_len
+    fft_len: fft_len
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2008, 1250]
+    rotation: 0
+    state: enabled
+- name: doppler_proc_5
+  id: kraken_passive_radar_doppler_processing
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    doppler_len: doppler_len
+    fft_len: fft_len
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2008, 1450]
+    rotation: 0
+    state: enabled
+- name: vec_to_stream
+  id: vector_to_stream
+  parameters:
+    affinity: ''
     alias: ''
     comment: ''
     maxoutbuf: '0'
     minoutbuf: '0'
-    vlen: fft_len
+    num_items: fft_len * doppler_len
+    type: float
+    vlen: '1'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [808.0, 550.0]
+    coordinate: [2258, 250]
     rotation: 0
     state: enabled
-- name: mult_conj_2
-  id: multiply_conjugate_vcc
+- name: vec_to_stream_0
+  id: vector_to_stream
   parameters:
+    affinity: ''
     alias: ''
     comment: ''
     maxoutbuf: '0'
     minoutbuf: '0'
-    vlen: fft_len
+    num_items: fft_len * doppler_len
+    type: float
+    vlen: '1'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [808.0, 1200.0]
+    coordinate: [2258, 450]
     rotation: 0
     state: enabled
-- name: mult_conj_3
-  id: multiply_conjugate_vcc
+- name: vec_to_stream_1
+  id: vector_to_stream
   parameters:
+    affinity: ''
     alias: ''
     comment: ''
     maxoutbuf: '0'
     minoutbuf: '0'
-    vlen: fft_len
+    num_items: fft_len * doppler_len
+    type: float
+    vlen: '1'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [808.0, 1500.0]
+    coordinate: [2258, 650]
     rotation: 0
     state: enabled
-- name: mult_conj_4
-  id: multiply_conjugate_vcc
+- name: vec_to_stream_2
+  id: vector_to_stream
   parameters:
+    affinity: ''
     alias: ''
     comment: ''
     maxoutbuf: '0'
     minoutbuf: '0'
-    vlen: fft_len
+    num_items: fft_len * doppler_len
+    type: float
+    vlen: '1'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [808.0, 1800.0]
+    coordinate: [2258, 850]
     rotation: 0
     state: enabled
+- name: vec_to_stream_3
+  id: vector_to_stream
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_items: fft_len * doppler_len
+    type: float
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2258, 1050]
+    rotation: 0
+    state: enabled
+- name: vec_to_stream_4
+  id: vector_to_stream
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_items: fft_len * doppler_len
+    type: float
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2258, 1250]
+    rotation: 0
+    state: enabled
+- name: vec_to_stream_5
+  id: vector_to_stream
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_items: fft_len * doppler_len
+    type: float
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2258, 1450]
+    rotation: 0
+    state: enabled
+
 - name: rd_raster
   id: qtgui_time_raster_sink_f
   parameters:
@@ -820,7 +1171,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8.0, 650.0]
+    coordinate: [2258, 1650]
     rotation: 0
     state: enabled
 - name: rd_raster_2
@@ -880,7 +1231,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8.0, 1300.0]
+    coordinate: [2258, 1850]
     rotation: 0
     state: enabled
 - name: rd_raster_3
@@ -940,7 +1291,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8.0, 1600.0]
+    coordinate: [2258, 2050]
     rotation: 0
     state: enabled
 - name: rd_raster_4
@@ -1000,7 +1351,43 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8.0, 1900.0]
+    coordinate: [2258, 2250]
+    rotation: 0
+    state: enabled
+- name: eca_canceller
+  id: kraken_passive_radar_eca_b_clutter_canceller
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    lib_path: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_surv_channels: '4'
+    num_taps: eca_taps
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2508, 250]
+    rotation: 0
+    state: enabled
+- name: krakensdr_source_0
+  id: kraken_passive_radar_krakensdr_source
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    frequency: center_freq
+    gain: rf_gain
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    sample_rate: samp_rate
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2508, 450]
     rotation: 0
     state: enabled
 - name: ref_chan
@@ -1018,59 +1405,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [250, 350.0]
-    rotation: 0
-    state: enabled
-- name: ref_dc
-  id: dc_blocker_cc
-  parameters:
-    alias: ''
-    comment: ''
-    length: '128'
-    long_form: 'True'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1008.0, 350.0]
-    rotation: 0
-    state: enabled
-- name: ref_fft
-  id: fft_vcc
-  parameters:
-    alias: ''
-    comment: ''
-    fft_size: fft_len
-    forward: 'True'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    nthreads: '1'
-    shift: 'True'
-    window: window.blackmanharris(fft_len)
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1208.0, 450.0]
-    rotation: 0
-    state: enabled
-- name: ref_vec
-  id: stream_to_vector
-  parameters:
-    alias: ''
-    comment: ''
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    num_items: fft_len
-    type: complex
-    vlen: '1'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [808.0, 450.0]
+    coordinate: [2508, 650]
     rotation: 0
     state: enabled
 - name: surv_chan
@@ -1088,7 +1423,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [250, 350.0]
+    coordinate: [2508, 850]
     rotation: 0
     state: enabled
 - name: surv_chan_2
@@ -1106,7 +1441,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [250, 750.0]
+    coordinate: [2508, 1050]
     rotation: 0
     state: enabled
 - name: surv_chan_3
@@ -1124,7 +1459,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [250, 850.0]
+    coordinate: [2508, 1250]
     rotation: 0
     state: enabled
 - name: surv_chan_4
@@ -1142,344 +1477,9 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [250, 950.0]
+    coordinate: [2508, 1450]
     rotation: 0
     state: enabled
-- name: surv_dc
-  id: dc_blocker_cc
-  parameters:
-    alias: ''
-    comment: ''
-    length: '128'
-    long_form: 'True'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1208.0, 350.0]
-    rotation: 0
-    state: enabled
-- name: surv_dc_2
-  id: dc_blocker_cc
-  parameters:
-    alias: ''
-    comment: ''
-    length: '128'
-    long_form: 'True'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1208.0, 750.0]
-    rotation: 0
-    state: enabled
-- name: surv_dc_3
-  id: dc_blocker_cc
-  parameters:
-    alias: ''
-    comment: ''
-    length: '128'
-    long_form: 'True'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1208.0, 850.0]
-    rotation: 0
-    state: enabled
-- name: surv_dc_4
-  id: dc_blocker_cc
-  parameters:
-    alias: ''
-    comment: ''
-    length: '128'
-    long_form: 'True'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1208.0, 950.0]
-    rotation: 0
-    state: enabled
-- name: surv_fft
-  id: fft_vcc
-  parameters:
-    alias: ''
-    comment: ''
-    fft_size: fft_len
-    forward: 'True'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    nthreads: '1'
-    shift: 'True'
-    window: window.blackmanharris(fft_len)
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [8.0, 550.0]
-    rotation: 0
-    state: enabled
-- name: surv_fft_2
-  id: fft_vcc
-  parameters:
-    alias: ''
-    comment: ''
-    fft_size: fft_len
-    forward: 'True'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    nthreads: '1'
-    shift: 'True'
-    window: window.blackmanharris(fft_len)
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [8.0, 1200.0]
-    rotation: 0
-    state: enabled
-- name: surv_fft_3
-  id: fft_vcc
-  parameters:
-    alias: ''
-    comment: ''
-    fft_size: fft_len
-    forward: 'True'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    nthreads: '1'
-    shift: 'True'
-    window: window.blackmanharris(fft_len)
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [8.0, 1500.0]
-    rotation: 0
-    state: enabled
-- name: surv_fft_4
-  id: fft_vcc
-  parameters:
-    alias: ''
-    comment: ''
-    fft_size: fft_len
-    forward: 'True'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    nthreads: '1'
-    shift: 'True'
-    window: window.blackmanharris(fft_len)
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [8.0, 1800.0]
-    rotation: 0
-    state: enabled
-- name: surv_vec
-  id: stream_to_vector
-  parameters:
-    alias: ''
-    comment: ''
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    num_items: fft_len
-    type: complex
-    vlen: '1'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1008.0, 450.0]
-    rotation: 0
-    state: enabled
-- name: surv_vec_2
-  id: stream_to_vector
-  parameters:
-    alias: ''
-    comment: ''
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    num_items: fft_len
-    type: complex
-    vlen: '1'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1008.0, 1100.0]
-    rotation: 0
-    state: enabled
-- name: surv_vec_3
-  id: stream_to_vector
-  parameters:
-    alias: ''
-    comment: ''
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    num_items: fft_len
-    type: complex
-    vlen: '1'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1008.0, 1400.0]
-    rotation: 0
-    state: enabled
-- name: surv_vec_4
-  id: stream_to_vector
-  parameters:
-    alias: ''
-    comment: ''
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    num_items: fft_len
-    type: complex
-    vlen: '1'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1008.0, 1700.0]
-    rotation: 0
-    state: enabled
-- name: vec_to_stream
-  id: vector_to_stream
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: ''
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    num_items: fft_len * doppler_len
-    type: float
-    vlen: '1'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [2384.0, 240.0]
-    rotation: 0
-    state: enabled
-- name: vec_to_stream_0
-  id: vector_to_stream
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: ''
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    num_items: fft_len * doppler_len
-    type: float
-    vlen: '1'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [2376.0, 456.0]
-    rotation: 0
-    state: enabled
-- name: vec_to_stream_1
-  id: vector_to_stream
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: ''
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    num_items: fft_len * doppler_len
-    type: float
-    vlen: '1'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [2376.0, 576.0]
-    rotation: 0
-    state: enabled
-- name: vec_to_stream_2
-  id: vector_to_stream
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: ''
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    num_items: fft_len * doppler_len
-    type: float
-    vlen: '1'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1408.0, 1200.0]
-    rotation: 0
-    state: enabled
-- name: vec_to_stream_3
-  id: vector_to_stream
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: ''
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    num_items: fft_len * doppler_len
-    type: float
-    vlen: '1'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1408.0, 1500.0]
-    rotation: 0
-    state: enabled
-- name: vec_to_stream_4
-  id: vector_to_stream
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: ''
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    num_items: fft_len * doppler_len
-    type: float
-    vlen: '1'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1408.0, 1800.0]
-    rotation: 0
-    state: enabled
-- name: vec_to_stream_5
-  id: vector_to_stream
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: ''
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    num_items: fft_len * doppler_len
-    type: float
-    vlen: '1'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [2376.0, 352.0]
-    rotation: 0
-    state: enabled
-
 connections:
 - [blocks_multiply_conjugate_cc_0, '0', fft_vxx_1, '0']
 - [blocks_multiply_conjugate_cc_0_0, '0', fft_vxx_1_2, '0']
