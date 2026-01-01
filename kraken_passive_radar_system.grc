@@ -130,7 +130,7 @@ blocks:
     rotation: 0
     state: enabled
 - name: blocks_multiply_conjugate_cc_0
-  id: blocks_multiply_conjugate_cc
+  id: multiply_conjugate_vcc
   parameters:
     affinity: ''
     alias: ''
@@ -146,7 +146,7 @@ blocks:
     rotation: 0
     state: enabled
 - name: blocks_multiply_conjugate_cc_0_0
-  id: blocks_multiply_conjugate_cc
+  id: multiply_conjugate_vcc
   parameters:
     affinity: ''
     alias: ''
@@ -162,7 +162,7 @@ blocks:
     rotation: 0
     state: enabled
 - name: blocks_multiply_conjugate_cc_0_1
-  id: blocks_multiply_conjugate_cc
+  id: multiply_conjugate_vcc
   parameters:
     affinity: ''
     alias: ''
@@ -178,7 +178,7 @@ blocks:
     rotation: 0
     state: enabled
 - name: blocks_multiply_conjugate_cc_0_2
-  id: blocks_multiply_conjugate_cc
+  id: multiply_conjugate_vcc
   parameters:
     affinity: ''
     alias: ''
@@ -194,7 +194,7 @@ blocks:
     rotation: 0
     state: enabled
 - name: blocks_stream_to_vector_0
-  id: blocks_stream_to_vector
+  id: stream_to_vector
   parameters:
     affinity: ''
     alias: ''
@@ -212,7 +212,7 @@ blocks:
     rotation: 0
     state: enabled
 - name: blocks_stream_to_vector_0_0
-  id: blocks_stream_to_vector
+  id: stream_to_vector
   parameters:
     affinity: ''
     alias: ''
@@ -230,7 +230,7 @@ blocks:
     rotation: 0
     state: enabled
 - name: blocks_stream_to_vector_0_1
-  id: blocks_stream_to_vector
+  id: stream_to_vector
   parameters:
     affinity: ''
     alias: ''
@@ -248,7 +248,7 @@ blocks:
     rotation: 0
     state: enabled
 - name: blocks_stream_to_vector_0_2
-  id: blocks_stream_to_vector
+  id: stream_to_vector
   parameters:
     affinity: ''
     alias: ''
@@ -266,7 +266,7 @@ blocks:
     rotation: 0
     state: enabled
 - name: blocks_stream_to_vector_0_3
-  id: blocks_stream_to_vector
+  id: stream_to_vector
   parameters:
     affinity: ''
     alias: ''
@@ -1354,7 +1354,7 @@ blocks:
     rotation: 0
     state: enabled
 - name: vec_to_stream
-  id: blocks_vector_to_stream
+  id: vector_to_stream
   parameters:
     affinity: ''
     alias: ''
@@ -1372,7 +1372,7 @@ blocks:
     rotation: 0
     state: enabled
 - name: vec_to_stream_0
-  id: blocks_vector_to_stream
+  id: vector_to_stream
   parameters:
     affinity: ''
     alias: ''
@@ -1390,7 +1390,7 @@ blocks:
     rotation: 0
     state: enabled
 - name: vec_to_stream_1
-  id: blocks_vector_to_stream
+  id: vector_to_stream
   parameters:
     affinity: ''
     alias: ''
@@ -1408,7 +1408,7 @@ blocks:
     rotation: 0
     state: enabled
 - name: vec_to_stream_2
-  id: blocks_vector_to_stream
+  id: vector_to_stream
   parameters:
     affinity: ''
     alias: ''
@@ -1426,7 +1426,7 @@ blocks:
     rotation: 0
     state: enabled
 - name: vec_to_stream_3
-  id: blocks_vector_to_stream
+  id: vector_to_stream
   parameters:
     affinity: ''
     alias: ''
@@ -1444,7 +1444,7 @@ blocks:
     rotation: 0
     state: enabled
 - name: vec_to_stream_4
-  id: blocks_vector_to_stream
+  id: vector_to_stream
   parameters:
     affinity: ''
     alias: ''
@@ -1462,7 +1462,7 @@ blocks:
     rotation: 0
     state: enabled
 - name: vec_to_stream_5
-  id: blocks_vector_to_stream
+  id: vector_to_stream
   parameters:
     affinity: ''
     alias: ''
