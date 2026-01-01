@@ -24,7 +24,7 @@ def format_yaml(data):
     output.append("  parameters:")
     for k, v in data['options']['parameters'].items():
         val = v
-        # Simple heuristic to avoid quoting unnecessary things, but GRC is forgiving
+        if val == '': val = "''"
         output.append(f"    {k}: {val}")
     output.append("  states:")
     output.append("    bus_sink: false")
@@ -150,23 +150,11 @@ def generate():
             sink_name = "rd_raster"
         else:
             src_port = i
-            # For Surv
-            # Ensure unique names for all blocks in the chain for channels 1..4
-            # Using simple _i suffix for all (where i=1,2,3,4) is safest and clearest.
-
-            # Special handling for "Surv 1" to match legacy if desired,
-            # but cleaner to just be consistent.
-            # Legacy often uses "name" then "name_0" or "name_1".
-            # Let's use strict numbering based on 'i'.
-
             if i == 1:
-                # To match "surv_chan" (no number) often seen?
-                # The previous code used "surv_chan" for i=1.
                 filt_name = "surv_chan"
                 dc_name = "surv_dc"
                 s2v_name = "surv_vec"
                 fft_name = "surv_fft"
-                # mult_conj_1, ifft_1, etc.
                 mult_name = f"mult_conj_{i}"
                 ifft_name = f"ifft_{i}"
                 dop_name = f"doppler_proc_{i}"

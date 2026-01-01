@@ -2,7 +2,7 @@ options:
   parameters:
     id: kraken_passive_radar_system
     title: KrakenSDR Passive Radar
-    author:
+    author: ''
     description: KrakenSDR Passive Radar System (ECA-B + CAF)
     window_size: 1280,800
     generate_options: qt_gui
@@ -10,20 +10,20 @@ options:
     run_options: prompt
     run: True
     max_nouts: 0
-    realtime_scheduling:
-    cmake_opt:
+    realtime_scheduling: ''
+    cmake_opt: ''
     gen_cmake: On
     gen_linking: dynamic
     output_language: python
     catch_exceptions: True
     placement: (0,0)
-    qt_qss_theme:
-    thread_safe_setters:
+    qt_qss_theme: ''
+    thread_safe_setters: ''
     sizing_mode: fixed
     run_command: {python} -u {filename}
     hier_block_src_path: .:
-    comment:
-    copyright:
+    comment: ''
+    copyright: ''
   states:
     bus_sink: false
     bus_source: false
