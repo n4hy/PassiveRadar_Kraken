@@ -31,8 +31,8 @@ gr-kraken_passive_radar/.cache/
 gr-kraken_passive_radar/*.log
 gr-kraken_passive_radar/**/*.so
 gr-kraken_passive_radar/**/*.o
-gr-kraken_passive_radar/**/*.a
-
+ar-kraken_passive_radar/**/*.a
+kraken_sdr_5ch*.py
 ############################################
 # CMake
 ############################################
