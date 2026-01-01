@@ -2,10 +2,21 @@
 import sys
 
 def create_block(name, id, parameters, coordinate, rotation=0, state='enabled'):
+    # Standard GRC keys that must be present for block visibility
+    std_params = {
+        'affinity': "''",
+        'alias': "''",
+        'minoutbuf': "'0'",
+        'maxoutbuf': "'0'"
+    }
+    # Merge parameters, preferring the provided ones
+    merged_params = std_params.copy()
+    merged_params.update(parameters)
+
     return {
         'name': name,
         'id': id,
-        'parameters': parameters,
+        'parameters': merged_params,
         'states': {
             'bus_sink': False,
             'bus_source': False,
@@ -22,6 +33,7 @@ def format_yaml(data):
     # Options Block
     output.append("options:")
     output.append("  parameters:")
+    # Options block has specific parameters, no need for min/maxoutbuf
     for k, v in data['options']['parameters'].items():
         val = str(v)
         # Quote string values that are empty or contain special chars
@@ -44,7 +56,9 @@ def format_yaml(data):
         output.append(f"- name: {b['name']}")
         output.append(f"  id: {b['id']}")
         output.append("  parameters:")
-        for k, v in b['parameters'].items():
+        # Sort parameters for stability
+        for k in sorted(b['parameters'].keys()):
+            v = b['parameters'][k]
             val = str(v)
             if isinstance(v, str):
                  if val == '' or any(c in val for c in "{}:#[]"):
@@ -74,8 +88,37 @@ def format_yaml(data):
 def generate():
     START_X = 8
     START_Y = 200
+
+    # Grid Layout Parameters
+    # Columns map to processing stages
     COL_W = 250
     ROW_H = 200
+
+    # Column Indices (X Coordinates)
+    # 0: Variables (Top Row)
+    # 1: Source
+    # 2: Filter
+    # 3: DC Block
+    # 4: ECA (Spans Rows)
+    # 5: Stream2Vec
+    # 6: FFT
+    # 7: MultConj
+    # 8: IFFT
+    # 9: Doppler
+    # 10: Vec2Stream
+    # 11: RasterSink
+
+    C_SRC = 0
+    C_FILT = 1
+    C_DC = 2
+    C_ECA = 3  # Dedicated column for ECA
+    C_S2V = 4
+    C_FFT = 5
+    C_MULT = 6
+    C_IFFT = 7
+    C_DOP = 8
+    C_V2S = 9
+    C_SINK = 10
 
     blocks = []
     connections = []
@@ -99,6 +142,9 @@ def generate():
         ))
 
     # --- Source ---
+    # Placed at Column 0, vertically centered relative to 5 channels
+    # Channels 0-4 are at Y = START_Y + 0*ROW_H to 4*ROW_H
+    # Center Y is roughly Row 2
     blocks.append(create_block(
         'krakensdr_source_0', 'kraken_passive_radar_krakensdr_source',
         {
@@ -107,25 +153,11 @@ def generate():
             'sample_rate': 'samp_rate',
             'comment': ''
         },
-        [START_X, START_Y + 2*ROW_H]
+        [START_X + C_SRC*COL_W, START_Y + 2*ROW_H]
     ))
 
-    # --- Per-Channel Processing ---
-    channels = ['ref', 'surv_0', 'surv_1', 'surv_2', 'surv_3']
-
-    # Columns
-    C_FILT = 1
-    C_DC = 2
-    C_ECA = 3
-    C_S2V = 4
-    C_FFT = 5
-    C_MULT = 6
-    C_IFFT = 7
-    C_DOP = 8
-    C_V2S = 9
-    C_SINK = 10
-
-    # ECA Block
+    # --- ECA Block ---
+    # Placed in its dedicated column, vertically centered
     eca_name = 'eca_canceller'
     blocks.append(create_block(
         eca_name, 'kraken_passive_radar_eca_b_clutter_canceller',
@@ -138,10 +170,13 @@ def generate():
         [START_X + C_ECA*COL_W, START_Y + 2*ROW_H]
     ))
 
+    # --- Per-Channel Processing Chains ---
+    channels = ['ref', 'surv_0', 'surv_1', 'surv_2', 'surv_3']
+
     for i, ch_name in enumerate(channels):
         row_y = START_Y + i*ROW_H
 
-        if i == 0:
+        if i == 0: # Reference Channel
             src_port = 0
             filt_name = "ref_chan"
             dc_name = "ref_dc"
@@ -152,18 +187,23 @@ def generate():
             dop_name = "doppler_proc"
             v2s_name = "vec_to_stream"
             sink_name = "rd_raster"
-        else:
+        else: # Surveillance Channels (1-4)
             src_port = i
+            # Naming convention: surv_X where X is index 1..4
+            suffix = "" if i == 1 else f"_{i}" # Historical naming quirk in previous files, let's normalize or keep?
+            # User's file used suffixes like _2, _3, _4.
+            # Ch 1 was usually just 'surv_chan', 'surv_dc'.
+            # To match previous style exactly:
             if i == 1:
                 filt_name = "surv_chan"
                 dc_name = "surv_dc"
                 s2v_name = "surv_vec"
                 fft_name = "surv_fft"
-                mult_name = f"mult_conj_{i}"
-                ifft_name = f"ifft_{i}"
-                dop_name = f"doppler_proc_{i}"
-                v2s_name = f"vec_to_stream_{i}"
-                sink_name = f"rd_raster_{i}"
+                mult_name = "mult_conj_1"
+                ifft_name = "ifft_1"
+                dop_name = "doppler_proc_1"
+                v2s_name = "vec_to_stream_1"
+                sink_name = "rd_raster_1"
             else:
                 filt_name = f"surv_chan_{i}"
                 dc_name = f"surv_dc_{i}"
@@ -175,7 +215,7 @@ def generate():
                 v2s_name = f"vec_to_stream_{i}"
                 sink_name = f"rd_raster_{i}"
 
-        # 1. Filter
+        # 1. Filter (Column 1)
         blocks.append(create_block(
             filt_name, 'freq_xlating_fir_filter_ccc',
             {
@@ -189,7 +229,7 @@ def generate():
         ))
         connections.append(('krakensdr_source_0', str(src_port), filt_name, '0'))
 
-        # 2. DC Block
+        # 2. DC Block (Column 2)
         blocks.append(create_block(
             dc_name, 'dc_blocker_cc',
             {'length': '128', 'long_form': 'True', 'comment': ''},
@@ -197,12 +237,11 @@ def generate():
         ))
         connections.append((filt_name, '0', dc_name, '0'))
 
-        # Connect DC to ECA
-        # Input 0: Reference
-        # Input 1..4: Surveillance
+        # --- ECA Connections ---
+        # All DC blocks connect to ECA
         connections.append((dc_name, '0', eca_name, str(i)))
 
-        # --- Post-ECA Chain ---
+        # --- Post-ECA Chain (Columns 4+) ---
 
         # 3. Stream to Vector
         blocks.append(create_block(
@@ -211,17 +250,15 @@ def generate():
             [START_X + C_S2V*COL_W, row_y]
         ))
 
-        # Connection from ECA Output or DC Bypass
+        # Logic:
+        # Ref Channel (i=0): Bypass ECA output. Connect DC -> S2V.
+        # Surv Channels (i=1..4): Use ECA Output. Connect ECA -> S2V.
+
         if i == 0:
-            # Reference: Bypass ECA output, take signal directly from DC block (or filter if preferred)
-            # This ensures we have the Reference signal for cross-correlation
             connections.append((dc_name, '0', s2v_name, '0'))
         else:
-            # Surveillance: Take from ECA Output
-            # ECA Output 0 -> Surv 1 (i=1)
-            # ECA Output 1 -> Surv 2 (i=2)
-            # ...
-            # Output index is i - 1
+            # ECA Output 0 corresponds to Surv Channel 1 (Input 1)
+            # Output index = i - 1
             connections.append((eca_name, str(i-1), s2v_name, '0'))
 
         # 4. FFT
@@ -242,10 +279,15 @@ def generate():
             [START_X + C_MULT*COL_W, row_y]
         ))
 
+        # Input 0: Current Channel FFT
         connections.append((fft_name, '0', mult_name, '0'))
+
+        # Input 1: Reference Channel FFT
+        # For Ch0 (Ref), we correlate with itself (Autocorrelation/Ambiguity Function)
         if i == 0:
             connections.append((fft_name, '0', mult_name, '1'))
         else:
+            # For Surv channels, connect to 'ref_fft' output
             connections.append(('ref_fft', '0', mult_name, '1'))
 
         # 6. IFFT

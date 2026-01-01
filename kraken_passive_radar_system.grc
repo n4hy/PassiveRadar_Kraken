@@ -36,8 +36,12 @@ blocks:
 - name: samp_rate
   id: variable
   parameters:
-    value: 2048000
+    affinity: ''
+    alias: ''
     comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    value: 2048000
   states:
     bus_sink: false
     bus_source: false
@@ -48,8 +52,12 @@ blocks:
 - name: center_freq
   id: variable
   parameters:
-    value: 99.5e6
+    affinity: ''
+    alias: ''
     comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    value: 99.5e6
   states:
     bus_sink: false
     bus_source: false
@@ -60,8 +68,12 @@ blocks:
 - name: rf_gain
   id: variable
   parameters:
-    value: 10
+    affinity: ''
+    alias: ''
     comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    value: 10
   states:
     bus_sink: false
     bus_source: false
@@ -72,8 +84,12 @@ blocks:
 - name: fft_len
   id: variable
   parameters:
-    value: 4096
+    affinity: ''
+    alias: ''
     comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    value: 4096
   states:
     bus_sink: false
     bus_source: false
@@ -84,8 +100,12 @@ blocks:
 - name: doppler_len
   id: variable
   parameters:
-    value: 128
+    affinity: ''
+    alias: ''
     comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    value: 128
   states:
     bus_sink: false
     bus_source: false
@@ -96,8 +116,12 @@ blocks:
 - name: decim
   id: variable
   parameters:
-    value: 2
+    affinity: ''
+    alias: ''
     comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    value: 2
   states:
     bus_sink: false
     bus_source: false
@@ -108,8 +132,12 @@ blocks:
 - name: bpf_bw
   id: variable
   parameters:
-    value: 180e3
+    affinity: ''
+    alias: ''
     comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    value: 180e3
   states:
     bus_sink: false
     bus_source: false
@@ -120,8 +148,12 @@ blocks:
 - name: eca_taps
   id: variable
   parameters:
-    value: 16
+    affinity: ''
+    alias: ''
     comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    value: 16
   states:
     bus_sink: false
     bus_source: false
@@ -132,10 +164,14 @@ blocks:
 - name: krakensdr_source_0
   id: kraken_passive_radar_krakensdr_source
   parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
     frequency: center_freq
     gain: rf_gain
+    maxoutbuf: '0'
+    minoutbuf: '0'
     sample_rate: samp_rate
-    comment: ''
   states:
     bus_sink: false
     bus_source: false
@@ -146,10 +182,14 @@ blocks:
 - name: eca_canceller
   id: kraken_passive_radar_eca_b_clutter_canceller
   parameters:
-    num_taps: eca_taps
-    num_surv_channels: 4
-    lib_path: ''
+    affinity: ''
+    alias: ''
     comment: ''
+    lib_path: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_surv_channels: 4
+    num_taps: eca_taps
   states:
     bus_sink: false
     bus_source: false
@@ -160,11 +200,15 @@ blocks:
 - name: ref_chan
   id: freq_xlating_fir_filter_ccc
   parameters:
-    decim: decim
-    taps: firdes.low_pass(1.0, samp_rate, bpf_bw/2, bpf_bw/4, firdes.WIN_HAMMING)
+    affinity: ''
+    alias: ''
     center_freq: 0
-    sample_rate: samp_rate
     comment: ''
+    decim: decim
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    sample_rate: samp_rate
+    taps: firdes.low_pass(1.0, samp_rate, bpf_bw/2, bpf_bw/4, firdes.WIN_HAMMING)
   states:
     bus_sink: false
     bus_source: false
@@ -175,9 +219,13 @@ blocks:
 - name: ref_dc
   id: dc_blocker_cc
   parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
     length: 128
     long_form: True
-    comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
   states:
     bus_sink: false
     bus_source: false
@@ -188,10 +236,14 @@ blocks:
 - name: ref_vec
   id: stream_to_vector
   parameters:
-    type: complex
-    num_items: fft_len
-    vlen: 1
+    affinity: ''
+    alias: ''
     comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_items: fft_len
+    type: complex
+    vlen: 1
   states:
     bus_sink: false
     bus_source: false
@@ -202,12 +254,16 @@ blocks:
 - name: ref_fft
   id: fft_vcc
   parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
     fft_size: fft_len
     forward: True
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    nthreads: 1
     shift: True
     window: window.blackmanharris(fft_len)
-    nthreads: 1
-    comment: ''
   states:
     bus_sink: false
     bus_source: false
@@ -218,8 +274,12 @@ blocks:
 - name: mult_conj
   id: multiply_conjugate_vcc
   parameters:
-    vlen: fft_len
+    affinity: ''
+    alias: ''
     comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    vlen: fft_len
   states:
     bus_sink: false
     bus_source: false
@@ -230,12 +290,16 @@ blocks:
 - name: ifft
   id: ifft_vcc
   parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
     fft_size: fft_len
     forward: True
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    nthreads: 1
     shift: True
     window: window.blackmanharris(fft_len)
-    nthreads: 1
-    comment: ''
   states:
     bus_sink: false
     bus_source: false
@@ -246,9 +310,13 @@ blocks:
 - name: doppler_proc
   id: kraken_passive_radar_doppler_processing
   parameters:
-    fft_len: fft_len
-    doppler_len: doppler_len
+    affinity: ''
+    alias: ''
     comment: ''
+    doppler_len: doppler_len
+    fft_len: fft_len
+    maxoutbuf: '0'
+    minoutbuf: '0'
   states:
     bus_sink: false
     bus_source: false
@@ -259,10 +327,14 @@ blocks:
 - name: vec_to_stream
   id: vector_to_stream
   parameters:
-    type: float
-    num_items: fft_len * doppler_len
-    vlen: 1
+    affinity: ''
+    alias: ''
     comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_items: fft_len * doppler_len
+    type: float
+    vlen: 1
   states:
     bus_sink: false
     bus_source: false
@@ -273,16 +345,20 @@ blocks:
 - name: rd_raster
   id: qtgui_time_raster_sink_f
   parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    grid: False
+    maxoutbuf: '0'
+    minoutbuf: '0'
     name: 'Range-Doppler (CAF) Ref'
-    nrows: doppler_len
     ncols: fft_len
+    nrows: doppler_len
+    update_time: 0.10
     x_axis_label: 'Range Bins'
     y_axis_label: 'Doppler Bins'
-    zmin: 0
     zmax: 100
-    grid: False
-    update_time: 0.10
-    comment: ''
+    zmin: 0
   states:
     bus_sink: false
     bus_source: false
@@ -293,11 +369,15 @@ blocks:
 - name: surv_chan
   id: freq_xlating_fir_filter_ccc
   parameters:
-    decim: decim
-    taps: firdes.low_pass(1.0, samp_rate, bpf_bw/2, bpf_bw/4, firdes.WIN_HAMMING)
+    affinity: ''
+    alias: ''
     center_freq: 0
-    sample_rate: samp_rate
     comment: ''
+    decim: decim
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    sample_rate: samp_rate
+    taps: firdes.low_pass(1.0, samp_rate, bpf_bw/2, bpf_bw/4, firdes.WIN_HAMMING)
   states:
     bus_sink: false
     bus_source: false
@@ -308,9 +388,13 @@ blocks:
 - name: surv_dc
   id: dc_blocker_cc
   parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
     length: 128
     long_form: True
-    comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
   states:
     bus_sink: false
     bus_source: false
@@ -321,10 +405,14 @@ blocks:
 - name: surv_vec
   id: stream_to_vector
   parameters:
-    type: complex
-    num_items: fft_len
-    vlen: 1
+    affinity: ''
+    alias: ''
     comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_items: fft_len
+    type: complex
+    vlen: 1
   states:
     bus_sink: false
     bus_source: false
@@ -335,12 +423,16 @@ blocks:
 - name: surv_fft
   id: fft_vcc
   parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
     fft_size: fft_len
     forward: True
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    nthreads: 1
     shift: True
     window: window.blackmanharris(fft_len)
-    nthreads: 1
-    comment: ''
   states:
     bus_sink: false
     bus_source: false
@@ -351,8 +443,12 @@ blocks:
 - name: mult_conj_1
   id: multiply_conjugate_vcc
   parameters:
-    vlen: fft_len
+    affinity: ''
+    alias: ''
     comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    vlen: fft_len
   states:
     bus_sink: false
     bus_source: false
@@ -363,12 +459,16 @@ blocks:
 - name: ifft_1
   id: ifft_vcc
   parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
     fft_size: fft_len
     forward: True
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    nthreads: 1
     shift: True
     window: window.blackmanharris(fft_len)
-    nthreads: 1
-    comment: ''
   states:
     bus_sink: false
     bus_source: false
@@ -379,9 +479,13 @@ blocks:
 - name: doppler_proc_1
   id: kraken_passive_radar_doppler_processing
   parameters:
-    fft_len: fft_len
-    doppler_len: doppler_len
+    affinity: ''
+    alias: ''
     comment: ''
+    doppler_len: doppler_len
+    fft_len: fft_len
+    maxoutbuf: '0'
+    minoutbuf: '0'
   states:
     bus_sink: false
     bus_source: false
@@ -392,10 +496,14 @@ blocks:
 - name: vec_to_stream_1
   id: vector_to_stream
   parameters:
-    type: float
-    num_items: fft_len * doppler_len
-    vlen: 1
+    affinity: ''
+    alias: ''
     comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_items: fft_len * doppler_len
+    type: float
+    vlen: 1
   states:
     bus_sink: false
     bus_source: false
@@ -406,16 +514,20 @@ blocks:
 - name: rd_raster_1
   id: qtgui_time_raster_sink_f
   parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    grid: False
+    maxoutbuf: '0'
+    minoutbuf: '0'
     name: 'Range-Doppler (CAF) Ch1'
-    nrows: doppler_len
     ncols: fft_len
+    nrows: doppler_len
+    update_time: 0.10
     x_axis_label: 'Range Bins'
     y_axis_label: 'Doppler Bins'
-    zmin: 0
     zmax: 100
-    grid: False
-    update_time: 0.10
-    comment: ''
+    zmin: 0
   states:
     bus_sink: false
     bus_source: false
@@ -426,11 +538,15 @@ blocks:
 - name: surv_chan_2
   id: freq_xlating_fir_filter_ccc
   parameters:
-    decim: decim
-    taps: firdes.low_pass(1.0, samp_rate, bpf_bw/2, bpf_bw/4, firdes.WIN_HAMMING)
+    affinity: ''
+    alias: ''
     center_freq: 0
-    sample_rate: samp_rate
     comment: ''
+    decim: decim
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    sample_rate: samp_rate
+    taps: firdes.low_pass(1.0, samp_rate, bpf_bw/2, bpf_bw/4, firdes.WIN_HAMMING)
   states:
     bus_sink: false
     bus_source: false
@@ -441,9 +557,13 @@ blocks:
 - name: surv_dc_2
   id: dc_blocker_cc
   parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
     length: 128
     long_form: True
-    comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
   states:
     bus_sink: false
     bus_source: false
@@ -454,10 +574,14 @@ blocks:
 - name: surv_vec_2
   id: stream_to_vector
   parameters:
-    type: complex
-    num_items: fft_len
-    vlen: 1
+    affinity: ''
+    alias: ''
     comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_items: fft_len
+    type: complex
+    vlen: 1
   states:
     bus_sink: false
     bus_source: false
@@ -468,12 +592,16 @@ blocks:
 - name: surv_fft_2
   id: fft_vcc
   parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
     fft_size: fft_len
     forward: True
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    nthreads: 1
     shift: True
     window: window.blackmanharris(fft_len)
-    nthreads: 1
-    comment: ''
   states:
     bus_sink: false
     bus_source: false
@@ -484,8 +612,12 @@ blocks:
 - name: mult_conj_2
   id: multiply_conjugate_vcc
   parameters:
-    vlen: fft_len
+    affinity: ''
+    alias: ''
     comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    vlen: fft_len
   states:
     bus_sink: false
     bus_source: false
@@ -496,12 +628,16 @@ blocks:
 - name: ifft_2
   id: ifft_vcc
   parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
     fft_size: fft_len
     forward: True
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    nthreads: 1
     shift: True
     window: window.blackmanharris(fft_len)
-    nthreads: 1
-    comment: ''
   states:
     bus_sink: false
     bus_source: false
@@ -512,9 +648,13 @@ blocks:
 - name: doppler_proc_2
   id: kraken_passive_radar_doppler_processing
   parameters:
-    fft_len: fft_len
-    doppler_len: doppler_len
+    affinity: ''
+    alias: ''
     comment: ''
+    doppler_len: doppler_len
+    fft_len: fft_len
+    maxoutbuf: '0'
+    minoutbuf: '0'
   states:
     bus_sink: false
     bus_source: false
@@ -525,10 +665,14 @@ blocks:
 - name: vec_to_stream_2
   id: vector_to_stream
   parameters:
-    type: float
-    num_items: fft_len * doppler_len
-    vlen: 1
+    affinity: ''
+    alias: ''
     comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_items: fft_len * doppler_len
+    type: float
+    vlen: 1
   states:
     bus_sink: false
     bus_source: false
@@ -539,16 +683,20 @@ blocks:
 - name: rd_raster_2
   id: qtgui_time_raster_sink_f
   parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    grid: False
+    maxoutbuf: '0'
+    minoutbuf: '0'
     name: 'Range-Doppler (CAF) Ch2'
-    nrows: doppler_len
     ncols: fft_len
+    nrows: doppler_len
+    update_time: 0.10
     x_axis_label: 'Range Bins'
     y_axis_label: 'Doppler Bins'
-    zmin: 0
     zmax: 100
-    grid: False
-    update_time: 0.10
-    comment: ''
+    zmin: 0
   states:
     bus_sink: false
     bus_source: false
@@ -559,11 +707,15 @@ blocks:
 - name: surv_chan_3
   id: freq_xlating_fir_filter_ccc
   parameters:
-    decim: decim
-    taps: firdes.low_pass(1.0, samp_rate, bpf_bw/2, bpf_bw/4, firdes.WIN_HAMMING)
+    affinity: ''
+    alias: ''
     center_freq: 0
-    sample_rate: samp_rate
     comment: ''
+    decim: decim
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    sample_rate: samp_rate
+    taps: firdes.low_pass(1.0, samp_rate, bpf_bw/2, bpf_bw/4, firdes.WIN_HAMMING)
   states:
     bus_sink: false
     bus_source: false
@@ -574,9 +726,13 @@ blocks:
 - name: surv_dc_3
   id: dc_blocker_cc
   parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
     length: 128
     long_form: True
-    comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
   states:
     bus_sink: false
     bus_source: false
@@ -587,10 +743,14 @@ blocks:
 - name: surv_vec_3
   id: stream_to_vector
   parameters:
-    type: complex
-    num_items: fft_len
-    vlen: 1
+    affinity: ''
+    alias: ''
     comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_items: fft_len
+    type: complex
+    vlen: 1
   states:
     bus_sink: false
     bus_source: false
@@ -601,12 +761,16 @@ blocks:
 - name: surv_fft_3
   id: fft_vcc
   parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
     fft_size: fft_len
     forward: True
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    nthreads: 1
     shift: True
     window: window.blackmanharris(fft_len)
-    nthreads: 1
-    comment: ''
   states:
     bus_sink: false
     bus_source: false
@@ -617,8 +781,12 @@ blocks:
 - name: mult_conj_3
   id: multiply_conjugate_vcc
   parameters:
-    vlen: fft_len
+    affinity: ''
+    alias: ''
     comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    vlen: fft_len
   states:
     bus_sink: false
     bus_source: false
@@ -629,12 +797,16 @@ blocks:
 - name: ifft_3
   id: ifft_vcc
   parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
     fft_size: fft_len
     forward: True
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    nthreads: 1
     shift: True
     window: window.blackmanharris(fft_len)
-    nthreads: 1
-    comment: ''
   states:
     bus_sink: false
     bus_source: false
@@ -645,9 +817,13 @@ blocks:
 - name: doppler_proc_3
   id: kraken_passive_radar_doppler_processing
   parameters:
-    fft_len: fft_len
-    doppler_len: doppler_len
+    affinity: ''
+    alias: ''
     comment: ''
+    doppler_len: doppler_len
+    fft_len: fft_len
+    maxoutbuf: '0'
+    minoutbuf: '0'
   states:
     bus_sink: false
     bus_source: false
@@ -658,10 +834,14 @@ blocks:
 - name: vec_to_stream_3
   id: vector_to_stream
   parameters:
-    type: float
-    num_items: fft_len * doppler_len
-    vlen: 1
+    affinity: ''
+    alias: ''
     comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_items: fft_len * doppler_len
+    type: float
+    vlen: 1
   states:
     bus_sink: false
     bus_source: false
@@ -672,16 +852,20 @@ blocks:
 - name: rd_raster_3
   id: qtgui_time_raster_sink_f
   parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    grid: False
+    maxoutbuf: '0'
+    minoutbuf: '0'
     name: 'Range-Doppler (CAF) Ch3'
-    nrows: doppler_len
     ncols: fft_len
+    nrows: doppler_len
+    update_time: 0.10
     x_axis_label: 'Range Bins'
     y_axis_label: 'Doppler Bins'
-    zmin: 0
     zmax: 100
-    grid: False
-    update_time: 0.10
-    comment: ''
+    zmin: 0
   states:
     bus_sink: false
     bus_source: false
@@ -692,11 +876,15 @@ blocks:
 - name: surv_chan_4
   id: freq_xlating_fir_filter_ccc
   parameters:
-    decim: decim
-    taps: firdes.low_pass(1.0, samp_rate, bpf_bw/2, bpf_bw/4, firdes.WIN_HAMMING)
+    affinity: ''
+    alias: ''
     center_freq: 0
-    sample_rate: samp_rate
     comment: ''
+    decim: decim
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    sample_rate: samp_rate
+    taps: firdes.low_pass(1.0, samp_rate, bpf_bw/2, bpf_bw/4, firdes.WIN_HAMMING)
   states:
     bus_sink: false
     bus_source: false
@@ -707,9 +895,13 @@ blocks:
 - name: surv_dc_4
   id: dc_blocker_cc
   parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
     length: 128
     long_form: True
-    comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
   states:
     bus_sink: false
     bus_source: false
@@ -720,10 +912,14 @@ blocks:
 - name: surv_vec_4
   id: stream_to_vector
   parameters:
-    type: complex
-    num_items: fft_len
-    vlen: 1
+    affinity: ''
+    alias: ''
     comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_items: fft_len
+    type: complex
+    vlen: 1
   states:
     bus_sink: false
     bus_source: false
@@ -734,12 +930,16 @@ blocks:
 - name: surv_fft_4
   id: fft_vcc
   parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
     fft_size: fft_len
     forward: True
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    nthreads: 1
     shift: True
     window: window.blackmanharris(fft_len)
-    nthreads: 1
-    comment: ''
   states:
     bus_sink: false
     bus_source: false
@@ -750,8 +950,12 @@ blocks:
 - name: mult_conj_4
   id: multiply_conjugate_vcc
   parameters:
-    vlen: fft_len
+    affinity: ''
+    alias: ''
     comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    vlen: fft_len
   states:
     bus_sink: false
     bus_source: false
@@ -762,12 +966,16 @@ blocks:
 - name: ifft_4
   id: ifft_vcc
   parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
     fft_size: fft_len
     forward: True
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    nthreads: 1
     shift: True
     window: window.blackmanharris(fft_len)
-    nthreads: 1
-    comment: ''
   states:
     bus_sink: false
     bus_source: false
@@ -778,9 +986,13 @@ blocks:
 - name: doppler_proc_4
   id: kraken_passive_radar_doppler_processing
   parameters:
-    fft_len: fft_len
-    doppler_len: doppler_len
+    affinity: ''
+    alias: ''
     comment: ''
+    doppler_len: doppler_len
+    fft_len: fft_len
+    maxoutbuf: '0'
+    minoutbuf: '0'
   states:
     bus_sink: false
     bus_source: false
@@ -791,10 +1003,14 @@ blocks:
 - name: vec_to_stream_4
   id: vector_to_stream
   parameters:
-    type: float
-    num_items: fft_len * doppler_len
-    vlen: 1
+    affinity: ''
+    alias: ''
     comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_items: fft_len * doppler_len
+    type: float
+    vlen: 1
   states:
     bus_sink: false
     bus_source: false
@@ -805,16 +1021,20 @@ blocks:
 - name: rd_raster_4
   id: qtgui_time_raster_sink_f
   parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    grid: False
+    maxoutbuf: '0'
+    minoutbuf: '0'
     name: 'Range-Doppler (CAF) Ch4'
-    nrows: doppler_len
     ncols: fft_len
+    nrows: doppler_len
+    update_time: 0.10
     x_axis_label: 'Range Bins'
     y_axis_label: 'Doppler Bins'
-    zmin: 0
     zmax: 100
-    grid: False
-    update_time: 0.10
-    comment: ''
+    zmin: 0
   states:
     bus_sink: false
     bus_source: false
