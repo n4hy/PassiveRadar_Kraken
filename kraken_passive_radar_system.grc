@@ -20,8 +20,8 @@ options:
     qt_qss_theme: ''
     thread_safe_setters: ''
     sizing_mode: fixed
-    run_command: {python} -u {filename}
-    hier_block_src_path: .:
+    run_command: '{python} -u {filename}'
+    hier_block_src_path: '.:'
     comment: ''
     copyright: ''
   states:

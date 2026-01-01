@@ -23,8 +23,12 @@ def format_yaml(data):
     output.append("options:")
     output.append("  parameters:")
     for k, v in data['options']['parameters'].items():
-        val = v
-        if val == '': val = "''"
+        val = str(v)
+        # Quote string values that are empty or contain special chars
+        # { } : # are special in YAML
+        if isinstance(v, str):
+            if val == '' or any(c in val for c in "{}:#[]"):
+                val = f"'{val}'"
         output.append(f"    {k}: {val}")
     output.append("  states:")
     output.append("    bus_sink: false")
@@ -42,8 +46,11 @@ def format_yaml(data):
         output.append(f"  id: {b['id']}")
         output.append("  parameters:")
         for k, v in b['parameters'].items():
-            val = v
-            if val == '': val = "''"
+            val = str(v)
+            if isinstance(v, str):
+                 # Specifically checking for empty or special chars is safer
+                 if val == '' or any(c in val for c in "{}:#[]"):
+                    val = f"'{val}'"
             output.append(f"    {k}: {val}")
         output.append("  states:")
         output.append("    bus_sink: false")
@@ -136,7 +143,6 @@ def generate():
     for i, ch_name in enumerate(channels):
         row_y = START_Y + i*ROW_H
 
-        # Suffix/Naming logic
         if i == 0:
             src_port = 0
             filt_name = "ref_chan"
