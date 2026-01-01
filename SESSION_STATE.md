@@ -4,11 +4,15 @@
 Implement a high-performance, coherent Passive Radar system using KrakenSDR (5-channel RTL-SDR). The architecture follows a strict "Passive Radar Done Right" topology, prioritizing mathematical correctness, phase coherence, and computational efficiency.
 
 ## 2. Current Session Accomplishments
-*   **GRC Cleanup:** Repaired `kraken_passive_radar_system.grc`.
-    *   **Visibility:** All hidden blocks (Filters, DC Blockers, ECA) are now exposed and visibly selectable on the canvas.
-    *   **Fixes:** Renamed invalid `fft_vxx` blocks to `fft_vcc`.
-    *   **Connectivity:** Resolved conflicting input connections. Retained the implicit `Source -> Filter -> DC -> ECA` chain but made it visible.
-*   **Audit:** Verified that `krakensdr_source.py` exposes hardware control for the noise source (`set_noise_source`) but **lacks** any signal processing logic for calibration.
+*   **GRC Flowgraph Regeneration:**
+    *   Replaced the manual editing approach with a Python script (`generate_grc_clean.py`) to programmatically generate `kraken_passive_radar_system.grc`.
+    *   **Debris Removal:** Eliminated all "invisible debris" and legacy blocks by generating the file from scratch.
+    *   **Visibility:** Enforced a clean grid layout (X, Y coordinates) ensuring all blocks (Filters, DC Blockers, ECA, CAF chain) are visible and logically grouped by channel.
+    *   **Topology:** Implemented a 5-channel coherent pipeline: Source -> Freq Xlating Filter -> DC Block -> ECA -> CAF Chain.
+    *   **Connectivity Fixes:**
+        *   Resolved YAML parser errors by quoting special characters in option parameters.
+        *   Corrected `eca_canceller` port mapping: Reference channel bypasses ECA output (drawing from DC block), while Surveillance channels 1-4 use ECA outputs 0-3.
+*   **Status:** The GRC file now loads in GNU Radio Companion without errors. However, the user notes that while valid, the configuration is "not correct" relative to specific requirements.
 
 ## 3. Master Architecture & Requirements
 
@@ -55,10 +59,10 @@ Implement a high-performance, coherent Passive Radar system using KrakenSDR (5-c
 *   **Stability:** Regularization (Diagonal Loading) and Condition Number checks are required.
 
 ## 4. Next Immediate Steps (Plan)
-1.  **Implement "Calibration Block":** Create a Python/C++ block to handle the Time/Phase alignment using the noise source.
-    *   *Test:* Verify 0-phase difference on correlated noise inputs.
-2.  **Unit Test Audit:** Systematically verify `ECA` implementation for Diagonal Loading and `CAF` for Overlap-Save correctness.
-3.  **Conditioning Blocks:** Implement/Verify Slow-AGC and Whitening blocks.
+1.  **Ingest New YAML Instructions:** The user will provide a complete set of instructions and examples for the correct GRC YAML structure.
+2.  **Refine Generation Logic:** Update `generate_grc_clean.py` to match the new specifications exactly.
+3.  **Implement "Calibration Block":** Create a Python/C++ block to handle the Time/Phase alignment using the noise source.
+4.  **Conditioning Blocks:** Implement/Verify Slow-AGC and Whitening blocks.
 
 ---
 *End of Session Report - [Date]*
