@@ -90,28 +90,14 @@ def generate():
     START_Y = 200
 
     # Grid Layout Parameters
-    # Columns map to processing stages
     COL_W = 250
     ROW_H = 200
 
-    # Column Indices (X Coordinates)
-    # 0: Variables (Top Row)
-    # 1: Source
-    # 2: Filter
-    # 3: DC Block
-    # 4: ECA (Spans Rows)
-    # 5: Stream2Vec
-    # 6: FFT
-    # 7: MultConj
-    # 8: IFFT
-    # 9: Doppler
-    # 10: Vec2Stream
-    # 11: RasterSink
-
+    # Column Indices
     C_SRC = 0
     C_FILT = 1
     C_DC = 2
-    C_ECA = 3  # Dedicated column for ECA
+    C_ECA = 3
     C_S2V = 4
     C_FFT = 5
     C_MULT = 6
@@ -142,9 +128,6 @@ def generate():
         ))
 
     # --- Source ---
-    # Placed at Column 0, vertically centered relative to 5 channels
-    # Channels 0-4 are at Y = START_Y + 0*ROW_H to 4*ROW_H
-    # Center Y is roughly Row 2
     blocks.append(create_block(
         'krakensdr_source_0', 'kraken_passive_radar_krakensdr_source',
         {
@@ -157,7 +140,6 @@ def generate():
     ))
 
     # --- ECA Block ---
-    # Placed in its dedicated column, vertically centered
     eca_name = 'eca_canceller'
     blocks.append(create_block(
         eca_name, 'kraken_passive_radar_eca_b_clutter_canceller',
@@ -177,7 +159,8 @@ def generate():
         row_y = START_Y + i*ROW_H
 
         if i == 0: # Reference Channel
-            src_port = 0
+            # Kraken Source Output Port ID: ch0, ch1, etc.
+            src_port = "ch0"
             filt_name = "ref_chan"
             dc_name = "ref_dc"
             s2v_name = "ref_vec"
@@ -188,12 +171,7 @@ def generate():
             v2s_name = "vec_to_stream"
             sink_name = "rd_raster"
         else: # Surveillance Channels (1-4)
-            src_port = i
-            # Naming convention: surv_X where X is index 1..4
-            suffix = "" if i == 1 else f"_{i}" # Historical naming quirk in previous files, let's normalize or keep?
-            # User's file used suffixes like _2, _3, _4.
-            # Ch 1 was usually just 'surv_chan', 'surv_dc'.
-            # To match previous style exactly:
+            src_port = f"ch{i}"
             if i == 1:
                 filt_name = "surv_chan"
                 dc_name = "surv_dc"
@@ -215,7 +193,7 @@ def generate():
                 v2s_name = f"vec_to_stream_{i}"
                 sink_name = f"rd_raster_{i}"
 
-        # 1. Filter (Column 1)
+        # 1. Filter
         blocks.append(create_block(
             filt_name, 'freq_xlating_fir_filter_ccc',
             {
@@ -227,9 +205,9 @@ def generate():
             },
             [START_X + C_FILT*COL_W, row_y]
         ))
-        connections.append(('krakensdr_source_0', str(src_port), filt_name, '0'))
+        connections.append(('krakensdr_source_0', src_port, filt_name, '0'))
 
-        # 2. DC Block (Column 2)
+        # 2. DC Block
         blocks.append(create_block(
             dc_name, 'dc_blocker_cc',
             {'length': '128', 'long_form': 'True', 'comment': ''},
@@ -238,10 +216,15 @@ def generate():
         connections.append((filt_name, '0', dc_name, '0'))
 
         # --- ECA Connections ---
-        # All DC blocks connect to ECA
-        connections.append((dc_name, '0', eca_name, str(i)))
+        if i == 0:
+            # Reference Input ID: 'reference'
+            connections.append((dc_name, '0', eca_name, 'reference'))
+        else:
+            # Surveillance Input ID: 'surveillance0', 'surveillance1', etc.
+            # Surv Index is i-1 (0 to 3)
+            connections.append((dc_name, '0', eca_name, f'surveillance{i-1}'))
 
-        # --- Post-ECA Chain (Columns 4+) ---
+        # --- Post-ECA Chain ---
 
         # 3. Stream to Vector
         blocks.append(create_block(
@@ -250,16 +233,13 @@ def generate():
             [START_X + C_S2V*COL_W, row_y]
         ))
 
-        # Logic:
-        # Ref Channel (i=0): Bypass ECA output. Connect DC -> S2V.
-        # Surv Channels (i=1..4): Use ECA Output. Connect ECA -> S2V.
-
         if i == 0:
+            # Bypass ECA for Reference
             connections.append((dc_name, '0', s2v_name, '0'))
         else:
-            # ECA Output 0 corresponds to Surv Channel 1 (Input 1)
-            # Output index = i - 1
-            connections.append((eca_name, str(i-1), s2v_name, '0'))
+            # Use ECA Output
+            # Output ID: 'error0', 'error1', etc.
+            connections.append((eca_name, f'error{i-1}', s2v_name, '0'))
 
         # 4. FFT
         blocks.append(create_block(
@@ -279,15 +259,10 @@ def generate():
             [START_X + C_MULT*COL_W, row_y]
         ))
 
-        # Input 0: Current Channel FFT
         connections.append((fft_name, '0', mult_name, '0'))
-
-        # Input 1: Reference Channel FFT
-        # For Ch0 (Ref), we correlate with itself (Autocorrelation/Ambiguity Function)
         if i == 0:
             connections.append((fft_name, '0', mult_name, '1'))
         else:
-            # For Surv channels, connect to 'ref_fft' output
             connections.append(('ref_fft', '0', mult_name, '1'))
 
         # 6. IFFT
@@ -302,12 +277,13 @@ def generate():
         connections.append((mult_name, '0', ifft_name, '0'))
 
         # 7. Doppler Processing
+        # Port IDs: 'in' and 'out' (derived from labels in block.yml)
         blocks.append(create_block(
             dop_name, 'kraken_passive_radar_doppler_processing',
             {'fft_len': 'fft_len', 'doppler_len': 'doppler_len', 'comment': ''},
             [START_X + C_DOP*COL_W, row_y]
         ))
-        connections.append((ifft_name, '0', dop_name, '0'))
+        connections.append((ifft_name, '0', dop_name, 'in'))
 
         # 8. Vector to Stream
         blocks.append(create_block(
@@ -315,7 +291,7 @@ def generate():
             {'type': 'float', 'num_items': 'fft_len * doppler_len', 'vlen': '1', 'comment': ''},
             [START_X + C_V2S*COL_W, row_y]
         ))
-        connections.append((dop_name, '0', v2s_name, '0'))
+        connections.append((dop_name, 'out', v2s_name, '0'))
 
         # 9. Raster Sink
         ch_label = f"Ch{i}" if i > 0 else "Ref"
