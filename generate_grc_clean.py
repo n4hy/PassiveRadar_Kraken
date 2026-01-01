@@ -159,8 +159,8 @@ def generate():
         row_y = START_Y + i*ROW_H
 
         if i == 0: # Reference Channel
-            # Kraken Source Output Port ID: ch0, ch1, etc.
-            src_port = "ch0"
+            # Kraken Source Index: 0
+            src_port = "0"
             filt_name = "ref_chan"
             dc_name = "ref_dc"
             s2v_name = "ref_vec"
@@ -171,7 +171,7 @@ def generate():
             v2s_name = "vec_to_stream"
             sink_name = "rd_raster"
         else: # Surveillance Channels (1-4)
-            src_port = f"ch{i}"
+            src_port = str(i)
             if i == 1:
                 filt_name = "surv_chan"
                 dc_name = "surv_dc"
@@ -217,12 +217,13 @@ def generate():
 
         # --- ECA Connections ---
         if i == 0:
-            # Reference Input ID: 'reference'
-            connections.append((dc_name, '0', eca_name, 'reference'))
+            # Reference Input Index: 0
+            connections.append((dc_name, '0', eca_name, '0'))
         else:
-            # Surveillance Input ID: 'surveillance0', 'surveillance1', etc.
+            # Surveillance Input Index: 1, 2, 3, 4
             # Surv Index is i-1 (0 to 3)
-            connections.append((dc_name, '0', eca_name, f'surveillance{i-1}'))
+            # Map: i=1 -> Port 1; i=2 -> Port 2; ...
+            connections.append((dc_name, '0', eca_name, str(i)))
 
         # --- Post-ECA Chain ---
 
@@ -238,8 +239,9 @@ def generate():
             connections.append((dc_name, '0', s2v_name, '0'))
         else:
             # Use ECA Output
-            # Output ID: 'error0', 'error1', etc.
-            connections.append((eca_name, f'error{i-1}', s2v_name, '0'))
+            # Output Index: 0, 1, 2, 3
+            # Map: i=1 -> Port 0; i=2 -> Port 1; ...
+            connections.append((eca_name, str(i-1), s2v_name, '0'))
 
         # 4. FFT
         blocks.append(create_block(
@@ -277,13 +279,13 @@ def generate():
         connections.append((mult_name, '0', ifft_name, '0'))
 
         # 7. Doppler Processing
-        # Port IDs: 'in' and 'out' (derived from labels in block.yml)
+        # Port Indices: 0 (In), 0 (Out)
         blocks.append(create_block(
             dop_name, 'kraken_passive_radar_doppler_processing',
             {'fft_len': 'fft_len', 'doppler_len': 'doppler_len', 'comment': ''},
             [START_X + C_DOP*COL_W, row_y]
         ))
-        connections.append((ifft_name, '0', dop_name, 'in'))
+        connections.append((ifft_name, '0', dop_name, '0'))
 
         # 8. Vector to Stream
         blocks.append(create_block(
@@ -291,7 +293,7 @@ def generate():
             {'type': 'float', 'num_items': 'fft_len * doppler_len', 'vlen': '1', 'comment': ''},
             [START_X + C_V2S*COL_W, row_y]
         ))
-        connections.append((dop_name, 'out', v2s_name, '0'))
+        connections.append((dop_name, '0', v2s_name, '0'))
 
         # 9. Raster Sink
         ch_label = f"Ch{i}" if i > 0 else "Ref"
