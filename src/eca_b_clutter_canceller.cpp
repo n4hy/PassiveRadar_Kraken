@@ -25,7 +25,12 @@ using Complex = std::complex<float>;
 // Helper for solving Ax = b using Cholesky Decomposition
 class LinearSolver {
 public:
-    static bool solve_cholesky(const std::vector<Complex>& A, const std::vector<Complex>& b, std::vector<Complex>& x, int N, std::vector<Complex>& L, std::vector<Complex>& y) {
+    static bool solve_cholesky(const std::vector<Complex>& A,
+                               const std::vector<Complex>& b,
+                               std::vector<Complex>& x,
+                               int N,
+                               std::vector<Complex>& L,
+                               std::vector<Complex>& y) {
         // Reuse L and y vectors passed from caller to avoid allocation
         L.assign(N * N, 0.0f);
         y.resize(N);
@@ -72,23 +77,38 @@ public:
 
 class ECABCanceller {
 private:
-    int num_taps;
+    int   num_taps;
     float diagonal_loading;
+
+    // NEW: allow cancellation at a non-zero lag between ref and surv.
+    // We keep a long reference history (ring-buffer equivalent) so that
+    // the FIR still has num_taps taps but is applied at ref index (n - delay).
+    //
+    // Interpretation:
+    //   If surv[n] contains ref delayed by D samples (plus channel), then set delay=D.
+    //
+    int delay_samples;
+
+    // We keep history_len = (num_taps - 1) + max_delay samples of ref history.
+    // That gives us enough "past" to align the FIR at delay_samples without
+    // increasing the FIR tap count.
+    int max_delay;
+    int history_len;
 
     // Persistent buffers to avoid re-allocation churn
     std::vector<Complex> ref_history;
 
     // Scratch buffers for process()
     std::vector<Complex> full_ref;
-    std::vector<float> ref_re;
-    std::vector<float> ref_im;
-    std::vector<float> surv_re;
-    std::vector<float> surv_im;
+    std::vector<float>   ref_re;
+    std::vector<float>   ref_im;
+    std::vector<float>   surv_re;
+    std::vector<float>   surv_im;
     std::vector<Complex> R;
     std::vector<Complex> p;
     std::vector<Complex> w;
-    std::vector<float> w_re;
-    std::vector<float> w_im;
+    std::vector<float>   w_re;
+    std::vector<float>   w_im;
 
     // Scratch buffers for LinearSolver
     std::vector<Complex> solver_L;
@@ -97,8 +117,6 @@ private:
     // Inline Dot Product for max compiler optimization
     static FORCE_INLINE float dot_prod(const float* a, const float* b, int n) {
         float sum = 0.0f;
-        // The compiler auto-vectorizer does a great job here with -O3 -ffast-math
-        // We unroll slightly to encourage it
         int i = 0;
         for (; i <= n - 8; i += 8) {
             sum += a[i] * b[i] + a[i+1] * b[i+1] + a[i+2] * b[i+2] + a[i+3] * b[i+3] +
@@ -111,14 +129,22 @@ private:
     }
 
 public:
-    ECABCanceller(int taps) : num_taps(taps), diagonal_loading(1e-6f) {
+    explicit ECABCanceller(int taps, int max_delay_samples = 4096)
+        : num_taps(taps),
+          diagonal_loading(1e-6f),
+          delay_samples(0),
+          max_delay(std::max(0, max_delay_samples)),
+          history_len((taps - 1) + std::max(0, max_delay_samples)) {
+
         // Enable FTZ/DAZ on x86
         #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__)
         _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
         _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
         #endif
 
-        ref_history.resize(num_taps - 1, Complex(0.0f, 0.0f));
+        // Long history = (num_taps-1 + max_delay)
+        if (history_len < (num_taps - 1)) history_len = (num_taps - 1);
+        ref_history.assign(history_len, Complex(0.0f, 0.0f));
 
         // Pre-allocate fixed size buffers
         R.resize(num_taps * num_taps);
@@ -128,23 +154,38 @@ public:
         w_im.resize(num_taps);
         solver_L.resize(num_taps * num_taps);
         solver_y.resize(num_taps);
-        full_ref.reserve(65536); // Reserve capacity
+
+        // Reserve to reduce reallocs; will resize per-call.
+        full_ref.reserve(65536);
     }
+
+    void set_delay(int d) {
+        if (d < 0) d = 0;
+        if (d > max_delay) d = max_delay;
+        delay_samples = d;
+    }
+
+    int get_delay() const { return delay_samples; }
 
     void process(const Complex* ref_in, const Complex* surv_in, Complex* out_err, int n_samples) {
         if (n_samples == 0) return;
 
-        // 1. Prepare Reference Data
-        // Resize scratch buffers to match current n_samples if needed
-        int full_ref_len = ref_history.size() + n_samples;
+        // Base index where surv[0] aligns in full_ref:
+        //   base = (num_taps-1) + delay_samples
+        // In the original code, base=(num_taps-1). Increasing base shifts the effective
+        // reference later, i.e., uses older ref samples relative to surv -> cancels a delayed echo.
+        const int base = (num_taps - 1) + delay_samples;
 
-        // Use assign/resize/copy to reuse memory
+        // 1. Prepare Reference Data
+        const int full_ref_len = history_len + n_samples;
+
         full_ref.resize(full_ref_len);
 
-        // Copy history
+        // Copy history (long)
         std::copy(ref_history.begin(), ref_history.end(), full_ref.begin());
-        // Copy new input
-        std::copy(ref_in, ref_in + n_samples, full_ref.begin() + ref_history.size());
+
+        // Copy new input after history
+        std::copy(ref_in, ref_in + n_samples, full_ref.begin() + history_len);
 
         ref_re.resize(full_ref_len);
         ref_im.resize(full_ref_len);
@@ -152,27 +193,26 @@ public:
         surv_im.resize(n_samples);
 
         // SoA conversion loop
-        for(int i=0; i<full_ref_len; ++i) {
+        for (int i = 0; i < full_ref_len; ++i) {
             ref_re[i] = full_ref[i].real();
             ref_im[i] = full_ref[i].imag();
         }
-        for(int i=0; i<n_samples; ++i) {
+        for (int i = 0; i < n_samples; ++i) {
             surv_re[i] = surv_in[i].real();
             surv_im[i] = surv_in[i].imag();
         }
 
         // 2. Compute Autocorrelation Matrix R
-        // Optimized O(M*N + M^2) implementation exploiting Toeplitz-like structure
-
-        // Step 2a: Compute first row (j=0, k=0..M-1)
+        // We compute R over the aligned reference windows of length n_samples.
+        // The j-th tap uses ref_re/im starting at (base - j), length n_samples.
         {
             int j = 0;
-            int offset_j = num_taps - 1 - j;
+            int offset_j = base - j;
             const float* r_re_j = ref_re.data() + offset_j;
             const float* r_im_j = ref_im.data() + offset_j;
 
             for (int k = 0; k < num_taps; ++k) {
-                int offset_k = num_taps - 1 - k;
+                int offset_k = base - k;
                 const float* r_re_k = ref_re.data() + offset_k;
                 const float* r_im_k = ref_im.data() + offset_k;
 
@@ -181,7 +221,6 @@ public:
                 float ri = dot_prod(r_re_j, r_im_k, n_samples);
                 float ir = dot_prod(r_im_j, r_re_k, n_samples);
 
-                // R[0, k] = dot(r_0, r_k)
                 float real_part = rr + ii;
                 float imag_part = ri - ir;
                 R[k] = Complex(real_part, imag_part); // R[0*M + k]
@@ -190,53 +229,51 @@ public:
 
         // Step 2b: Update subsequent diagonals
         // R[j+1, k+1] = R[j, k] + u[-1-j]*conj(u[-1-k]) - u[N-1-j]*conj(u[N-1-k])
-        // Iterate for each diagonal starting at Row 0
+        // In our aligned indexing, the "window" spans indices:
+        //   start = (base - (num_taps-1))  ...  start + (n_samples + num_taps - 2)
+        // where start = delay_samples.
         for (int k_start = 0; k_start < num_taps; ++k_start) {
-            // Propagate along diagonal starting at R[0, k_start]
-            // We need to compute R[1, k_start+1], R[2, k_start+2], ...
-            // Max index is num_taps-1
-
-            // Loop runs as long as j+1 < num_taps and k+1 < num_taps
-            // Since we start at j=0, k=k_start, loop limit is determined by k_start
             int max_steps = num_taps - 1 - k_start;
 
             for (int i = 0; i < max_steps; ++i) {
-                int j = i;       // Current row
-                int k = k_start + i; // Current col
+                int j = i;
+                int k = k_start + i;
 
-                // Current Value R[j, k]
                 Complex curr = R[j * num_taps + k];
 
-                // Calculate update terms
-                // u[-1-j] -> full_ref[num_taps - 1 - 1 - j]
-                // u[N-1-j] -> full_ref[num_taps - 1 + n_samples - 1 - j]
+                // Indices in full_ref for the diagonal update.
+                // The original code derived these indices assuming base=(num_taps-1).
+                // Here, the aligned "window start" is start = (base - (num_taps-1)) = delay_samples.
+                const int start = delay_samples;
 
-                int idx_prev_j = num_taps - 2 - j;
-                int idx_prev_k = num_taps - 2 - k;
-                int idx_last_j = num_taps + n_samples - 2 - j;
-                int idx_last_k = num_taps + n_samples - 2 - k;
+                // u_prev_* corresponds to the sample just BEFORE the current window for that tap.
+                // u_last_* corresponds to the sample just AFTER the current window for that tap.
+                //
+                // For tap j, its sequence begins at (base - j) = (start + (num_taps-1) - j).
+                // The element before the window is at (base - j - 1) = (start + (num_taps-2) - j).
+                // The last element in the window is at (base - j + (n_samples - 1)).
+                // The element after the window is at (base - j + n_samples).
+                int idx_prev_j = (base - 1) - j;          // base - 1 - j
+                int idx_prev_k = (base - 1) - k;
+                int idx_last_j = (base + n_samples) - j;  // base + n_samples - j
+                int idx_last_k = (base + n_samples) - k;
 
-                // These indices are guaranteed to be >= 0 because j < num_taps-1
-                // And we have sufficient history (num_taps-1) in full_ref
-
+                // Bounds should be safe given history_len >= base and full_ref_len = history_len + n_samples.
                 Complex u_prev_j = full_ref[idx_prev_j];
                 Complex u_prev_k = full_ref[idx_prev_k];
                 Complex u_last_j = full_ref[idx_last_j];
                 Complex u_last_k = full_ref[idx_last_k];
 
                 Complex next_val = curr + (u_prev_j * std::conj(u_prev_k)) - (u_last_j * std::conj(u_last_k));
-
-                // Store R[j+1, k+1]
                 R[(j + 1) * num_taps + (k + 1)] = next_val;
             }
         }
 
-        // Step 2c: Fill lower triangle using Hermitian symmetry
+        // Step 2c: Fill lower triangle using Hermitian symmetry + diagonal loading
         for (int j = 0; j < num_taps; ++j) {
             for (int k = 0; k < j; ++k) {
                 R[j * num_taps + k] = std::conj(R[k * num_taps + j]);
             }
-            // Add diagonal loading
             R[j * num_taps + j] += diagonal_loading;
         }
 
@@ -245,7 +282,7 @@ public:
         const float* s_im = surv_im.data();
 
         for (int j = 0; j < num_taps; ++j) {
-            int offset_j = num_taps - 1 - j;
+            int offset_j = base - j;
             const float* r_re_j = ref_re.data() + offset_j;
             const float* r_im_j = ref_im.data() + offset_j;
 
@@ -263,16 +300,21 @@ public:
         }
 
         // 5. Compute Output
-        for(int k=0; k<num_taps; ++k) {
+        for (int k = 0; k < num_taps; ++k) {
             w_re[k] = w[k].real();
             w_im[k] = w[k].imag();
         }
         std::reverse(w_re.begin(), w_re.end());
         std::reverse(w_im.begin(), w_im.end());
 
+        // The correct input pointer shift for the FIR (to keep the "last sample" aligned at base+n):
+        // original: r_ptr = ref_re + n
+        // now:      r_ptr = ref_re + (start + n)  where start = delay_samples
+        const int start = delay_samples;
+
         for (int n = 0; n < n_samples; ++n) {
-            const float* r_ptr_re = ref_re.data() + n;
-            const float* r_ptr_im = ref_im.data() + n;
+            const float* r_ptr_re = ref_re.data() + (start + n);
+            const float* r_ptr_im = ref_im.data() + (start + n);
 
             float dot_wr_rr = dot_prod(w_re.data(), r_ptr_re, num_taps);
             float dot_wi_ri = dot_prod(w_im.data(), r_ptr_im, num_taps);
@@ -285,28 +327,42 @@ public:
             out_err[n] = surv_in[n] - Complex(y_re, y_im);
         }
 
-        // 6. Update History
-        int start_copy = full_ref.size() - (num_taps - 1);
-        // Use copy instead of manual loop for speed
-        std::copy(full_ref.begin() + start_copy, full_ref.end(), ref_history.begin());
+        // 6. Update History (keep last history_len samples of full_ref)
+        std::copy(full_ref.end() - history_len, full_ref.end(), ref_history.begin());
     }
 };
 
 extern "C" {
-    void* eca_b_create(int taps) {
-        return new ECABCanceller(taps);
-    }
 
-    void eca_b_destroy(void* ptr) {
-        if (ptr) delete static_cast<ECABCanceller*>(ptr);
-    }
-
-    void eca_b_process(void* ptr, const float* ref_in, const float* surv_in, float* out_err, int n_samples) {
-        if (!ptr) return;
-        ECABCanceller* obj = static_cast<ECABCanceller*>(ptr);
-        const Complex* c_ref = reinterpret_cast<const Complex*>(ref_in);
-        const Complex* c_surv = reinterpret_cast<const Complex*>(surv_in);
-        Complex* c_out = reinterpret_cast<Complex*>(out_err);
-        obj->process(c_ref, c_surv, c_out, n_samples);
-    }
+void* eca_b_create(int taps) {
+    // Keep ABI stable: default max_delay=4096.
+    return new ECABCanceller(taps, 4096);
 }
+
+void eca_b_destroy(void* ptr) {
+    if (ptr) delete static_cast<ECABCanceller*>(ptr);
+}
+
+void eca_b_process(void* ptr, const float* ref_in, const float* surv_in, float* out_err, int n_samples) {
+    if (!ptr) return;
+    ECABCanceller* obj = static_cast<ECABCanceller*>(ptr);
+    const Complex* c_ref  = reinterpret_cast<const Complex*>(ref_in);
+    const Complex* c_surv = reinterpret_cast<const Complex*>(surv_in);
+    Complex*       c_out  = reinterpret_cast<Complex*>(out_err);
+    obj->process(c_ref, c_surv, c_out, n_samples);
+}
+
+// NEW: optional setter for delay (does not break existing users of the C ABI).
+void eca_b_set_delay(void* ptr, int delay_samples) {
+    if (!ptr) return;
+    ECABCanceller* obj = static_cast<ECABCanceller*>(ptr);
+    obj->set_delay(delay_samples);
+}
+
+int eca_b_get_delay(void* ptr) {
+    if (!ptr) return 0;
+    ECABCanceller* obj = static_cast<ECABCanceller*>(ptr);
+    return obj->get_delay();
+}
+
+} // extern "C"
