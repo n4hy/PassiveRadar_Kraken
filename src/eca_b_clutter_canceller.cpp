@@ -134,7 +134,7 @@ public:
           diagonal_loading(1e-6f),
           delay_samples(0),
           max_delay(std::max(0, max_delay_samples)),
-          history_len((taps - 1) + std::max(0, max_delay_samples)) {
+          history_len((taps) + std::max(0, max_delay_samples)) { // history_len >= num_taps to avoid index -1
 
         // Enable FTZ/DAZ on x86
         #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__)
@@ -142,8 +142,8 @@ public:
         _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
         #endif
 
-        // Long history = (num_taps-1 + max_delay)
-        if (history_len < (num_taps - 1)) history_len = (num_taps - 1);
+        // Long history = (num_taps + max_delay)
+        if (history_len < num_taps) history_len = num_taps;
         ref_history.assign(history_len, Complex(0.0f, 0.0f));
 
         // Pre-allocate fixed size buffers
@@ -171,10 +171,10 @@ public:
         if (n_samples == 0) return;
 
         // Base index where surv[0] aligns in full_ref:
-        //   base = (num_taps-1) + delay_samples
-        // In the original code, base=(num_taps-1). Increasing base shifts the effective
-        // reference later, i.e., uses older ref samples relative to surv -> cancels a delayed echo.
-        const int base = (num_taps - 1) + delay_samples;
+        //   base = history_len + delay_samples
+        // In the original code, base=(num_taps-1) which was == history_len.
+        // We updated history_len to be larger, so we must use history_len as the reference point for ref_in[0].
+        const int base = history_len + delay_samples;
 
         // 1. Prepare Reference Data
         const int full_ref_len = history_len + n_samples;
@@ -255,8 +255,8 @@ public:
                 // The element after the window is at (base - j + n_samples).
                 int idx_prev_j = (base - 1) - j;          // base - 1 - j
                 int idx_prev_k = (base - 1) - k;
-                int idx_last_j = (base + n_samples) - j;  // base + n_samples - j
-                int idx_last_k = (base + n_samples) - k;
+                int idx_last_j = (base + n_samples - 1) - j;  // Remove term at n=N-1 (which was at end of previous window)
+                int idx_last_k = (base + n_samples - 1) - k;
 
                 // Bounds should be safe given history_len >= base and full_ref_len = history_len + n_samples.
                 Complex u_prev_j = full_ref[idx_prev_j];
@@ -296,6 +296,7 @@ public:
 
         // 4. Solve R * w = p
         if (!LinearSolver::solve_cholesky(R, p, w, num_taps, solver_L, solver_y)) {
+            // std::cerr << "ECA-B: Cholesky failed. R matrix might be non-positive-definite." << std::endl;
             std::fill(w.begin(), w.end(), 0.0f);
         }
 
@@ -308,9 +309,10 @@ public:
         std::reverse(w_im.begin(), w_im.end());
 
         // The correct input pointer shift for the FIR (to keep the "last sample" aligned at base+n):
-        // original: r_ptr = ref_re + n
-        // now:      r_ptr = ref_re + (start + n)  where start = delay_samples
-        const int start = delay_samples;
+        // We need r[n] (which is at ref_re[base + n]) to be at the END of the dot_prod buffer.
+        // The buffer length is num_taps.
+        // So buffer start should be (base + n) - (num_taps - 1).
+        const int start = base - (num_taps - 1);
 
         for (int n = 0; n < n_samples; ++n) {
             const float* r_ptr_re = ref_re.data() + (start + n);
