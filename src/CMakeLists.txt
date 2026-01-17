@@ -16,6 +16,17 @@ endif()
 find_package(PkgConfig)
 pkg_check_modules(FFTW3 fftw3f)
 
+# Fallback if pkg-config fails (e.g. if environment isn't set up)
+if(NOT FFTW3_FOUND)
+    find_library(FFTW3F_LIB fftw3f)
+    find_path(FFTW3_INCLUDE_DIR fftw3.h)
+    if(FFTW3F_LIB AND FFTW3_INCLUDE_DIR)
+        set(FFTW3_FOUND TRUE)
+        set(FFTW3_LIBRARIES ${FFTW3F_LIB})
+        set(FFTW3_INCLUDE_DIRS ${FFTW3_INCLUDE_DIR})
+    endif()
+endif()
+
 # 1. ECA-B
 add_library(kraken_eca_b_clutter_canceller SHARED
     eca_b_clutter_canceller.cpp
@@ -47,7 +58,7 @@ if(FFTW3_FOUND)
     target_include_directories(kraken_doppler_processing PRIVATE ${FFTW3_INCLUDE_DIRS})
     install(TARGETS kraken_doppler_processing LIBRARY DESTINATION ${GR_PYTHON_DIR}/kraken_passive_radar)
 else()
-    message(WARNING "FFTW3f not found. Skipping FFT-dependent libraries.")
+    message(FATAL_ERROR "FFTW3f not found. Please install libfftw3-dev.")
 endif()
 
 # 6. Backend (CFAR/Fusion)
