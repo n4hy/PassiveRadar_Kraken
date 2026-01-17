@@ -134,3 +134,25 @@ The repository includes a suite of unit tests to verify the signal processing ke
 | **"Failed to allocate zero-copy buffer"** | Kernel Limit | Run `setup_krakensdr_permissions.sh`. |
 | **"O" (Overflow) printing to console** | CPU Overload | Reduce sample rate or `eca_taps`. Ensure you ran `./build_oot.sh` (Optimized build). |
 | **OSError: libkraken_... not found** | Missing Build | Run `./build_oot.sh` to compile C++ libraries. |
+
+---
+
+## ⚖️ Legal & Regulatory Compliance (ITAR/EAR)
+
+**1. Nature of Software**
+This repository contains source code for a **Passive Bistatic Radar (PBR)** system. It is designed solely for **Receive-Only** operation using Commercial Off-The-Shelf (COTS) hardware (RTL-SDR/KrakenSDR) and public Illuminators of Opportunity (FM/TV broadcasts). It does not contain code for radar transmission, electronic attack, or signal generation.
+
+**2. Export Administration Regulations (EAR)**
+This software is provided as Open Source and is believed to be classified under **ECCN 5D002** (Information Security - Software) or **EAR99** (No License Required) depending on specific encryption usage (none implemented by default). It is publicly available and not subject to the International Traffic in Arms Regulations (ITAR) as it does not constitute a "defense article" or "technical data" related to a defense article under 22 CFR § 120-130.
+
+**3. Frequency & Bandwidth Usage**
+Users are strictly responsible for complying with all local, state, and federal regulations regarding radio frequency reception. This software is designed to operate within standard civilian broadcast bands (e.g., 88-108 MHz).
+
+**4. End-Use Restrictions**
+This software must **NOT** be used for:
+*   Military or combat operations.
+*   Unlawful surveillance or interception of private communications.
+*   Any end-use prohibited by U.S. export control laws.
+
+**Statement of Compliance:**
+By downloading, compiling, or running this software, you acknowledge that you are responsible for strict adherence to the U.S. Export Administration Regulations and the ITAR where applicable. The authors and contributors assume no liability for the misuse of this code or violations of local RF regulations.
