@@ -6,14 +6,9 @@ GR_PYTHON_INSTALL(
         doppler_processing.py
         eca_b_clutter_canceller.py
         krakensdr_source.py
+        custom_blocks.py
     DESTINATION ${GR_PYTHON_DIR}/kraken_passive_radar
 )
 
-install(
-    FILES
-        libkraken_eca_b_clutter_canceller.so
-        libkraken_doppler_processing.so
-        libkraken_aoa_processing.so
-        libkraken_resampler.so
-    DESTINATION ${GR_PYTHON_DIR}/kraken_passive_radar
-)
+# Shared libraries are installed by src/CMakeLists.txt
+# Do not install them here to avoid looking for non-existent source files

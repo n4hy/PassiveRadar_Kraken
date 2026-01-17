@@ -13,7 +13,8 @@ PY_SITE=$(python3 -c "import sysconfig; print(sysconfig.get_paths()['purelib'])"
 echo "Detected Python install dir: $PY_SITE"
 
 # Configure with explicit Python path and force RELEASE build type with architecture optimizations
-cmake -DCMAKE_INSTALL_PREFIX=/usr -DGR_PYTHON_DIR="$PY_SITE" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-O3 -march=native" ..
+# User preferred install prefix: /usr/local
+cmake -DCMAKE_INSTALL_PREFIX=/usr/local -DGR_PYTHON_DIR="$PY_SITE" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-O3 -march=native" ..
 
 # Build
 make -j"$(nproc)"
