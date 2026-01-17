@@ -62,6 +62,13 @@ from kraken_passive_radar.doppler_processing import DopplerProcessingBlock
 
 class TestEndToEndOffline(unittest.TestCase):
     def test_manual_pipeline(self):
+        # Check if libs exist, if not skip
+        try:
+            from kraken_passive_radar.doppler_processing import DopplerProcessingBlock
+        except OSError:
+            self.skipTest("C++ Libraries not found (Doppler/FFTW missing)")
+            return
+
         print("SETTING UP MANUAL PIPELINE TEST")
 
         cpi_len = 4096
