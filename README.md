@@ -31,6 +31,9 @@ The system is built on **GNU Radio** but relies heavily on custom **C++ Optimize
 6.  **Backend (`src/backend.cpp`)**:
     *   **Fusion:** Non-coherently combines maps from 4 surveillance channels.
     *   **CFAR:** Performs 2D Constant False Alarm Rate detection.
+7.  **Angle of Arrival (`src/aoa_processing.cpp`)**:
+    *   Computes 2D (Azimuth) or 3D (Azimuth & Elevation) arrival angles for detected targets.
+    *   Supports Uniform Linear Arrays (ULA) and Uniform Rectangular Arrays (URA).
 
 ---
 
@@ -38,19 +41,37 @@ The system is built on **GNU Radio** but relies heavily on custom **C++ Optimize
 
 The primary way to run the radar is via the **pure Python orchestration script**, which bypasses GNU Radio Companion to ensure strict control over the pipeline execution.
 
-### `run_passive_radar.py`
-
-This script instantiates the full processing chain without GRC.
+### 1. Calibration (Recommended)
+Before running the main radar, perform phase calibration using the KrakenSDR's internal noise source.
 
 ```bash
-# Start the radar
-python3 run_passive_radar.py
+# Calibrate (requires noise source to be connected/enabled)
+python3 calibrate_krakensdr.py --freq 100e6
+```
+This saves `calibration.json`.
+
+### 2. Main Radar Loop
+Start the passive radar processing chain.
+
+```bash
+# Basic Run (Headless)
+python3 run_passive_radar.py --freq 100e6
+
+# With Graphical Display (PPI)
+python3 run_passive_radar.py --freq 100e6 --visualize
+
+# Specify Antenna Geometry
+python3 run_passive_radar.py --geometry ULA --visualize
+python3 run_passive_radar.py --geometry URA --visualize
+
+# Include Reference Antenna in AoA Array (for 5-element arrays)
+python3 run_passive_radar.py --geometry URA --include-ref --visualize
 ```
 
 *   **Inputs:** Connects to KrakenSDR via `krakensdr_source`.
 *   **Outputs:**
+    *   Real-time PPI Display (if `--visualize` used).
     *   Prints detection statistics to console.
-    *   Writes a visualization of the Range-Doppler map to `passive_radar_map.ppm` (viewable with any image viewer supporting PPM).
     *   Logs ECA statistics to `eca_stats.txt`.
 
 ---
@@ -59,7 +80,13 @@ python3 run_passive_radar.py
 
 1.  **Power Supply:** A **Powered USB 3.0 Hub (3A+)** is **REQUIRED**. The KrakenSDR draws ~2.2A, exceeding standard port limits.
 2.  **Antennas:** Connect 5 matched antennas to ports CH0-CH4.
+    *   **CH0 (Ref):** Directional antenna pointing at illuminator.
+    *   **CH1-4 (Surv):** Surveillance array (ULA or URA).
 3.  **Host:** Linux PC (x86_64) or Raspberry Pi 4/5 (aarch64).
+
+### Antenna Geometries
+*   **ULA (Uniform Linear Array):** 4 elements in a line with $\lambda/2$ spacing.
+*   **URA (Uniform Rectangular Array):** 4 elements in a 2x2 square grid with $\lambda/2$ spacing between adjacent corners.
 
 ### System Configuration
 You must configure USB permissions and memory limits before running the software.
