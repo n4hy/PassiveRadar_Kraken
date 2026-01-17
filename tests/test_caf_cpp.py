@@ -2,6 +2,7 @@ import unittest
 import numpy as np
 import ctypes
 import os
+import sysconfig
 from pathlib import Path
 
 class TestCafCpp(unittest.TestCase):
@@ -12,10 +13,14 @@ class TestCafCpp(unittest.TestCase):
         # parents[1] is repo root
         repo_root = Path(__file__).resolve().parents[1]
 
+        # System install path
+        site_packages = Path(sysconfig.get_paths()["purelib"])
+
         # Try finding the lib in multiple places
         candidates = [
             repo_root / "src" / "libkraken_caf_processing.so",
             repo_root / "gr-kraken_passive_radar" / "python" / "kraken_passive_radar" / "libkraken_caf_processing.so",
+            site_packages / "kraken_passive_radar" / "libkraken_caf_processing.so",
             Path("libkraken_caf_processing.so") # Fallback to system path
         ]
 

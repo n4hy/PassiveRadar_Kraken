@@ -4,6 +4,7 @@ import os
 import unittest
 import numpy as np
 import ctypes
+import sysconfig
 from pathlib import Path
 
 # Test the Doppler Processor logic specifically
@@ -14,10 +15,12 @@ class TestDopplerCpp(unittest.TestCase):
     def setUp(self):
         # Locate library
         repo_root = Path(__file__).resolve().parents[1]
+        site_packages = Path(sysconfig.get_paths()["purelib"])
 
         candidates = [
             repo_root / "src" / "libkraken_doppler_processing.so",
             repo_root / "gr-kraken_passive_radar" / "python" / "kraken_passive_radar" / "libkraken_doppler_processing.so",
+            site_packages / "kraken_passive_radar" / "libkraken_doppler_processing.so",
             Path("libkraken_doppler_processing.so")
         ]
 

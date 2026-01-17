@@ -4,6 +4,8 @@ import sys
 import os
 import ctypes
 from unittest.mock import MagicMock
+import sysconfig
+from pathlib import Path
 
 # 1. Mock GNU Radio
 class MockBlock:
@@ -66,6 +68,13 @@ class TestEndToEndOffline(unittest.TestCase):
         try:
             from kraken_passive_radar.doppler_processing import DopplerProcessingBlock
         except OSError:
+            # Try to help user by pointing to installed libs if they exist
+            site_packages = Path(sysconfig.get_paths()["purelib"])
+            lib_path = site_packages / "kraken_passive_radar" / "libkraken_doppler_processing.so"
+            if lib_path.exists():
+                 # Should have loaded. Maybe mismatch?
+                 pass
+
             self.skipTest("C++ Libraries not found (Doppler/FFTW missing)")
             return
 
@@ -101,6 +110,22 @@ class TestEndToEndOffline(unittest.TestCase):
         surv_sig += noise
         surv_sig = surv_sig.astype(np.complex64)
 
+        # Helper path
+        repo_root = Path(__file__).resolve().parents[1]
+        site_packages = Path(sysconfig.get_paths()["purelib"])
+
+        # Try to find lib for ECA
+        eca_candidates = [
+            repo_root / "src" / "libkraken_eca_b_clutter_canceller.so",
+            repo_root / "gr-kraken_passive_radar" / "python" / "kraken_passive_radar" / "libkraken_eca_b_clutter_canceller.so",
+            site_packages / "kraken_passive_radar" / "libkraken_eca_b_clutter_canceller.so"
+        ]
+        eca_lib = None
+        for p in eca_candidates:
+            if p.exists():
+                eca_lib = str(p)
+                break
+
         # 2. Instantiate Blocks
         cond_ref = ConditioningBlock(rate=0.0)
         cond_surv = ConditioningBlock(rate=0.0)
@@ -108,7 +133,7 @@ class TestEndToEndOffline(unittest.TestCase):
         eca = EcaBClutterCanceller(
             num_taps=num_taps,
             num_surv_channels=1,
-            lib_path=os.path.abspath("src/libkraken_eca_b_clutter_canceller.so")
+            lib_path=eca_lib if eca_lib else ""
         )
 
         caf = CafBlock(n_samples=cpi_len)
