@@ -26,13 +26,15 @@ class TestCafCpp(unittest.TestCase):
                 break
 
         if not lib_path:
+             print(f"DEBUG: Searched for libraries in: {[str(c) for c in candidates]}")
+             print("DEBUG: Hint: Ensure 'libfftw3-dev' is installed and run './build_oot.sh'")
              # If we can't find it, try loading by name (maybe installed)
              lib_path = "libkraken_caf_processing.so"
 
         try:
             lib = ctypes.cdll.LoadLibrary(str(lib_path))
         except OSError as e:
-            self.skipTest(f"Could not load C++ library: {e}")
+            self.skipTest(f"Could not load C++ library: {e}. (Searched paths printed above)")
             return
 
         lib.caf_create.restype = ctypes.c_void_p

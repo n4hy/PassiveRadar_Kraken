@@ -28,6 +28,8 @@ class TestDopplerCpp(unittest.TestCase):
                 break
 
         if not self.lib_path:
+             print(f"DEBUG: Searched for libraries in: {[str(c) for c in candidates]}")
+             print("DEBUG: Hint: Ensure 'libfftw3-dev' is installed and run './build_oot.sh'")
              self.skipTest("C++ Library not found (compilation likely failed due to missing FFTW)")
 
         try:
