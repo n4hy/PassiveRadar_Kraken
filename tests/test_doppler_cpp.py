@@ -4,6 +4,7 @@ import os
 import unittest
 import numpy as np
 import ctypes
+from pathlib import Path
 
 # Test the Doppler Processor logic specifically
 # We will compile/load the library manually or reuse the logic in top block
@@ -12,12 +13,25 @@ import ctypes
 class TestDopplerCpp(unittest.TestCase):
     def setUp(self):
         # Locate library
-        self.lib_path = os.path.abspath("src/libdoppler_processing.so")
-        if not os.path.exists(self.lib_path):
+        repo_root = Path(__file__).resolve().parents[1]
+
+        candidates = [
+            repo_root / "src" / "libkraken_doppler_processing.so",
+            repo_root / "gr-kraken_passive_radar" / "python" / "kraken_passive_radar" / "libkraken_doppler_processing.so",
+            Path("libkraken_doppler_processing.so")
+        ]
+
+        self.lib_path = None
+        for p in candidates:
+            if p.exists():
+                self.lib_path = p
+                break
+
+        if not self.lib_path:
              self.skipTest("C++ Library not found (compilation likely failed due to missing FFTW)")
 
         try:
-            self.lib = ctypes.CDLL(self.lib_path)
+            self.lib = ctypes.CDLL(str(self.lib_path))
         except OSError:
             self.skipTest("Could not load C++ Library (missing dependencies?)")
 
@@ -80,7 +94,7 @@ class TestDopplerCpp(unittest.TestCase):
 
         peak_idx = np.argmax(col5)
         # Center index is 8
-        print(f"DC Signal Peak Index: {peak_idx} (Expected ~8)")
+        # print(f"DC Signal Peak Index: {peak_idx} (Expected ~8)")
 
         # Check column 8 (Nyquist)
         # Frequency is Fs/2.
@@ -91,7 +105,7 @@ class TestDopplerCpp(unittest.TestCase):
             col8.append(output_flat[d * fft_len + 8])
 
         peak_idx_nyq = np.argmax(col8)
-        print(f"Nyquist Signal Peak Index: {peak_idx_nyq} (Expected ~0 or 15)")
+        # print(f"Nyquist Signal Peak Index: {peak_idx_nyq} (Expected ~0 or 15)")
 
         self.assertEqual(peak_idx, doppler_len // 2, "DC signal should be centered after fftshift")
 
