@@ -2,6 +2,11 @@ import ctypes
 import numpy as np
 from gnuradio import gr
 import os
+import time
+
+# Existing blocks: ConditioningBlock, CafBlock, BackendBlock, TimeAlignmentBlock from previous steps...
+# We need to update DopplerProcessingBlock to support Complex Output.
+# And add AoAProcessingBlock.
 
 class ConditioningBlock(gr.sync_block):
     """
@@ -19,10 +24,8 @@ class ConditioningBlock(gr.sync_block):
         self.obj = self.lib.cond_create(ctypes.c_float(rate))
 
     def _load_lib(self):
-        # Locate libkraken_conditioning.so
         path = os.path.join(os.path.dirname(__file__), "libkraken_conditioning.so")
         if not os.path.exists(path):
-             # Fallback to local src for dev
              path = os.path.abspath("src/libkraken_conditioning.so")
 
         lib = ctypes.cdll.LoadLibrary(path)
@@ -53,10 +56,6 @@ class ConditioningBlock(gr.sync_block):
 class CafBlock(gr.basic_block):
     """
     Computes Range Profile using C++ CAF kernel.
-    Inputs: 0: Ref, 1: Surv (Stream)
-    Output: 0: Range Profile (Vector length N)
-
-    Decimates stream by N to produce 1 vector.
     """
     def __init__(self, n_samples=4096):
         self.n_samples = n_samples
@@ -69,8 +68,6 @@ class CafBlock(gr.basic_block):
 
         self.lib = self._load_lib()
         self.obj = self.lib.caf_create(n_samples)
-
-        # We need N input items to produce 1 output item
         self.set_output_multiple(1)
 
     def _load_lib(self):
@@ -92,11 +89,9 @@ class CafBlock(gr.basic_block):
         n_in = len(ref)
         n_out_avail = len(out)
 
-        # Calculate how many vectors we can produce
         n_chunks = min(n_out_avail, n_in // self.n_samples)
 
         if n_chunks == 0:
-            # Tell scheduler we need more data
             self.consume_each(0)
             return 0
 
@@ -116,8 +111,6 @@ class CafBlock(gr.basic_block):
 class BackendBlock(gr.sync_block):
     """
     CFAR + Fusion.
-    Input: N channels of Range-Doppler maps (Vectors).
-    Output: Detection Map (Vector).
     """
     def __init__(self, rows, cols, num_inputs=1):
         self.rows = rows
@@ -170,8 +163,6 @@ class BackendBlock(gr.sync_block):
 class TimeAlignmentBlock(gr.sync_block):
     """
     Computes delay/phase offset between Ref and Surv.
-    Inputs: 0: Ref, 1: Surv
-    Output: None (Prints updates)
     """
     def __init__(self, n_samples=4096, interval_sec=1.0, samp_rate=2.4e6):
         gr.sync_block.__init__(
@@ -203,15 +194,10 @@ class TimeAlignmentBlock(gr.sync_block):
         surv = input_items[1]
         n = len(ref)
 
-        # Check if time to run alignment
-        # This is a probe, so we just sample chunks periodically.
-
         self.processed_samples += n
 
         if self.processed_samples >= self.interval_samples:
             self.processed_samples = 0
-
-            # Take a chunk
             if n >= self.n_samples:
                 r_ptr = ref[:self.n_samples].ctypes.data_as(ctypes.POINTER(ctypes.c_float))
                 s_ptr = surv[:self.n_samples].ctypes.data_as(ctypes.POINTER(ctypes.c_float))
@@ -228,3 +214,66 @@ class TimeAlignmentBlock(gr.sync_block):
     def __del__(self):
         if hasattr(self, 'lib') and hasattr(self, 'obj'):
             self.lib.align_destroy(self.obj)
+
+# NEW: AoA Processor Wrapper
+class AoAProcessingBlock:
+    """
+    Python wrapper for C++ AoA Processor (3D).
+    This is NOT a GR block, but a helper class called by the sink/display logic.
+    """
+    def __init__(self, num_antennas=5, spacing=0.0, geometry='ULA'):
+        self.num_antennas = num_antennas
+        self.geometry = 0 if geometry == 'ULA' else 1
+
+        self.lib = self._load_lib()
+        self.obj = self.lib.aoa_create(num_antennas, ctypes.c_float(spacing), self.geometry)
+
+        # Configure signatures
+        self.lib.aoa_process_3d.argtypes = [
+            ctypes.c_void_p,
+            ctypes.POINTER(ctypes.c_float), # Input: Interleaved Complex [Ant0, Ant1...]
+            ctypes.c_float, # Lambda
+            ctypes.POINTER(ctypes.c_float), # Output Spectrum
+            ctypes.c_int, # n_az
+            ctypes.c_int, # n_el
+            ctypes.c_bool # use_ref
+        ]
+
+    def _load_lib(self):
+        path = os.path.join(os.path.dirname(__file__), "libkraken_aoa_processing.so")
+        # Try local src/ path if not found (dev mode)
+        if not os.path.exists(path):
+             path = os.path.abspath("src/libkraken_aoa_processing.so")
+        if not os.path.exists(path):
+             # Try system install
+             import sysconfig
+             path = os.path.join(sysconfig.get_paths()['purelib'], "kraken_passive_radar", "libkraken_aoa_processing.so")
+
+        lib = ctypes.cdll.LoadLibrary(path)
+        lib.aoa_create.restype = ctypes.c_void_p
+        lib.aoa_create.argtypes = [ctypes.c_int, ctypes.c_float, ctypes.c_int]
+        return lib
+
+    def compute_3d(self, antenna_data, freq, n_az=360, n_el=90, use_ref=False):
+        """
+        antenna_data: numpy complex array of shape (5,)
+        Returns: 2D array [El, Az] (Power dB)
+        """
+        c = 299792458.0
+        lam = c / freq
+
+        out_spec = np.zeros((n_el, n_az), dtype=np.float32)
+
+        self.lib.aoa_process_3d(
+            self.obj,
+            antenna_data.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
+            lam,
+            out_spec.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
+            n_az, n_el,
+            use_ref
+        )
+        return out_spec
+
+    def __del__(self):
+        if hasattr(self, 'lib') and hasattr(self, 'obj'):
+            self.lib.aoa_destroy(self.obj)
