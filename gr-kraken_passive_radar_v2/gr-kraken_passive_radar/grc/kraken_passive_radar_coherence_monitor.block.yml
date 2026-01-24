@@ -1,0 +1,108 @@
+id: kraken_passive_radar_coherence_monitor
+label: Coherence Monitor
+category: '[Kraken Passive Radar]'
+
+templates:
+  imports: from gnuradio import kraken_passive_radar
+  make: >-
+    kraken_passive_radar.coherence_monitor(
+        ${num_channels}, ${sample_rate},
+        ${measure_interval_ms}, ${measure_duration_ms},
+        ${corr_threshold}, ${phase_threshold_deg})
+  callbacks:
+    - set_measure_interval(${measure_interval_ms})
+    - set_corr_threshold(${corr_threshold})
+    - set_phase_threshold(${phase_threshold_deg})
+
+parameters:
+  - id: num_channels
+    label: Number of Channels
+    dtype: int
+    default: 5
+    
+  - id: sample_rate
+    label: Sample Rate (Hz)
+    dtype: float
+    default: 2.4e6
+    
+  - id: measure_interval_ms
+    label: Measure Interval (ms)
+    dtype: float
+    default: 1000.0
+    
+  - id: measure_duration_ms
+    label: Measure Duration (ms)
+    dtype: float
+    default: 10.0
+    
+  - id: corr_threshold
+    label: Correlation Threshold
+    dtype: float
+    default: 0.95
+    
+  - id: phase_threshold_deg
+    label: Phase Threshold (deg)
+    dtype: float
+    default: 5.0
+
+inputs:
+  - label: ch
+    domain: stream
+    dtype: complex
+    multiplicity: ${num_channels}
+
+outputs:
+  - label: ch
+    domain: stream
+    dtype: complex
+    multiplicity: ${num_channels}
+  - label: cal_request
+    domain: message
+    optional: true
+
+asserts:
+  - num_channels >= 2
+  - sample_rate > 0
+  - measure_interval_ms > measure_duration_ms
+  - corr_threshold > 0 and corr_threshold <= 1
+  - phase_threshold_deg > 0
+
+documentation: |-
+  Coherence Monitor for KrakenSDR Phase Calibration
+  
+  Monitors inter-channel phase coherence and automatically detects
+  when recalibration is needed. Measurement is periodic (not every
+  sample) to minimize CPU overhead.
+  
+  Coherence Metrics:
+    - Cross-correlation coefficient between reference and surveillance channels
+    - Phase variance across measurement windows
+  
+  Calibration is requested when:
+    - Correlation drops below threshold (default 0.95)
+    - Phase variance exceeds threshold (default 5°)
+    - 3 consecutive measurement failures (hysteresis)
+  
+  Parameters:
+    Num Channels: Number of coherent receiver channels (typically 5)
+    Sample Rate: For calculating measurement timing
+    Measure Interval: Time between coherence measurements (ms)
+    Measure Duration: Length of each measurement window (ms)
+    Correlation Threshold: Minimum acceptable correlation coefficient
+    Phase Threshold: Maximum acceptable phase standard deviation
+  
+  Message Output (cal_request):
+    Emits PMT dict when calibration needed:
+      - "type": "cal_request"
+      - "reason": "coherence_degraded"
+      - "measure_count": measurement number
+  
+  Message Input (cal_complete):
+    Acknowledge calibration complete to verify and resume monitoring
+  
+  Typical values:
+    Measure every 1000ms using 10ms window
+    Correlation > 0.95 indicates good coherence
+    Phase variance < 5° indicates stable calibration
+
+file_format: 1

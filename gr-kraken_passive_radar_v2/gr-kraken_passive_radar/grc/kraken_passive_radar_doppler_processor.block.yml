@@ -1,0 +1,74 @@
+id: kraken_passive_radar_doppler_processor
+label: Doppler Processor
+category: '[Kraken Passive Radar]'
+flags: [throttle]
+
+templates:
+  imports: from gnuradio import kraken_passive_radar
+  make: kraken_passive_radar.doppler_processor(${num_range_bins}, ${num_doppler_bins}, ${window_type}, ${output_power})
+  callbacks:
+    - set_num_doppler_bins(${num_doppler_bins})
+    - set_window_type(${window_type})
+
+parameters:
+  - id: num_range_bins
+    label: Range Bins
+    dtype: int
+    default: 1024
+    hide: none
+    
+  - id: num_doppler_bins
+    label: Doppler Bins (CPIs)
+    dtype: int
+    default: 64
+    hide: none
+    
+  - id: window_type
+    label: Window Type
+    dtype: int
+    default: 1
+    options: [0, 1, 2, 3]
+    option_labels: [Rectangular, Hamming, Hann, Blackman]
+    hide: none
+    
+  - id: output_power
+    label: Output Power
+    dtype: bool
+    default: 'True'
+    options: ['True', 'False']
+    option_labels: ['Power (|X|²)', 'Complex']
+    hide: none
+
+inputs:
+  - label: in
+    domain: stream
+    dtype: complex
+    vlen: ${num_range_bins}
+
+outputs:
+  - label: rdm
+    domain: stream
+    dtype: ${'float' if output_power else 'complex'}
+    vlen: ${num_range_bins * num_doppler_bins}
+
+documentation: |-
+  Doppler Processor for Passive Radar
+  
+  Accumulates range profiles across multiple CPIs and computes FFT
+  along slow-time dimension to extract Doppler information.
+  
+  Parameters:
+    Range Bins: Number of range bins per CPI (input vector length)
+    Doppler Bins: Number of CPIs to accumulate for Doppler FFT
+    Window Type: Window function for Doppler FFT sidelobe control
+    Output Power: If True, outputs |FFT|²; if False, outputs complex FFT
+  
+  Input: Complex vector of length num_range_bins (one range profile per CPI)
+  Output: 2D Range-Doppler map as flattened vector [doppler_bins × range_bins]
+  
+  Output format: Doppler bins are FFT-shifted (zero Doppler at center)
+  
+  Doppler resolution: Δfd = PRF / num_doppler_bins = sample_rate / (CPI_samples × num_doppler_bins)
+  Unambiguous Doppler: ±PRF/2
+
+file_format: 1

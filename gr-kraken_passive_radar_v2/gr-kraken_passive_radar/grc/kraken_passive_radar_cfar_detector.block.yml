@@ -1,0 +1,121 @@
+id: kraken_passive_radar_cfar_detector
+label: CFAR Detector
+category: '[Kraken Passive Radar]'
+
+templates:
+  imports: from gnuradio import kraken_passive_radar
+  make: >-
+    kraken_passive_radar.cfar_detector(
+        ${num_range_bins}, ${num_doppler_bins},
+        ${guard_cells_range}, ${guard_cells_doppler},
+        ${ref_cells_range}, ${ref_cells_doppler},
+        ${pfa}, ${cfar_type}, ${os_k})
+  callbacks:
+    - set_pfa(${pfa})
+    - set_cfar_type(${cfar_type})
+    - set_guard_cells(${guard_cells_range}, ${guard_cells_doppler})
+    - set_ref_cells(${ref_cells_range}, ${ref_cells_doppler})
+
+parameters:
+  - id: num_range_bins
+    label: Range Bins
+    dtype: int
+    default: 1024
+    
+  - id: num_doppler_bins
+    label: Doppler Bins
+    dtype: int
+    default: 64
+    
+  - id: guard_cells_range
+    label: Guard Cells (Range)
+    dtype: int
+    default: 2
+    
+  - id: guard_cells_doppler
+    label: Guard Cells (Doppler)
+    dtype: int
+    default: 2
+    
+  - id: ref_cells_range
+    label: Reference Cells (Range)
+    dtype: int
+    default: 8
+    
+  - id: ref_cells_doppler
+    label: Reference Cells (Doppler)
+    dtype: int
+    default: 8
+    
+  - id: pfa
+    label: Pfa (False Alarm Prob)
+    dtype: float
+    default: 1e-6
+    
+  - id: cfar_type
+    label: CFAR Algorithm
+    dtype: int
+    default: 0
+    options: [0, 1, 2, 3]
+    option_labels: [CA-CFAR, GO-CFAR, SO-CFAR, OS-CFAR]
+    
+  - id: os_k
+    label: OS-CFAR k
+    dtype: int
+    default: 0
+    hide: ${'none' if cfar_type == 3 else 'all'}
+
+inputs:
+  - label: rdm
+    domain: stream
+    dtype: float
+    vlen: ${num_range_bins * num_doppler_bins}
+
+outputs:
+  - label: det
+    domain: stream
+    dtype: float
+    vlen: ${num_range_bins * num_doppler_bins}
+
+asserts:
+  - num_range_bins > 0
+  - num_doppler_bins > 0
+  - guard_cells_range >= 0
+  - guard_cells_doppler >= 0
+  - ref_cells_range > 0
+  - ref_cells_doppler > 0
+  - pfa > 0 and pfa < 1
+
+documentation: |-
+  CFAR Detector for Range-Doppler Maps
+  
+  Constant False Alarm Rate detector that adapts threshold based on
+  local noise/clutter statistics to maintain specified Pfa.
+  
+  CFAR Algorithms:
+    CA-CFAR: Cell Averaging - uses mean of reference cells
+    GO-CFAR: Greatest-Of - uses max of leading/lagging window averages
+    SO-CFAR: Smallest-Of - uses min of leading/lagging window averages
+    OS-CFAR: Order Statistics - uses k-th ordered sample
+  
+  Layout (per dimension):
+    [ref_cells] [guard_cells] [CUT] [guard_cells] [ref_cells]
+  
+  Parameters:
+    Range/Doppler Bins: Dimensions of input Range-Doppler map
+    Guard Cells: Cells around CUT excluded from noise estimate
+    Reference Cells: Cells used for noise level estimation
+    Pfa: Probability of false alarm (determines threshold multiplier)
+    OS-CFAR k: For OS-CFAR, uses k-th smallest reference cell value
+  
+  Input: Power Range-Doppler map (float vector)
+  Output: Binary detection map (1.0 = detection, 0.0 = no detection)
+  
+  Threshold: T = α × noise_estimate, where α = N × (Pfa^(-1/N) - 1)
+  
+  Typical values:
+    Pfa = 1e-6 for ~1 false alarm per million cells
+    Guard cells = 2-4 to avoid target energy leakage
+    Reference cells = 8-16 for stable noise estimate
+
+file_format: 1
