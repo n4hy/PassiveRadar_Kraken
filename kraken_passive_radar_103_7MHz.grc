@@ -1,0 +1,1265 @@
+options:
+  parameters:
+    author: N4HY
+    catch_exceptions: 'True'
+    category: '[GRC Hier Blocks]'
+    cmake_opt: ''
+    comment: 'KrakenSDR Passive Radar - 103.7 MHz FM Illuminator'
+    copyright: ''
+    description: 'Passive Bistatic Radar using FM broadcast as illuminator of opportunity'
+    gen_cmake: 'On'
+    gen_linking: dynamic
+    generate_options: qt_gui
+    hier_block_src_path: '.:'
+    id: kraken_passive_radar
+    max_nouts: '0'
+    output_language: python
+    placement: (0,0)
+    qt_qss_theme: ''
+    realtime_scheduling: ''
+    run: 'True'
+    run_command: '{python} -u {filename}'
+    run_options: prompt
+    sizing_mode: fixed
+    thread_safe_setters: ''
+    title: 'KrakenSDR Passive Radar'
+    window_size: (1920,1080)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [8, 8]
+    rotation: 0
+    state: enabled
+
+blocks:
+# ============================================================================
+# VARIABLES
+# ============================================================================
+- name: samp_rate
+  id: variable
+  parameters:
+    comment: 'KrakenSDR native sample rate'
+    value: '2400000'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [8, 160]
+    rotation: 0
+    state: enabled
+
+- name: center_freq
+  id: variable
+  parameters:
+    comment: 'FM station frequency'
+    value: '103.7e6'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [8, 240]
+    rotation: 0
+    state: enabled
+
+- name: signal_bw
+  id: variable
+  parameters:
+    comment: 'Signal bandwidth of interest'
+    value: '250000'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [8, 320]
+    rotation: 0
+    state: enabled
+
+- name: decimation
+  id: variable
+  parameters:
+    comment: 'Decimation factor'
+    value: 'int(samp_rate / signal_bw)'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [8, 400]
+    rotation: 0
+    state: enabled
+
+- name: decimated_rate
+  id: variable
+  parameters:
+    comment: 'Post-decimation sample rate'
+    value: 'samp_rate / decimation'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [8, 480]
+    rotation: 0
+    state: enabled
+
+- name: cpi_samples
+  id: variable
+  parameters:
+    comment: 'Coherent Processing Interval in samples (~100ms)'
+    value: 'int(decimated_rate * 0.1)'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [8, 560]
+    rotation: 0
+    state: enabled
+
+- name: eca_taps
+  id: variable
+  parameters:
+    comment: 'ECA filter taps (clutter delay spread)'
+    value: '128'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [8, 640]
+    rotation: 0
+    state: enabled
+
+- name: eca_reg
+  id: variable
+  parameters:
+    comment: 'ECA regularization factor'
+    value: '0.001'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [8, 720]
+    rotation: 0
+    state: enabled
+
+- name: num_range_bins
+  id: variable
+  parameters:
+    comment: 'Range bins for CAF'
+    value: '512'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [120, 160]
+    rotation: 0
+    state: enabled
+
+- name: num_doppler_bins
+  id: variable
+  parameters:
+    comment: 'Doppler bins for CAF'
+    value: '256'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [120, 240]
+    rotation: 0
+    state: enabled
+
+- name: lpf_taps
+  id: variable
+  parameters:
+    comment: 'Low-pass filter taps for decimation'
+    value: 'firdes.low_pass(1.0, samp_rate, signal_bw/2, signal_bw/10, window.WIN_HAMMING)'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [120, 320]
+    rotation: 0
+    state: enabled
+
+# ============================================================================
+# SOURCE: KrakenSDR 5-Channel Coherent Receiver
+# ============================================================================
+- name: soapy_krakensdr_source
+  id: soapy_custom_source
+  parameters:
+    affinity: ''
+    agc0: 'False'
+    agc1: 'False'
+    alias: ''
+    antenna0: 'RX'
+    antenna1: 'RX'
+    bandwidth0: '0'
+    bandwidth1: '0'
+    center_freq0: center_freq
+    center_freq1: center_freq
+    comment: 'KrakenSDR 5-channel coherent source'
+    dc_offset0: '0'
+    dc_offset1: '0'
+    dc_removal0: 'True'
+    dc_removal1: 'True'
+    dev_args: 'driver=krakensdr'
+    freq_correction0: '0'
+    freq_correction1: '0'
+    gain0: '40'
+    gain1: '40'
+    iq_balance0: '0'
+    iq_balance1: '0'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    nchan: '5'
+    samp_rate: samp_rate
+    settings0: ''
+    settings1: ''
+    stream_args: ''
+    tune_args0: ''
+    tune_args1: ''
+    type: fc32
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [240, 200]
+    rotation: 0
+    state: enabled
+
+# ============================================================================
+# DC BLOCKING (per channel)
+# ============================================================================
+- name: dc_blocker_ref
+  id: dc_blocker_xx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Reference channel DC block'
+    length: '32'
+    long_form: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    type: cc
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [480, 140]
+    rotation: 0
+    state: enabled
+
+- name: dc_blocker_surv0
+  id: dc_blocker_xx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Surveillance ch0 DC block'
+    length: '32'
+    long_form: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    type: cc
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [480, 220]
+    rotation: 0
+    state: enabled
+
+- name: dc_blocker_surv1
+  id: dc_blocker_xx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Surveillance ch1 DC block'
+    length: '32'
+    long_form: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    type: cc
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [480, 300]
+    rotation: 0
+    state: enabled
+
+- name: dc_blocker_surv2
+  id: dc_blocker_xx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Surveillance ch2 DC block'
+    length: '32'
+    long_form: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    type: cc
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [480, 380]
+    rotation: 0
+    state: enabled
+
+- name: dc_blocker_surv3
+  id: dc_blocker_xx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Surveillance ch3 DC block'
+    length: '32'
+    long_form: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    type: cc
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [480, 460]
+    rotation: 0
+    state: enabled
+
+# ============================================================================
+# FREQUENCY TRANSLATION + DECIMATION (per channel)
+# Polyphase FIR: shifts to baseband and decimates in one step
+# ============================================================================
+- name: freq_xlating_fir_ref
+  id: freq_xlating_fir_filter_xxx
+  parameters:
+    affinity: ''
+    alias: ''
+    center_freq: '0'
+    comment: 'Reference: decimate to 250 kHz'
+    decim: decimation
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    samp_rate: samp_rate
+    taps: lpf_taps
+    type: ccc
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [680, 120]
+    rotation: 0
+    state: enabled
+
+- name: freq_xlating_fir_surv0
+  id: freq_xlating_fir_filter_xxx
+  parameters:
+    affinity: ''
+    alias: ''
+    center_freq: '0'
+    comment: 'Surv0: decimate to 250 kHz'
+    decim: decimation
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    samp_rate: samp_rate
+    taps: lpf_taps
+    type: ccc
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [680, 200]
+    rotation: 0
+    state: enabled
+
+- name: freq_xlating_fir_surv1
+  id: freq_xlating_fir_filter_xxx
+  parameters:
+    affinity: ''
+    alias: ''
+    center_freq: '0'
+    comment: 'Surv1: decimate to 250 kHz'
+    decim: decimation
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    samp_rate: samp_rate
+    taps: lpf_taps
+    type: ccc
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [680, 280]
+    rotation: 0
+    state: enabled
+
+- name: freq_xlating_fir_surv2
+  id: freq_xlating_fir_filter_xxx
+  parameters:
+    affinity: ''
+    alias: ''
+    center_freq: '0'
+    comment: 'Surv2: decimate to 250 kHz'
+    decim: decimation
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    samp_rate: samp_rate
+    taps: lpf_taps
+    type: ccc
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [680, 360]
+    rotation: 0
+    state: enabled
+
+- name: freq_xlating_fir_surv3
+  id: freq_xlating_fir_filter_xxx
+  parameters:
+    affinity: ''
+    alias: ''
+    center_freq: '0'
+    comment: 'Surv3: decimate to 250 kHz'
+    decim: decimation
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    samp_rate: samp_rate
+    taps: lpf_taps
+    type: ccc
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [680, 440]
+    rotation: 0
+    state: enabled
+
+# ============================================================================
+# AGC CONDITIONING (per channel)
+# Slow AGC to normalize levels before ECA
+# ============================================================================
+- name: agc_ref
+  id: analog_agc2_xx
+  parameters:
+    affinity: ''
+    alias: ''
+    attack_rate: '0.01'
+    comment: 'Reference AGC (slow)'
+    decay_rate: '0.001'
+    gain: '1.0'
+    max_gain: '65536'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    reference: '1.0'
+    type: complex
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [920, 112]
+    rotation: 0
+    state: enabled
+
+- name: agc_surv0
+  id: analog_agc2_xx
+  parameters:
+    affinity: ''
+    alias: ''
+    attack_rate: '0.01'
+    comment: 'Surv0 AGC'
+    decay_rate: '0.001'
+    gain: '1.0'
+    max_gain: '65536'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    reference: '1.0'
+    type: complex
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [920, 192]
+    rotation: 0
+    state: enabled
+
+- name: agc_surv1
+  id: analog_agc2_xx
+  parameters:
+    affinity: ''
+    alias: ''
+    attack_rate: '0.01'
+    comment: 'Surv1 AGC'
+    decay_rate: '0.001'
+    gain: '1.0'
+    max_gain: '65536'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    reference: '1.0'
+    type: complex
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [920, 272]
+    rotation: 0
+    state: enabled
+
+- name: agc_surv2
+  id: analog_agc2_xx
+  parameters:
+    affinity: ''
+    alias: ''
+    attack_rate: '0.01'
+    comment: 'Surv2 AGC'
+    decay_rate: '0.001'
+    gain: '1.0'
+    max_gain: '65536'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    reference: '1.0'
+    type: complex
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [920, 352]
+    rotation: 0
+    state: enabled
+
+- name: agc_surv3
+  id: analog_agc2_xx
+  parameters:
+    affinity: ''
+    alias: ''
+    attack_rate: '0.01'
+    comment: 'Surv3 AGC'
+    decay_rate: '0.001'
+    gain: '1.0'
+    max_gain: '65536'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    reference: '1.0'
+    type: complex
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [920, 432]
+    rotation: 0
+    state: enabled
+
+# ============================================================================
+# ECA CLUTTER CANCELLATION
+# Custom OOT block: 5 inputs (1 ref + 4 surv), 4 outputs (cleaned surv)
+# ============================================================================
+- name: eca_canceller
+  id: kraken_passive_radar_eca_canceller
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'ECA-B Clutter Cancellation'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_surv: '4'
+    num_taps: eca_taps
+    reg_factor: eca_reg
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1160, 240]
+    rotation: 0
+    state: enabled
+
+# ============================================================================
+# STREAM TO VECTOR (CPI segmentation for CAF processing)
+# ============================================================================
+- name: s2v_ref
+  id: blocks_stream_to_vector
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Reference: stream to CPI vectors'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_items: cpi_samples
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1160, 140]
+    rotation: 0
+    state: enabled
+
+- name: s2v_surv0
+  id: blocks_stream_to_vector
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Surv0: stream to CPI vectors'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_items: cpi_samples
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1400, 200]
+    rotation: 0
+    state: enabled
+
+- name: s2v_surv1
+  id: blocks_stream_to_vector
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Surv1: stream to CPI vectors'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_items: cpi_samples
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1400, 264]
+    rotation: 0
+    state: enabled
+
+- name: s2v_surv2
+  id: blocks_stream_to_vector
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Surv2: stream to CPI vectors'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_items: cpi_samples
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1400, 328]
+    rotation: 0
+    state: enabled
+
+- name: s2v_surv3
+  id: blocks_stream_to_vector
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Surv3: stream to CPI vectors'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_items: cpi_samples
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1400, 392]
+    rotation: 0
+    state: enabled
+
+# ============================================================================
+# CAF / CROSS-AMBIGUITY FUNCTION (Range-Doppler processing)
+# FFT-based cross-correlation between reference and each surveillance channel
+# Using standard FFT blocks for now - replace with optimized CAF OOT block
+# ============================================================================
+# Reference FFT (computed once, conjugated, used by all channels)
+- name: fft_ref
+  id: fft_vxx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Reference FFT for CAF'
+    fft_size: cpi_samples
+    forward: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    nthreads: '1'
+    shift: 'False'
+    type: complex
+    window: '[]'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1400, 120]
+    rotation: 0
+    state: enabled
+
+- name: conjugate_ref
+  id: blocks_conjugate_cc
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Conjugate reference for correlation'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    vlen: cpi_samples
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1600, 140]
+    rotation: 0
+    state: enabled
+
+# Surveillance FFTs
+- name: fft_surv0
+  id: fft_vxx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Surv0 FFT'
+    fft_size: cpi_samples
+    forward: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    nthreads: '1'
+    shift: 'False'
+    type: complex
+    window: '[]'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1600, 200]
+    rotation: 0
+    state: enabled
+
+- name: fft_surv1
+  id: fft_vxx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Surv1 FFT'
+    fft_size: cpi_samples
+    forward: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    nthreads: '1'
+    shift: 'False'
+    type: complex
+    window: '[]'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1600, 264]
+    rotation: 0
+    state: enabled
+
+- name: fft_surv2
+  id: fft_vxx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Surv2 FFT'
+    fft_size: cpi_samples
+    forward: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    nthreads: '1'
+    shift: 'False'
+    type: complex
+    window: '[]'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1600, 328]
+    rotation: 0
+    state: enabled
+
+- name: fft_surv3
+  id: fft_vxx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Surv3 FFT'
+    fft_size: cpi_samples
+    forward: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    nthreads: '1'
+    shift: 'False'
+    type: complex
+    window: '[]'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1600, 392]
+    rotation: 0
+    state: enabled
+
+# Multiply conjugate (cross-spectrum)
+- name: multiply_conj_surv0
+  id: blocks_multiply_conjugate_cc
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Cross-spectrum surv0 * conj(ref)'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    vlen: cpi_samples
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1800, 168]
+    rotation: 0
+    state: enabled
+
+- name: multiply_conj_surv1
+  id: blocks_multiply_conjugate_cc
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Cross-spectrum surv1 * conj(ref)'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    vlen: cpi_samples
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1800, 248]
+    rotation: 0
+    state: enabled
+
+- name: multiply_conj_surv2
+  id: blocks_multiply_conjugate_cc
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Cross-spectrum surv2 * conj(ref)'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    vlen: cpi_samples
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1800, 328]
+    rotation: 0
+    state: enabled
+
+- name: multiply_conj_surv3
+  id: blocks_multiply_conjugate_cc
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Cross-spectrum surv3 * conj(ref)'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    vlen: cpi_samples
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1800, 408]
+    rotation: 0
+    state: enabled
+
+# IFFT to get range profile (cross-correlation)
+- name: ifft_surv0
+  id: fft_vxx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'IFFT -> Range profile surv0'
+    fft_size: cpi_samples
+    forward: 'False'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    nthreads: '1'
+    shift: 'False'
+    type: complex
+    window: '[]'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2000, 168]
+    rotation: 0
+    state: enabled
+
+- name: ifft_surv1
+  id: fft_vxx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'IFFT -> Range profile surv1'
+    fft_size: cpi_samples
+    forward: 'False'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    nthreads: '1'
+    shift: 'False'
+    type: complex
+    window: '[]'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2000, 248]
+    rotation: 0
+    state: enabled
+
+- name: ifft_surv2
+  id: fft_vxx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'IFFT -> Range profile surv2'
+    fft_size: cpi_samples
+    forward: 'False'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    nthreads: '1'
+    shift: 'False'
+    type: complex
+    window: '[]'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2000, 328]
+    rotation: 0
+    state: enabled
+
+- name: ifft_surv3
+  id: fft_vxx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'IFFT -> Range profile surv3'
+    fft_size: cpi_samples
+    forward: 'False'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    nthreads: '1'
+    shift: 'False'
+    type: complex
+    window: '[]'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2000, 408]
+    rotation: 0
+    state: enabled
+
+# ============================================================================
+# MAGNITUDE SQUARED (power detection)
+# ============================================================================
+- name: mag_squared_surv0
+  id: blocks_complex_to_mag_squared
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Power surv0'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    vlen: cpi_samples
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2200, 180]
+    rotation: 0
+    state: enabled
+
+- name: mag_squared_surv1
+  id: blocks_complex_to_mag_squared
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Power surv1'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    vlen: cpi_samples
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2200, 260]
+    rotation: 0
+    state: enabled
+
+- name: mag_squared_surv2
+  id: blocks_complex_to_mag_squared
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Power surv2'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    vlen: cpi_samples
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2200, 340]
+    rotation: 0
+    state: enabled
+
+- name: mag_squared_surv3
+  id: blocks_complex_to_mag_squared
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Power surv3'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    vlen: cpi_samples
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2200, 420]
+    rotation: 0
+    state: enabled
+
+# ============================================================================
+# NON-COHERENT FUSION (sum of power from all channels)
+# ============================================================================
+- name: add_fusion
+  id: blocks_add_xx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Non-coherent fusion: sum power'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_inputs: '4'
+    type: float
+    vlen: cpi_samples
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2400, 280]
+    rotation: 0
+    state: enabled
+
+# ============================================================================
+# LOG SCALE FOR DISPLAY
+# ============================================================================
+- name: nlog10
+  id: blocks_nlog10_ff
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: '10*log10 for dB display'
+    k: '0'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    n: '10'
+    vlen: cpi_samples
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2560, 296]
+    rotation: 0
+    state: enabled
+
+# ============================================================================
+# VISUALIZATION: Range-Doppler Display
+# ============================================================================
+- name: qtgui_vector_sink
+  id: qtgui_vector_sink_f
+  parameters:
+    affinity: ''
+    alias: ''
+    alpha1: '1.0'
+    alpha10: '1.0'
+    alpha2: '1.0'
+    alpha3: '1.0'
+    alpha4: '1.0'
+    alpha5: '1.0'
+    alpha6: '1.0'
+    alpha7: '1.0'
+    alpha8: '1.0'
+    alpha9: '1.0'
+    autoscale: 'False'
+    average: '1.0'
+    color1: '"blue"'
+    color10: '"dark blue"'
+    color2: '"red"'
+    color3: '"green"'
+    color4: '"black"'
+    color5: '"cyan"'
+    color6: '"magenta"'
+    color7: '"yellow"'
+    color8: '"dark red"'
+    color9: '"dark green"'
+    comment: 'Range Profile Display'
+    grid: 'True'
+    gui_hint: 0,0,1,2
+    label1: 'Range Profile (dB)'
+    label10: ''
+    label2: ''
+    label3: ''
+    label4: ''
+    label5: ''
+    label6: ''
+    label7: ''
+    label8: ''
+    label9: ''
+    legend: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    name: '"Fused Range Profile"'
+    nconnections: '1'
+    ref_level: '0'
+    showports: 'False'
+    update_time: '0.10'
+    vlen: cpi_samples
+    width1: '1'
+    width10: '1'
+    width2: '1'
+    width3: '1'
+    width4: '1'
+    width5: '1'
+    width6: '1'
+    width7: '1'
+    width8: '1'
+    width9: '1'
+    x_axis_label: '"Range Bin"'
+    x_start: '0'
+    x_step: '1.0'
+    x_units: '""'
+    y_axis_label: '"Power (dB)"'
+    y_units: '""'
+    ymax: '60'
+    ymin: '-20'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2720, 240]
+    rotation: 0
+    state: enabled
+
+# ============================================================================
+# FILE SINK (optional: save raw data for offline processing)
+# ============================================================================
+- name: file_sink_rd_map
+  id: blocks_file_sink
+  parameters:
+    affinity: ''
+    alias: ''
+    append: 'False'
+    comment: 'Save fused range profile'
+    file: '"/tmp/range_doppler_map.bin"'
+    type: float
+    unbuffered: 'False'
+    vlen: cpi_samples
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2720, 360]
+    rotation: 0
+    state: disabled
+
+# ============================================================================
+# CONNECTIONS
+# ============================================================================
+connections:
+# Source to DC blockers
+- [soapy_krakensdr_source, '0', dc_blocker_ref, '0']
+- [soapy_krakensdr_source, '1', dc_blocker_surv0, '0']
+- [soapy_krakensdr_source, '2', dc_blocker_surv1, '0']
+- [soapy_krakensdr_source, '3', dc_blocker_surv2, '0']
+- [soapy_krakensdr_source, '4', dc_blocker_surv3, '0']
+
+# DC blockers to freq xlating filters
+- [dc_blocker_ref, '0', freq_xlating_fir_ref, '0']
+- [dc_blocker_surv0, '0', freq_xlating_fir_surv0, '0']
+- [dc_blocker_surv1, '0', freq_xlating_fir_surv1, '0']
+- [dc_blocker_surv2, '0', freq_xlating_fir_surv2, '0']
+- [dc_blocker_surv3, '0', freq_xlating_fir_surv3, '0']
+
+# Freq xlating to AGC
+- [freq_xlating_fir_ref, '0', agc_ref, '0']
+- [freq_xlating_fir_surv0, '0', agc_surv0, '0']
+- [freq_xlating_fir_surv1, '0', agc_surv1, '0']
+- [freq_xlating_fir_surv2, '0', agc_surv2, '0']
+- [freq_xlating_fir_surv3, '0', agc_surv3, '0']
+
+# Reference AGC to ECA (input 0) and to stream-to-vector for CAF
+- [agc_ref, '0', eca_canceller, '0']
+- [agc_ref, '0', s2v_ref, '0']
+
+# Surveillance AGC to ECA (inputs 1-4)
+- [agc_surv0, '0', eca_canceller, '1']
+- [agc_surv1, '0', eca_canceller, '2']
+- [agc_surv2, '0', eca_canceller, '3']
+- [agc_surv3, '0', eca_canceller, '4']
+
+# ECA outputs to stream-to-vector
+- [eca_canceller, '0', s2v_surv0, '0']
+- [eca_canceller, '1', s2v_surv1, '0']
+- [eca_canceller, '2', s2v_surv2, '0']
+- [eca_canceller, '3', s2v_surv3, '0']
+
+# Stream-to-vector to FFTs
+- [s2v_ref, '0', fft_ref, '0']
+- [s2v_surv0, '0', fft_surv0, '0']
+- [s2v_surv1, '0', fft_surv1, '0']
+- [s2v_surv2, '0', fft_surv2, '0']
+- [s2v_surv3, '0', fft_surv3, '0']
+
+# Reference FFT to conjugate
+- [fft_ref, '0', conjugate_ref, '0']
+
+# Surveillance FFTs + conjugate ref to multiply
+- [fft_surv0, '0', multiply_conj_surv0, '0']
+- [conjugate_ref, '0', multiply_conj_surv0, '1']
+- [fft_surv1, '0', multiply_conj_surv1, '0']
+- [conjugate_ref, '0', multiply_conj_surv1, '1']
+- [fft_surv2, '0', multiply_conj_surv2, '0']
+- [conjugate_ref, '0', multiply_conj_surv2, '1']
+- [fft_surv3, '0', multiply_conj_surv3, '0']
+- [conjugate_ref, '0', multiply_conj_surv3, '1']
+
+# Cross-spectrum to IFFT
+- [multiply_conj_surv0, '0', ifft_surv0, '0']
+- [multiply_conj_surv1, '0', ifft_surv1, '0']
+- [multiply_conj_surv2, '0', ifft_surv2, '0']
+- [multiply_conj_surv3, '0', ifft_surv3, '0']
+
+# IFFT to magnitude squared
+- [ifft_surv0, '0', mag_squared_surv0, '0']
+- [ifft_surv1, '0', mag_squared_surv1, '0']
+- [ifft_surv2, '0', mag_squared_surv2, '0']
+- [ifft_surv3, '0', mag_squared_surv3, '0']
+
+# Magnitude squared to fusion adder
+- [mag_squared_surv0, '0', add_fusion, '0']
+- [mag_squared_surv1, '0', add_fusion, '1']
+- [mag_squared_surv2, '0', add_fusion, '2']
+- [mag_squared_surv3, '0', add_fusion, '3']
+
+# Fusion to log scale
+- [add_fusion, '0', nlog10, '0']
+
+# Log scale to display and file
+- [nlog10, '0', qtgui_vector_sink, '0']
+- [nlog10, '0', file_sink_rd_map, '0']
+
+metadata:
+  file_format: 1
+  grc_version: 3.10.0.0

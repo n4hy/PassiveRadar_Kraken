@@ -1,0 +1,6 @@
+/kraken_passive_radar/libkraken_eca_b_clutter_canceller.so
+/kraken_passive_radar/libkraken_conditioning.so
+/kraken_passive_radar/libkraken_time_alignment.so
+/kraken_passive_radar/libkraken_caf_processing.so
+/kraken_passive_radar/libkraken_doppler_processing.so
+/kraken_passive_radar/libkraken_backend.so
