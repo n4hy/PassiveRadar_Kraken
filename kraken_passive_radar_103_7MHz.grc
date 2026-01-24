@@ -11,7 +11,7 @@ options:
     gen_linking: dynamic
     generate_options: qt_gui
     hier_block_src_path: '.:'
-    id: kraken_passive_radar
+    id: kraken_pbr_flowgraph
     max_nouts: '0'
     output_language: python
     placement: (0,0)
@@ -62,6 +62,19 @@ blocks:
     rotation: 0
     state: enabled
 
+- name: rf_gain
+  id: variable
+  parameters:
+    comment: 'RF gain for all channels'
+    value: '40.0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [8, 320]
+    rotation: 0
+    state: enabled
+
 - name: signal_bw
   id: variable
   parameters:
@@ -71,7 +84,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8, 320]
+    coordinate: [8, 400]
     rotation: 0
     state: enabled
 
@@ -84,7 +97,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8, 400]
+    coordinate: [8, 480]
     rotation: 0
     state: enabled
 
@@ -92,12 +105,12 @@ blocks:
   id: variable
   parameters:
     comment: 'Post-decimation sample rate'
-    value: 'samp_rate / decimation'
+    value: 'int(samp_rate / decimation)'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8, 480]
+    coordinate: [8, 560]
     rotation: 0
     state: enabled
 
@@ -110,7 +123,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8, 560]
+    coordinate: [8, 640]
     rotation: 0
     state: enabled
 
@@ -123,7 +136,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8, 640]
+    coordinate: [8, 720]
     rotation: 0
     state: enabled
 
@@ -136,33 +149,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8, 720]
-    rotation: 0
-    state: enabled
-
-- name: num_range_bins
-  id: variable
-  parameters:
-    comment: 'Range bins for CAF'
-    value: '512'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [120, 160]
-    rotation: 0
-    state: enabled
-
-- name: num_doppler_bins
-  id: variable
-  parameters:
-    comment: 'Doppler bins for CAF'
-    value: '256'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [120, 240]
+    coordinate: [8, 800]
     rotation: 0
     state: enabled
 
@@ -175,53 +162,30 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [120, 320]
+    coordinate: [120, 160]
     rotation: 0
     state: enabled
 
 # ============================================================================
 # SOURCE: KrakenSDR 5-Channel Coherent Receiver
+# Channel 0 = Reference, Channels 1-4 = Surveillance
 # ============================================================================
-- name: soapy_krakensdr_source
-  id: soapy_custom_source
+- name: kraken_src
+  id: kraken_passive_radar_krakensdr_source
   parameters:
     affinity: ''
-    agc0: 'False'
-    agc1: 'False'
     alias: ''
-    antenna0: 'RX'
-    antenna1: 'RX'
-    bandwidth0: '0'
-    bandwidth1: '0'
-    center_freq0: center_freq
-    center_freq1: center_freq
-    comment: 'KrakenSDR 5-channel coherent source'
-    dc_offset0: '0'
-    dc_offset1: '0'
-    dc_removal0: 'True'
-    dc_removal1: 'True'
-    dev_args: 'driver=krakensdr'
-    freq_correction0: '0'
-    freq_correction1: '0'
-    gain0: '40'
-    gain1: '40'
-    iq_balance0: '0'
-    iq_balance1: '0'
+    comment: 'KrakenSDR 5-Channel Coherent Source'
+    frequency: center_freq
+    gain: rf_gain
     maxoutbuf: '0'
     minoutbuf: '0'
-    nchan: '5'
-    samp_rate: samp_rate
-    settings0: ''
-    settings1: ''
-    stream_args: ''
-    tune_args0: ''
-    tune_args1: ''
-    type: fc32
+    sample_rate: samp_rate
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [240, 200]
+    coordinate: [240, 280]
     rotation: 0
     state: enabled
 
@@ -243,7 +207,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [480, 140]
+    coordinate: [480, 132]
     rotation: 0
     state: enabled
 
@@ -262,7 +226,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [480, 220]
+    coordinate: [480, 232]
     rotation: 0
     state: enabled
 
@@ -281,7 +245,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [480, 300]
+    coordinate: [480, 332]
     rotation: 0
     state: enabled
 
@@ -300,7 +264,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [480, 380]
+    coordinate: [480, 432]
     rotation: 0
     state: enabled
 
@@ -319,13 +283,12 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [480, 460]
+    coordinate: [480, 532]
     rotation: 0
     state: enabled
 
 # ============================================================================
 # FREQUENCY TRANSLATION + DECIMATION (per channel)
-# Polyphase FIR: shifts to baseband and decimates in one step
 # ============================================================================
 - name: freq_xlating_fir_ref
   id: freq_xlating_fir_filter_xxx
@@ -344,7 +307,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [680, 120]
+    coordinate: [680, 112]
     rotation: 0
     state: enabled
 
@@ -365,7 +328,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [680, 200]
+    coordinate: [680, 212]
     rotation: 0
     state: enabled
 
@@ -386,7 +349,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [680, 280]
+    coordinate: [680, 312]
     rotation: 0
     state: enabled
 
@@ -407,7 +370,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [680, 360]
+    coordinate: [680, 412]
     rotation: 0
     state: enabled
 
@@ -428,13 +391,12 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [680, 440]
+    coordinate: [680, 512]
     rotation: 0
     state: enabled
 
 # ============================================================================
 # AGC CONDITIONING (per channel)
-# Slow AGC to normalize levels before ECA
 # ============================================================================
 - name: agc_ref
   id: analog_agc2_xx
@@ -454,7 +416,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [920, 112]
+    coordinate: [920, 104]
     rotation: 0
     state: enabled
 
@@ -476,7 +438,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [920, 192]
+    coordinate: [920, 204]
     rotation: 0
     state: enabled
 
@@ -498,7 +460,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [920, 272]
+    coordinate: [920, 304]
     rotation: 0
     state: enabled
 
@@ -520,7 +482,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [920, 352]
+    coordinate: [920, 404]
     rotation: 0
     state: enabled
 
@@ -542,13 +504,12 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [920, 432]
+    coordinate: [920, 504]
     rotation: 0
     state: enabled
 
 # ============================================================================
 # ECA CLUTTER CANCELLATION
-# Custom OOT block: 5 inputs (1 ref + 4 surv), 4 outputs (cleaned surv)
 # ============================================================================
 - name: eca_canceller
   id: kraken_passive_radar_eca_canceller
@@ -565,12 +526,12 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1160, 240]
+    coordinate: [1160, 280]
     rotation: 0
     state: enabled
 
 # ============================================================================
-# STREAM TO VECTOR (CPI segmentation for CAF processing)
+# STREAM TO VECTOR (CPI segmentation)
 # ============================================================================
 - name: s2v_ref
   id: blocks_stream_to_vector
@@ -606,7 +567,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1400, 200]
+    coordinate: [1400, 220]
     rotation: 0
     state: enabled
 
@@ -625,7 +586,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1400, 264]
+    coordinate: [1400, 300]
     rotation: 0
     state: enabled
 
@@ -644,7 +605,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1400, 328]
+    coordinate: [1400, 380]
     rotation: 0
     state: enabled
 
@@ -663,16 +624,13 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1400, 392]
+    coordinate: [1400, 460]
     rotation: 0
     state: enabled
 
 # ============================================================================
-# CAF / CROSS-AMBIGUITY FUNCTION (Range-Doppler processing)
-# FFT-based cross-correlation between reference and each surveillance channel
-# Using standard FFT blocks for now - replace with optimized CAF OOT block
+# FFT for CAF (Reference)
 # ============================================================================
-# Reference FFT (computed once, conjugated, used by all channels)
 - name: fft_ref
   id: fft_vxx
   parameters:
@@ -695,24 +653,9 @@ blocks:
     rotation: 0
     state: enabled
 
-- name: conjugate_ref
-  id: blocks_conjugate_cc
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: 'Conjugate reference for correlation'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    vlen: cpi_samples
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1600, 140]
-    rotation: 0
-    state: enabled
-
+# ============================================================================
 # Surveillance FFTs
+# ============================================================================
 - name: fft_surv0
   id: fft_vxx
   parameters:
@@ -731,7 +674,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1600, 200]
+    coordinate: [1600, 220]
     rotation: 0
     state: enabled
 
@@ -753,7 +696,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1600, 264]
+    coordinate: [1600, 300]
     rotation: 0
     state: enabled
 
@@ -775,7 +718,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1600, 328]
+    coordinate: [1600, 380]
     rotation: 0
     state: enabled
 
@@ -797,80 +740,151 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1600, 392]
+    coordinate: [1600, 460]
     rotation: 0
     state: enabled
 
-# Multiply conjugate (cross-spectrum)
-- name: multiply_conj_surv0
-  id: blocks_multiply_conjugate_cc
+# ============================================================================
+# Conjugate the reference FFT for correlation
+# blocks_conjugate_cc works on streams, so we need V2S -> conjugate -> S2V
+# ============================================================================
+- name: v2s_ref_for_conj
+  id: blocks_vector_to_stream
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'V2S for conjugate'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_items: cpi_samples
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1560, 60]
+    rotation: 0
+    state: enabled
+
+- name: conjugate_ref
+  id: blocks_conjugate_cc
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Conjugate reference'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1680, 68]
+    rotation: 0
+    state: enabled
+
+- name: s2v_ref_conj
+  id: blocks_stream_to_vector
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'S2V after conjugate'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_items: cpi_samples
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1800, 60]
+    rotation: 0
+    state: enabled
+
+# ============================================================================
+# Cross-spectrum: Surv * conj(Ref)
+# Using blocks_multiply_xx with vlen for vector operation
+# ============================================================================
+- name: multiply_surv0
+  id: blocks_multiply_xx
   parameters:
     affinity: ''
     alias: ''
     comment: 'Cross-spectrum surv0 * conj(ref)'
     maxoutbuf: '0'
     minoutbuf: '0'
+    num_inputs: '2'
+    type: complex
     vlen: cpi_samples
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1800, 168]
+    coordinate: [1960, 160]
     rotation: 0
     state: enabled
 
-- name: multiply_conj_surv1
-  id: blocks_multiply_conjugate_cc
+- name: multiply_surv1
+  id: blocks_multiply_xx
   parameters:
     affinity: ''
     alias: ''
     comment: 'Cross-spectrum surv1 * conj(ref)'
     maxoutbuf: '0'
     minoutbuf: '0'
+    num_inputs: '2'
+    type: complex
     vlen: cpi_samples
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1800, 248]
+    coordinate: [1960, 280]
     rotation: 0
     state: enabled
 
-- name: multiply_conj_surv2
-  id: blocks_multiply_conjugate_cc
+- name: multiply_surv2
+  id: blocks_multiply_xx
   parameters:
     affinity: ''
     alias: ''
     comment: 'Cross-spectrum surv2 * conj(ref)'
     maxoutbuf: '0'
     minoutbuf: '0'
+    num_inputs: '2'
+    type: complex
     vlen: cpi_samples
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1800, 328]
+    coordinate: [1960, 400]
     rotation: 0
     state: enabled
 
-- name: multiply_conj_surv3
-  id: blocks_multiply_conjugate_cc
+- name: multiply_surv3
+  id: blocks_multiply_xx
   parameters:
     affinity: ''
     alias: ''
     comment: 'Cross-spectrum surv3 * conj(ref)'
     maxoutbuf: '0'
     minoutbuf: '0'
+    num_inputs: '2'
+    type: complex
     vlen: cpi_samples
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1800, 408]
+    coordinate: [1960, 520]
     rotation: 0
     state: enabled
 
-# IFFT to get range profile (cross-correlation)
+# ============================================================================
+# IFFT for range profile
+# ============================================================================
 - name: ifft_surv0
   id: fft_vxx
   parameters:
@@ -889,7 +903,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2000, 168]
+    coordinate: [2160, 160]
     rotation: 0
     state: enabled
 
@@ -911,7 +925,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2000, 248]
+    coordinate: [2160, 280]
     rotation: 0
     state: enabled
 
@@ -933,7 +947,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2000, 328]
+    coordinate: [2160, 400]
     rotation: 0
     state: enabled
 
@@ -955,7 +969,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2000, 408]
+    coordinate: [2160, 520]
     rotation: 0
     state: enabled
 
@@ -975,7 +989,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2200, 180]
+    coordinate: [2360, 172]
     rotation: 0
     state: enabled
 
@@ -992,7 +1006,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2200, 260]
+    coordinate: [2360, 292]
     rotation: 0
     state: enabled
 
@@ -1009,7 +1023,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2200, 340]
+    coordinate: [2360, 412]
     rotation: 0
     state: enabled
 
@@ -1026,12 +1040,12 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2200, 420]
+    coordinate: [2360, 532]
     rotation: 0
     state: enabled
 
 # ============================================================================
-# NON-COHERENT FUSION (sum of power from all channels)
+# NON-COHERENT FUSION
 # ============================================================================
 - name: add_fusion
   id: blocks_add_xx
@@ -1048,7 +1062,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2400, 280]
+    coordinate: [2560, 312]
     rotation: 0
     state: enabled
 
@@ -1070,12 +1084,12 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2560, 296]
+    coordinate: [2720, 324]
     rotation: 0
     state: enabled
 
 # ============================================================================
-# VISUALIZATION: Range-Doppler Display
+# VISUALIZATION
 # ============================================================================
 - name: qtgui_vector_sink
   id: qtgui_vector_sink_f
@@ -1148,42 +1162,20 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2720, 240]
+    coordinate: [2880, 260]
     rotation: 0
     state: enabled
-
-# ============================================================================
-# FILE SINK (optional: save raw data for offline processing)
-# ============================================================================
-- name: file_sink_rd_map
-  id: blocks_file_sink
-  parameters:
-    affinity: ''
-    alias: ''
-    append: 'False'
-    comment: 'Save fused range profile'
-    file: '"/tmp/range_doppler_map.bin"'
-    type: float
-    unbuffered: 'False'
-    vlen: cpi_samples
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [2720, 360]
-    rotation: 0
-    state: disabled
 
 # ============================================================================
 # CONNECTIONS
 # ============================================================================
 connections:
-# Source to DC blockers
-- [soapy_krakensdr_source, '0', dc_blocker_ref, '0']
-- [soapy_krakensdr_source, '1', dc_blocker_surv0, '0']
-- [soapy_krakensdr_source, '2', dc_blocker_surv1, '0']
-- [soapy_krakensdr_source, '3', dc_blocker_surv2, '0']
-- [soapy_krakensdr_source, '4', dc_blocker_surv3, '0']
+# KrakenSDR source to DC blockers (5 coherent outputs: ch0-ch4)
+- [kraken_src, '0', dc_blocker_ref, '0']
+- [kraken_src, '1', dc_blocker_surv0, '0']
+- [kraken_src, '2', dc_blocker_surv1, '0']
+- [kraken_src, '3', dc_blocker_surv2, '0']
+- [kraken_src, '4', dc_blocker_surv3, '0']
 
 # DC blockers to freq xlating filters
 - [dc_blocker_ref, '0', freq_xlating_fir_ref, '0']
@@ -1199,47 +1191,51 @@ connections:
 - [freq_xlating_fir_surv2, '0', agc_surv2, '0']
 - [freq_xlating_fir_surv3, '0', agc_surv3, '0']
 
-# Reference AGC to ECA (input 0) and to stream-to-vector for CAF
+# Reference AGC to ECA and to S2V for CAF
 - [agc_ref, '0', eca_canceller, '0']
 - [agc_ref, '0', s2v_ref, '0']
 
-# Surveillance AGC to ECA (inputs 1-4)
+# Surveillance AGC to ECA
 - [agc_surv0, '0', eca_canceller, '1']
 - [agc_surv1, '0', eca_canceller, '2']
 - [agc_surv2, '0', eca_canceller, '3']
 - [agc_surv3, '0', eca_canceller, '4']
 
-# ECA outputs to stream-to-vector
+# ECA outputs to S2V
 - [eca_canceller, '0', s2v_surv0, '0']
 - [eca_canceller, '1', s2v_surv1, '0']
 - [eca_canceller, '2', s2v_surv2, '0']
 - [eca_canceller, '3', s2v_surv3, '0']
 
-# Stream-to-vector to FFTs
+# Reference S2V to FFT
 - [s2v_ref, '0', fft_ref, '0']
+
+# Reference FFT -> V2S -> Conjugate -> S2V (to get conj(Ref) as vector)
+- [fft_ref, '0', v2s_ref_for_conj, '0']
+- [v2s_ref_for_conj, '0', conjugate_ref, '0']
+- [conjugate_ref, '0', s2v_ref_conj, '0']
+
+# Surveillance S2V to FFTs
 - [s2v_surv0, '0', fft_surv0, '0']
 - [s2v_surv1, '0', fft_surv1, '0']
 - [s2v_surv2, '0', fft_surv2, '0']
 - [s2v_surv3, '0', fft_surv3, '0']
 
-# Reference FFT to conjugate
-- [fft_ref, '0', conjugate_ref, '0']
+# FFT outputs and conjugate ref to multipliers (cross-spectrum)
+- [fft_surv0, '0', multiply_surv0, '0']
+- [s2v_ref_conj, '0', multiply_surv0, '1']
+- [fft_surv1, '0', multiply_surv1, '0']
+- [s2v_ref_conj, '0', multiply_surv1, '1']
+- [fft_surv2, '0', multiply_surv2, '0']
+- [s2v_ref_conj, '0', multiply_surv2, '1']
+- [fft_surv3, '0', multiply_surv3, '0']
+- [s2v_ref_conj, '0', multiply_surv3, '1']
 
-# Surveillance FFTs + conjugate ref to multiply
-- [fft_surv0, '0', multiply_conj_surv0, '0']
-- [conjugate_ref, '0', multiply_conj_surv0, '1']
-- [fft_surv1, '0', multiply_conj_surv1, '0']
-- [conjugate_ref, '0', multiply_conj_surv1, '1']
-- [fft_surv2, '0', multiply_conj_surv2, '0']
-- [conjugate_ref, '0', multiply_conj_surv2, '1']
-- [fft_surv3, '0', multiply_conj_surv3, '0']
-- [conjugate_ref, '0', multiply_conj_surv3, '1']
-
-# Cross-spectrum to IFFT
-- [multiply_conj_surv0, '0', ifft_surv0, '0']
-- [multiply_conj_surv1, '0', ifft_surv1, '0']
-- [multiply_conj_surv2, '0', ifft_surv2, '0']
-- [multiply_conj_surv3, '0', ifft_surv3, '0']
+# Multipliers to IFFT
+- [multiply_surv0, '0', ifft_surv0, '0']
+- [multiply_surv1, '0', ifft_surv1, '0']
+- [multiply_surv2, '0', ifft_surv2, '0']
+- [multiply_surv3, '0', ifft_surv3, '0']
 
 # IFFT to magnitude squared
 - [ifft_surv0, '0', mag_squared_surv0, '0']
@@ -1247,7 +1243,7 @@ connections:
 - [ifft_surv2, '0', mag_squared_surv2, '0']
 - [ifft_surv3, '0', mag_squared_surv3, '0']
 
-# Magnitude squared to fusion adder
+# Magnitude squared to fusion
 - [mag_squared_surv0, '0', add_fusion, '0']
 - [mag_squared_surv1, '0', add_fusion, '1']
 - [mag_squared_surv2, '0', add_fusion, '2']
@@ -1256,10 +1252,9 @@ connections:
 # Fusion to log scale
 - [add_fusion, '0', nlog10, '0']
 
-# Log scale to display and file
+# Log scale to display
 - [nlog10, '0', qtgui_vector_sink, '0']
-- [nlog10, '0', file_sink_rd_map, '0']
 
 metadata:
   file_format: 1
-  grc_version: 3.10.0.0
+  grc_version: 3.10.9.2
