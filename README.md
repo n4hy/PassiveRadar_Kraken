@@ -1,185 +1,146 @@
-# KrakenSDR Passive Radar
+# gr-kraken_passive_radar
 
-A high-performance, GPU/CPU-accelerated Passive Radar system for the KrakenSDR 5-channel coherent receiver. This project implements a full signal processing pipeline from raw IQ ingestion to Range-Doppler map generation, capable of detecting aircraft and other moving targets using commercial FM broadcast or TV signals as illuminators of opportunity.
+GNU Radio Out-of-Tree (OOT) module for KrakenSDR passive bistatic radar applications.
 
-![Status](https://img.shields.io/badge/Status-Operational-green)
-![Build](https://img.shields.io/badge/Build-CMake-blue)
-![License](https://img.shields.io/badge/License-MIT-green)
+## Overview
 
----
+This module provides GNU Radio blocks for passive radar signal processing using the KrakenSDR 5-channel coherent SDR receiver. It implements the complete passive radar processing chain from coherent data acquisition through clutter cancellation and cross-ambiguity function computation.
 
-## 📡 Architecture & Signal Flow
+## Blocks
 
-The system is built on **GNU Radio** but relies heavily on custom **C++ Optimized OOT (Out-of-Tree)** blocks to achieve real-time performance. The architecture follows a strict policy: **All signal processing mathematics are performed in compiled C++ kernels**, while Python is used only for orchestration (glue logic).
+| Block | Description |
+|-------|-------------|
+| **KrakenSDR Source** | 5-channel coherent source for KrakenSDR hardware |
+| **ECA Canceller** | Extensive Cancellation Algorithm for direct-path/multipath suppression |
+| **ECA-B Clutter Canceller** | Batched ECA implementation for improved performance |
+| **Clutter Canceller** | General clutter cancellation block |
+| **Doppler Processing** | Doppler shift estimation and compensation |
 
-### Signal Processing Pipeline (C++)
+## Dependencies
 
-1.  **Time Alignment (`src/time_alignment.cpp`)**:
-    *   Calibrates sample delay and phase offsets between channels using cross-correlation.
-2.  **Conditioning (`src/conditioning.cpp`)**:
-    *   Applies AGC (Automatic Gain Control) to normalize Reference and Surveillance channels.
-3.  **ECA-B Clutter Canceller (`src/eca_b_clutter_canceller.cpp`)**:
-    *   Removes direct-path signal and static ground clutter.
-    *   Uses **Fast Covariance Update (Toeplitz)** algorithm ($O(MN)$) for efficiency.
-    *   Fixes historical index alignment for precise cancellation.
-4.  **CAF Processing (`src/caf_processing.cpp`)**:
-    *   Computes Range Profiles using FFT-based Cross-Correlation (Cross-Ambiguity Function).
-    *   Uses **Overlap-Save** logic or blocked FFTs.
-5.  **Doppler Processing (`src/doppler_processing.cpp`)**:
-    *   Accumulates pulses and performs Slow-Time FFT.
-    *   Produces Range-Doppler maps.
-6.  **Backend (`src/backend.cpp`)**:
-    *   **Fusion:** Non-coherently combines maps from 4 surveillance channels.
-    *   **CFAR:** Performs 2D Constant False Alarm Rate detection.
-7.  **Angle of Arrival (`src/aoa_processing.cpp`)**:
-    *   Computes 2D (Azimuth) or 3D (Azimuth & Elevation) arrival angles for detected targets.
-    *   Supports Uniform Linear Arrays (ULA) and Uniform Rectangular Arrays (URA).
+- GNU Radio 3.10+
+- KrakenSDR hardware (5-channel coherent RTL-SDR)
+- Python 3.8+
+- NumPy
+- pybind11
 
----
-
-## 🚀 Running the Radar
-
-The primary way to run the radar is via the **pure Python orchestration script**, which bypasses GNU Radio Companion to ensure strict control over the pipeline execution.
-
-### 1. Calibration (Recommended)
-Before running the main radar, perform phase calibration using the KrakenSDR's internal noise source.
+## Installation
 
 ```bash
-# Calibrate (requires noise source to be connected/enabled)
-python3 calibrate_krakensdr.py --freq 100e6
+git clone https://github.com/YOUR_USERNAME/gr-kraken_passive_radar.git
+cd gr-kraken_passive_radar
+mkdir build && cd build
+cmake -DCMAKE_BUILD_TYPE=Release ..
+make -j$(nproc)
+sudo make install
+sudo ldconfig
 ```
-This saves `calibration.json`.
 
-### 2. Main Radar Loop
-Start the passive radar processing chain.
+### Verify Installation
 
 ```bash
-# Basic Run (Headless)
-python3 run_passive_radar.py --freq 100e6
+# Check blocks are installed
+ls /usr/local/share/gnuradio/grc/blocks/*kraken*
 
-# With Graphical Display (PPI)
-python3 run_passive_radar.py --freq 100e6 --visualize
-
-# Specify Antenna Geometry
-python3 run_passive_radar.py --geometry ULA --visualize
-python3 run_passive_radar.py --geometry URA --visualize
-
-# Include Reference Antenna in AoA Array (for 5-element arrays)
-python3 run_passive_radar.py --geometry URA --include-ref --visualize
+# Verify Python import
+python3 -c "from kraken_passive_radar import krakensdr_source; print('OK')"
 ```
 
-*   **Inputs:** Connects to KrakenSDR via `krakensdr_source`.
-*   **Outputs:**
-    *   Real-time PPI Display (if `--visualize` used).
-    *   Prints detection statistics to console.
-    *   Logs ECA statistics to `eca_stats.txt`.
+## Block Reference
 
----
+### KrakenSDR Source
 
-## 🛠️ Hardware Setup
+5-channel coherent source block for KrakenSDR hardware.
 
-1.  **Power Supply:** A **Powered USB 3.0 Hub (3A+)** is **REQUIRED**. The KrakenSDR draws ~2.2A, exceeding standard port limits.
-2.  **Antennas:** Connect 5 matched antennas to ports CH0-CH4.
-    *   **CH0 (Ref):** Directional antenna pointing at illuminator.
-    *   **CH1-4 (Surv):** Surveillance array (ULA or URA).
-3.  **Host:** Linux PC (x86_64) or Raspberry Pi 4/5 (aarch64).
+**Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| frequency | float | 100e6 | Center frequency (Hz) |
+| sample_rate | float | 2.4e6 | Sample rate (Hz) |
+| gain | float | 30.0 | RF gain (dB) |
 
-### Antenna Geometries
-*   **ULA (Uniform Linear Array):** 4 elements in a line with $\lambda/2$ spacing.
-*   **URA (Uniform Rectangular Array):** 4 elements in a 2x2 square grid with $\lambda/2$ spacing between adjacent corners.
+**Outputs:**
+- 5 complex streams (ch0: reference, ch1-ch4: surveillance)
 
-### System Configuration
-You must configure USB permissions and memory limits before running the software.
+### ECA Canceller
 
+Extensive Cancellation Algorithm block for removing direct-path interference and multipath clutter from surveillance channels using the reference channel.
+
+**Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| num_surv | int | 4 | Number of surveillance channels |
+| num_taps | int | 128 | Filter length (delay spread coverage) |
+| reg_factor | float | 0.001 | Regularization factor for matrix inversion |
+
+**Inputs:**
+- Port 0: Reference channel (complex stream)
+- Ports 1-N: Surveillance channels (complex streams)
+
+**Outputs:**
+- Ports 0-(N-1): Cleaned surveillance channels (complex streams)
+
+## Example Flowgraph
+
+A complete passive radar flowgraph is provided: `kraken_passive_radar_103_7MHz.grc`
+
+This flowgraph implements:
+1. KrakenSDR 5-channel coherent acquisition at 103.7 MHz (FM broadcast)
+2. DC blocking and decimation (2.4 MHz → 250 kHz)
+3. AGC conditioning
+4. ECA clutter cancellation
+5. Cross-Ambiguity Function (CAF) computation via FFT
+6. Non-coherent fusion of 4 surveillance channels
+7. Range profile display
+
+### Signal Flow
+
+```
+KrakenSDR (5ch) → DC Block → Decimate → AGC → ECA → S2V → FFT
+                                              ↓
+                    Display ← dB ← Σ ← |·|² ← IFFT ← Surv×conj(Ref)
+```
+
+## Passive Radar Basics
+
+Passive bistatic radar uses existing RF transmitters (FM, DVB-T, LTE, etc.) as illuminators of opportunity. The KrakenSDR provides:
+
+- **Reference channel (ch0)**: Points toward the transmitter to capture the direct signal
+- **Surveillance channels (ch1-4)**: Point toward the surveillance area to capture target echoes
+
+The Cross-Ambiguity Function correlates each surveillance channel with the reference to detect targets in range-Doppler space.
+
+## Troubleshooting
+
+### Block not appearing in GRC
 ```bash
-# Run once
-sudo ./setup_krakensdr_permissions.sh
+# Refresh GRC block cache
+grcc --force-load
+# Or restart GRC
 ```
-*   **Blacklists** `dvb_usb_rtl28xxu` kernel driver.
-*   **Sets** `usbfs_memory_mb` to 0 (unlimited) to support 5 concurrent streams.
-*   **Reboot** after running.
 
----
-
-## 📦 Installation
-
-### 1. Install Dependencies
+### Import errors
 ```bash
-sudo apt update
-sudo apt install -y gnuradio gr-osmosdr python3-numpy python3-pyqt5 g++ cmake make libfftw3-dev soapysdr-tools
+# Check Python path
+python3 -c "import sys; print([p for p in sys.path if 'gnuradio' in p])"
+
+# Verify installation location
+python3 -c "import kraken_passive_radar; print(kraken_passive_radar.__file__)"
 ```
 
-### 2. Build & Install OOT Module
-The project contains custom C++ blocks that must be compiled.
+### "Blacklisted" block ID error
+Block instance names cannot shadow imported class names. Rename the block instance (e.g., `krakensdr_source` → `kraken_src`).
 
-```bash
-./build_oot.sh
-```
-This script will:
-1.  Detect your Python installation.
-2.  Compile the C++ kernels (`libkraken_eca_b_clutter_canceller.so`, `libkraken_doppler_processing.so`, etc.) with **Release** optimizations (`-O3 -march=native -ffast-math`).
-3.  Install the Python blocks and GRC definitions to `/usr/local/`.
+## License
 
-**Note:** If you modify the C++ code or GRC block definitions, run `./reinstall_oot.sh` to update the system.
+GPLv3
 
----
+## Author
 
-## 🧪 Testing
+N4HY - Bob McGwier
 
-The repository includes a suite of unit tests to verify the signal processing kernels and the full pipeline.
+## References
 
-```bash
-# Run all tests
-./run_tests.sh
-```
-
-**Key Tests:**
-*   **`tests/test_end_to_end.py` (Offline Pipeline Verification):**
-    *   Constructs the full pipeline (Conditioning -> ECA -> CAF -> Doppler -> CFAR) using synthetic data.
-    *   Injects a simulated target at specific Range/Doppler bins.
-    *   Verifies that the system correctly detects the target and produces a valid CFAR mask.
-    *   **Output:** Generates `offline_test_map.ppm` showing the detection heatmap.
-*   `tests/test_eca_b_cpp.py`: Verifies the C++ ECA-B kernel achieves >10dB clutter suppression.
-*   `tests/test_caf_cpp.py`: Verifies the CAF kernel correctly computes cross-correlation lags.
-*   `tests/test_doppler_cpp.py`: Verifies the Doppler processing FFT logic.
-
----
-
-## ⚡ Performance Optimizations
-
-*   **Fast Covariance Algorithm:** The ECA-B block uses a specialized algorithm to update the covariance matrix $R$ in linear time relative to the number of taps.
-*   **Zero-Copy Logic:** The Python wrappers in `kraken_passive_radar/custom_blocks.py` pass pointers directly to C++ to avoid memory copying overhead.
-*   **Vectorization:** The build system forces `-O3 -march=native -ffast-math`, allowing the compiler to auto-vectorize loops using AVX (x86) or NEON (ARM) instructions.
-
----
-
-## ⚠️ Troubleshooting
-
-| Symptom | Cause | Solution |
-| :--- | :--- | :--- |
-| **"PLL not locked"** | Insufficient Power | Use a powered USB hub (3A+). |
-| **"Failed to allocate zero-copy buffer"** | Kernel Limit | Run `setup_krakensdr_permissions.sh`. |
-| **"O" (Overflow) printing to console** | CPU Overload | Reduce sample rate or `eca_taps`. Ensure you ran `./build_oot.sh` (Optimized build). |
-| **OSError: libkraken_... not found** | Missing Build | Run `./build_oot.sh` to compile C++ libraries. |
-
----
-
-## ⚖️ Legal & Regulatory Compliance (ITAR/EAR)
-
-**1. Nature of Software**
-This repository contains source code for a **Passive Bistatic Radar (PBR)** system. It is designed solely for **Receive-Only** operation using Commercial Off-The-Shelf (COTS) hardware (RTL-SDR/KrakenSDR) and public Illuminators of Opportunity (FM/TV broadcasts). It does not contain code for radar transmission, electronic attack, or signal generation.
-
-**2. Export Administration Regulations (EAR)**
-This software is provided as Open Source and is believed to be classified under **ECCN 5D002** (Information Security - Software) or **EAR99** (No License Required) depending on specific encryption usage (none implemented by default). It is publicly available and not subject to the International Traffic in Arms Regulations (ITAR) as it does not constitute a "defense article" or "technical data" related to a defense article under 22 CFR § 120-130.
-
-**3. Frequency & Bandwidth Usage**
-Users are strictly responsible for complying with all local, state, and federal regulations regarding radio frequency reception. This software is designed to operate within standard civilian broadcast bands (e.g., 88-108 MHz).
-
-**4. End-Use Restrictions**
-This software must **NOT** be used for:
-*   Military or combat operations.
-*   Unlawful surveillance or interception of private communications.
-*   Any end-use prohibited by U.S. export control laws.
-
-**Statement of Compliance:**
-By downloading, compiling, or running this software, you acknowledge that you are responsible for strict adherence to the U.S. Export Administration Regulations and the ITAR where applicable. The authors and contributors assume no liability for the misuse of this code or violations of local RF regulations.
+- [KrakenSDR Documentation](https://github.com/krakenrf/krakensdr_docs)
+- [Passive Radar Fundamentals](https://en.wikipedia.org/wiki/Passive_radar)
+- [GNU Radio OOT Module Tutorial](https://wiki.gnuradio.org/index.php/OutOfTreeModules)
