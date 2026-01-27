@@ -138,7 +138,7 @@ This hardware-level isolation means that during calibration, there is **NO anten
 
 ## Hardware Support
 
-PassiveRadar_Kraken leverages [OptimizedKernelsForRaspberryPi5](https://github.com/n4hy/OptimizedKernelsForRaspberryPi5) for hardware-accelerated signal processing across multiple platforms.
+PassiveRadar_Kraken leverages [OptimizedKernelsForRaspberryPi5_NvidiaCUDA](https://github.com/n4hy/OptimizedKernelsForRaspberryPi5_NvidiaCUDA) **v0.2.1+** for hardware-accelerated signal processing across multiple platforms.
 
 ### Raspberry Pi 5
 
@@ -930,7 +930,9 @@ SOFTWARE.
 Science Bob
 Dr Robert W McGwier, PhD
 
-ALL unit tests, and documentation and debugging done with the aid of claude code.
+ALL unit tests, and documentation and debugging done with the aid of claude code. MAN
+this is so much more pleasant than the sweating bullets for days debugging and cursing
+about needing documentation.
 
 ---
 
@@ -939,7 +941,7 @@ ALL unit tests, and documentation and debugging done with the aid of claude code
 - [KrakenSDR Documentation](https://github.com/krakenrf/krakensdr_docs)
 - [Passive Radar Fundamentals](https://en.wikipedia.org/wiki/Passive_radar)
 - [GNU Radio OOT Module Tutorial](https://wiki.gnuradio.org/index.php/OutOfTreeModules)
-- [OptMathKernels](https://github.com/n4hy/OptimizedKernelsForRaspberryPi5) - NEON/Vulkan/CUDA acceleration
+- [OptMathKernels v0.2.1+](https://github.com/n4hy/OptimizedKernelsForRaspberryPi5_NvidiaCUDA) - NEON/Vulkan/CUDA acceleration
 - [NVIDIA CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit)
 - [Vulkan SDK](https://vulkan.lunarg.com/)
 - Kulpa, K. "Signal Processing in Noise Waveform Radar" (2013)
