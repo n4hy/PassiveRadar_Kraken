@@ -37,9 +37,35 @@ GNU Radio Out-of-Tree (OOT) module and Python display system for passive bistati
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                         KrakenSDR 5-Channel Coherent SDR                    │
 │                    (Ch0: Reference, Ch1-4: Surveillance)                    │
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  INTERNAL NOISE SOURCE with HIGH-ISOLATION SILICON SWITCH           │   │
+│  │  When enabled: Switch DISCONNECTS all antennas, routes noise only   │   │
+│  │  When disabled: Switch RECONNECTS antennas for normal operation     │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      Calibration Controller                                 │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  Monitors phase coherence. When drift exceeds threshold:            │   │
+│  │  1. Enable noise source (HW switch isolates antennas)               │   │
+│  │  2. Capture calibration samples (noise only, no antenna signals)    │   │
+│  │  3. Compute phase correction phasors                                │   │
+│  │  4. Disable noise source (HW switch reconnects antennas)            │   │
+│  │  5. Apply corrections to all subsequent samples                     │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                      │                                      │
+│                    ┌─────────────────┴─────────────────┐                    │
+│                    ▼                                   ▼                    │
+│         ┌──────────────────┐                ┌──────────────────┐           │
+│         │ Phase Correction │                │ Phase Correction │           │
+│         │   (per channel)  │                │   (per channel)  │           │
+│         └──────────────────┘                └──────────────────┘           │
+│                    │  MUST occur BEFORE ECA │                               │
+└────────────────────┼────────────────────────┼───────────────────────────────┘
+                     ▼                        ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                        GNU Radio OOT v2 Blocks                              │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐    │
@@ -47,7 +73,10 @@ GNU Radio Out-of-Tree (OOT) module and Python display system for passive bistati
 │  │   Monitor    │→ │  Canceller   │→ │  Processor   │→ │  Detector    │    │
 │  │              │  │   (NLMS)     │  │              │  │              │    │
 │  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘    │
-│                                                               │             │
+│         │                 ▲                                   │             │
+│         │                 │                                   │             │
+│         │    Requires phase-coherent inputs                   │             │
+│         │                                                     │             │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐        │             │
 │  │   Detection  │← │    Tracker   │← │     AoA      │←───────┘             │
 │  │   Cluster    │  │   (Kalman)   │  │  Estimator   │                      │
@@ -67,6 +96,18 @@ GNU Radio Out-of-Tree (OOT) module and Python display system for passive bistati
 │  └──────────────────┘  └──────────────────────────────────────────┘        │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
+
+### KrakenSDR Noise Source and Phase Calibration
+
+The KrakenSDR contains an **internal wideband noise source** with a **high-isolation silicon switch**. This is critical for maintaining phase coherence:
+
+- **When noise source is ENABLED**: The silicon switch **physically disconnects ALL antennas** from the signal path. Only the internal noise source feeds all 5 receiver channels. This provides a common reference signal for measuring inter-channel phase offsets.
+
+- **When noise source is DISABLED**: The silicon switch **reconnects the antennas** and normal operation resumes.
+
+This hardware-level isolation means that during calibration, there is **NO antenna signal contamination** - the calibration samples contain only the noise source signal, ensuring accurate phase offset measurement.
+
+**Calibration is triggered automatically** when the coherence monitor detects phase drift exceeding the configured threshold. The entire calibration cycle (enable noise, capture, compute, disable noise) typically completes in under 100ms.
 
 ---
 
@@ -803,6 +844,12 @@ nvidia-smi
 
 ```
 PassiveRadar_Kraken/
+├── gr-kraken_passive_radar/
+│   └── python/kraken_passive_radar/
+│       ├── krakensdr_source.py        # KrakenSDR source with noise control
+│       ├── calibration_controller.py  # Automatic phase calibration
+│       ├── eca_b_clutter_canceller.py # ECA-B wrapper
+│       └── custom_blocks.py           # Conditioning, CAF, Backend blocks
 ├── gr-kraken_passive_radar_v2/
 │   └── gr-kraken_passive_radar/
 │       ├── include/gnuradio/kraken_passive_radar/
@@ -817,28 +864,34 @@ PassiveRadar_Kraken/
 │       │   ├── eca_canceller_impl.{h,cc}
 │       │   └── CMakeLists.txt
 │       ├── grc/
-│       │   └── *.block.yml (GRC block definitions)
+│       │   └── *.block.yml (GRC block definitions with asserts)
 │       └── python/kraken_passive_radar/bindings/
 │           └── *_python.cc (pybind11 bindings)
 ├── kraken_passive_radar/
+│   ├── __init__.py               # Package initialization
 │   ├── radar_gui.py              # Integrated multi-panel GUI
 │   ├── radar_display.py          # PPI display with tracking
 │   ├── range_doppler_display.py  # CAF heatmap display
 │   ├── calibration_panel.py      # Calibration monitoring
 │   └── metrics_dashboard.py      # System metrics
 ├── src/
-│   ├── caf_processing.cpp        # CAF with OptMathKernels
-│   ├── eca_b_clutter_canceller.cpp
-│   ├── doppler_processing.cpp
-│   └── CMakeLists.txt
+│   ├── caf_processing.cpp        # CAF with OptMathKernels + FFTW threads
+│   ├── eca_b_clutter_canceller.cpp  # Thread-safe with std::atomic
+│   ├── doppler_processing.cpp    # FFTW thread initialization
+│   ├── time_alignment.cpp        # FFTW thread initialization
+│   ├── nlms_clutter_canceller.cpp
+│   ├── backend.cpp               # CFAR with div-by-zero guards
+│   └── CMakeLists.txt            # C++17, auto GR_PYTHON_DIR detection
 ├── tests/
-│   ├── unit/                     # Unit tests
-│   ├── integration/              # Integration tests
-│   ├── benchmarks/               # Performance tests
-│   └── fixtures/                 # Test data generators
-├── examples/
-│   └── kraken_passive_radar_103_7MHz.grc
-├── run_tests.sh                  # Test runner script
+│   ├── unit/                     # 117+ unit tests
+│   ├── integration/              # End-to-end pipeline tests
+│   ├── benchmarks/               # Performance measurements
+│   └── fixtures/                 # Synthetic target/clutter/noise generators
+├── run_passive_radar.py          # Main application with CalibrationController
+├── calibrate_krakensdr.py        # Standalone calibration script
+├── run_tests.sh                  # Comprehensive test runner
+├── pyproject.toml                # Modern Python packaging
+├── requirements.txt              # Python dependencies
 ├── FunctionsIncluded.md          # Complete API reference
 └── README.md                     # This file
 ```
