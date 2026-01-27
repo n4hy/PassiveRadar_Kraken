@@ -111,7 +111,11 @@ private:
     }
 
     void update_weights(size_t ch, Complex e, float r_energy) {
+        // Skip update if energy is too low to avoid numerical instability
+        if (r_energy < epsilon) return;
         Complex step_scale = (mu * std::conj(e)) / (r_energy + epsilon);
+        // Check for NaN/Inf before applying
+        if (!std::isfinite(step_scale.real()) || !std::isfinite(step_scale.imag())) return;
         for (size_t k = 0; k < filter_length; ++k) {
             weights[ch][k] += step_scale * r_history[k];
         }
@@ -128,7 +132,7 @@ extern "C" {
     }
 
     void nlms_process(void* ptr, const float* ref_in, const float* surv_in, float* out_err, int n_samples) {
-        if (!ptr) return;
+        if (!ptr || !ref_in || !surv_in || !out_err || n_samples <= 0) return;
         AdaptiveSignalConditioner* obj = static_cast<AdaptiveSignalConditioner*>(ptr);
 
         const Complex* c_ref = reinterpret_cast<const Complex*>(ref_in);

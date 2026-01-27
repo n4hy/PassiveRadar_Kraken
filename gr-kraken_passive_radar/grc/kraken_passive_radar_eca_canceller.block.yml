@@ -65,4 +65,10 @@ outputs:
     multiplicity: ${num_surv}
     label: Out
 
+asserts:
+  - num_taps > 0
+  - num_surv > 0
+  - num_surv <= 8
+  - reg_factor >= 0.0
+
 file_format: 1

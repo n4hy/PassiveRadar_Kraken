@@ -2,6 +2,7 @@
 #include <pybind11/complex.h>
 #include <pybind11/stl.h>
 
+#include <gnuradio/sync_block.h>
 #include <gnuradio/kraken_passive_radar/eca_canceller.h>
 
 namespace py = pybind11;
@@ -9,9 +10,9 @@ namespace py = pybind11;
 void bind_eca_canceller(py::module& m)
 {
     using eca_canceller = gr::kraken_passive_radar::eca_canceller;
-    
-    // Don't specify C++ base classes - let Python handle inheritance via gnuradio.gr import
-    py::class_<eca_canceller, std::shared_ptr<eca_canceller>>(m, "eca_canceller",
+
+    // Bind with gr::sync_block as base class for proper GNU Radio integration
+    py::class_<eca_canceller, gr::sync_block, std::shared_ptr<eca_canceller>>(m, "eca_canceller",
                    R"pbdoc(
                    ECA-B Clutter Canceller for Passive Radar
                    

@@ -225,13 +225,21 @@ class PPIDisplay:
 
             # Velocity arrow
             if self.params.show_velocity_arrows and abs(track.velocity_ms) > 1.0:
-                # Arrow in direction of heading
+                # Arrow in direction of heading, scaled by velocity magnitude
                 arrow_len = abs(track.velocity_ms) * self.params.arrow_scale
                 heading_rad = np.radians(track.heading_deg)
 
-                # Calculate arrow end point
-                end_angle = angle_rad + 0.1 * np.sign(track.velocity_ms)
-                end_range = range_km + arrow_len
+                # Calculate arrow end point based on actual heading direction
+                # Convert heading to polar coordinate offset
+                # heading_deg=0 means moving North, 90=East, etc.
+                delta_x = arrow_len * np.sin(heading_rad)  # East component
+                delta_y = arrow_len * np.cos(heading_rad)  # North component
+
+                # Convert Cartesian delta back to polar offset
+                end_range = np.sqrt((range_km * np.sin(angle_rad) + delta_x)**2 +
+                                   (range_km * np.cos(angle_rad) + delta_y)**2)
+                end_angle = np.arctan2(range_km * np.sin(angle_rad) + delta_x,
+                                       range_km * np.cos(angle_rad) + delta_y)
 
                 if track.id in self.track_arrows:
                     # Update existing arrow (remove and recreate)
@@ -311,9 +319,14 @@ class PPIDisplay:
             plt.show(block=False)
 
     def stop(self):
-        """Stop the display."""
+        """Stop the display and clean up resources."""
         self.running = False
-        plt.close(self.fig)
+        if hasattr(self, 'anim') and self.anim is not None:
+            self.anim.event_source.stop()
+            self.anim = None
+        if self.fig is not None:
+            plt.close(self.fig)
+            self.fig = None
 
 
 def demo_ppi_display():

@@ -338,9 +338,14 @@ class RangeDopplerDisplay:
             plt.show(block=False)
 
     def stop(self):
-        """Stop the display."""
+        """Stop the display and clean up resources."""
         self.running = False
-        plt.close(self.fig)
+        if hasattr(self, 'anim') and self.anim is not None:
+            self.anim.event_source.stop()
+            self.anim = None
+        if self.fig is not None:
+            plt.close(self.fig)
+            self.fig = None
 
 
 def demo_range_doppler_display():

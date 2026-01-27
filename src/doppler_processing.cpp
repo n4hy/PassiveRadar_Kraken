@@ -4,6 +4,19 @@
 #include <algorithm>
 #include <iostream>
 #include <fftw3.h>
+#include <mutex>
+
+// FFTW thread initialization (call once per process)
+namespace {
+    std::once_flag fftw_init_flag;
+    void init_fftw_threads() {
+        std::call_once(fftw_init_flag, []() {
+            fftwf_init_threads();
+            // Use 1 thread per plan by default; can be increased for large FFTs
+            fftwf_plan_with_nthreads(1);
+        });
+    }
+}
 
 // Constants
 const float PI = 3.14159265358979323846f;
@@ -24,6 +37,9 @@ private:
 
 public:
     DopplerProcessor(int n_fft, int n_doppler) : fft_len(n_fft), doppler_len(n_doppler) {
+        // Initialize FFTW thread support (safe to call multiple times)
+        init_fftw_threads();
+
         // Pre-calculate Hamming window
         window.resize(doppler_len);
         if (doppler_len > 1) {
@@ -133,6 +149,7 @@ public:
 
 extern "C" {
     void* doppler_create(int fft_len, int doppler_len) {
+        if (fft_len <= 0 || doppler_len <= 0) return nullptr;
         return new DopplerProcessor(fft_len, doppler_len);
     }
 
@@ -141,14 +158,14 @@ extern "C" {
     }
 
     void doppler_process(void* ptr, const float* input, float* output) {
-        if (!ptr) return;
+        if (!ptr || !input || !output) return;
         DopplerProcessor* obj = static_cast<DopplerProcessor*>(ptr);
         const Complex* c_input = reinterpret_cast<const Complex*>(input);
         obj->process(c_input, output);
     }
 
     void doppler_process_complex(void* ptr, const float* input, float* output) {
-        if (!ptr) return;
+        if (!ptr || !input || !output) return;
         DopplerProcessor* obj = static_cast<DopplerProcessor*>(ptr);
         const Complex* c_input = reinterpret_cast<const Complex*>(input);
         Complex* c_output = reinterpret_cast<Complex*>(output);

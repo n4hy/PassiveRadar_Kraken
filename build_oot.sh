@@ -2,14 +2,21 @@
 # Helper script to build the OOT module
 set -e
 
+# Get script directory for reliable paths
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 echo "Building OOT module..."
-cd gr-kraken_passive_radar
+cd "$SCRIPT_DIR/gr-kraken_passive_radar" || { echo "ERROR: Cannot enter gr-kraken_passive_radar directory"; exit 1; }
 rm -rf build
-mkdir build
-cd build
+mkdir -p build || { echo "ERROR: Cannot create build directory"; exit 1; }
+cd build || { echo "ERROR: Cannot enter build directory"; exit 1; }
 
 # Detect Python installation directory
-PY_SITE=$(python3 -c "import sysconfig; print(sysconfig.get_paths()['purelib'])")
+PY_SITE=$(python3 -c "import sysconfig; print(sysconfig.get_paths()['purelib'])" 2>/dev/null)
+if [ -z "$PY_SITE" ]; then
+    echo "ERROR: Could not detect Python installation directory"
+    exit 1
+fi
 echo "Detected Python install dir: $PY_SITE"
 
 # Configure with explicit Python path and force RELEASE build type with architecture optimizations
@@ -22,5 +29,13 @@ make -j"$(nproc)"
 echo ""
 echo "Build successful."
 echo "Now running: sudo make install && sudo ldconfig"
-sudo make install && sudo ldconfig
-cd -
+
+# Handle sudo appropriately
+if [ "$EUID" -eq 0 ]; then
+    make install && ldconfig
+else
+    sudo make install && sudo ldconfig
+fi
+
+cd "$SCRIPT_DIR"
+echo "OOT module build and install complete."

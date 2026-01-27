@@ -33,6 +33,10 @@ private:
     std::vector<float> history_re;
     std::vector<float> history_im;
 
+    // Cached work buffers to avoid allocation in hot path
+    std::vector<float> work_re;
+    std::vector<float> work_im;
+
     // State
     int current_phase;
     int excess_input_advance;
@@ -82,14 +86,17 @@ public:
     }
 
     int process(const ComplexFloat* input, int n_input, ComplexFloat* output, int max_output) {
-        // 1. Construct Work Buffers (SoA)
-        int history_sz = history_re.size();
+        // 1. Construct Work Buffers (SoA) - reuse cached buffers
+        int history_sz = static_cast<int>(history_re.size());
         int total_len = history_sz + n_input;
 
-        std::vector<float> work_re;
-        std::vector<float> work_im;
-        work_re.reserve(total_len);
-        work_im.reserve(total_len);
+        // Resize cached buffers only if needed (avoids allocation in hot path)
+        work_re.clear();
+        work_im.clear();
+        if (work_re.capacity() < static_cast<size_t>(total_len)) {
+            work_re.reserve(total_len);
+            work_im.reserve(total_len);
+        }
 
         work_re.insert(work_re.end(), history_re.begin(), history_re.end());
         work_im.insert(work_im.end(), history_im.begin(), history_im.end());
@@ -150,6 +157,7 @@ public:
 
 extern "C" {
     void* resampler_create(int interp, int decim, const float* taps, int num_taps) {
+        if (interp <= 0 || decim <= 0 || !taps || num_taps <= 0) return nullptr;
         return new PolyphaseResampler(interp, decim, taps, num_taps);
     }
 
@@ -158,7 +166,7 @@ extern "C" {
     }
 
     int resampler_process(void* ptr, const float* input, int n_input, float* output, int max_output) {
-        if (!ptr) return 0;
+        if (!ptr || !input || !output || n_input <= 0 || max_output <= 0) return 0;
         PolyphaseResampler* obj = static_cast<PolyphaseResampler*>(ptr);
         const ComplexFloat* c_in = reinterpret_cast<const ComplexFloat*>(input);
         ComplexFloat* c_out = reinterpret_cast<ComplexFloat*>(output);

@@ -1,15 +1,42 @@
 # Build the ECA-B clutter canceller shared library for use via ctypes
+cmake_minimum_required(VERSION 3.8)
+project(kraken_passive_radar_kernels C CXX)
+
+# C++ Standard
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Enforce Release build for performance
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
 
-# Add optimization flags
+# Define GR_PYTHON_DIR if not set by parent project
+if(NOT DEFINED GR_PYTHON_DIR)
+    execute_process(
+        COMMAND python3 -c "import sysconfig; print(sysconfig.get_paths()['purelib'])"
+        OUTPUT_VARIABLE GR_PYTHON_DIR
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    if(NOT GR_PYTHON_DIR)
+        set(GR_PYTHON_DIR "${CMAKE_INSTALL_PREFIX}/lib/python3/dist-packages")
+        message(WARNING "Could not detect Python path, using default: ${GR_PYTHON_DIR}")
+    else()
+        message(STATUS "Detected Python install path: ${GR_PYTHON_DIR}")
+    endif()
+endif()
+
+# Add optimization flags (with option for portable builds)
+option(NATIVE_OPTIMIZATION "Build with -march=native (non-portable)" ON)
 if(MSVC)
     add_compile_options(/O2 /arch:AVX2)
 else()
-    add_compile_options(-O3 -march=native -ffast-math -funroll-loops)
+    if(NATIVE_OPTIMIZATION)
+        add_compile_options(-O3 -march=native -ffast-math -funroll-loops)
+    else()
+        add_compile_options(-O3 -ffast-math -funroll-loops)
+    endif()
 endif()
 
 # Common Link Libraries
@@ -72,7 +99,7 @@ if(FFTW3_FOUND)
     target_include_directories(kraken_doppler_processing PRIVATE ${FFTW3_INCLUDE_DIRS})
     install(TARGETS kraken_doppler_processing LIBRARY DESTINATION ${GR_PYTHON_DIR}/kraken_passive_radar)
 else()
-    message(FATAL_ERROR "FFTW3f not found. Please install libfftw3-dev.")
+    message(FATAL_ERROR "FFTW3f library not found. Install: libfftw3-dev (Debian/Ubuntu), fftw3-devel (CentOS/RHEL), fftw (Fedora/Arch)")
 endif()
 
 # 6. Backend (CFAR/Fusion)

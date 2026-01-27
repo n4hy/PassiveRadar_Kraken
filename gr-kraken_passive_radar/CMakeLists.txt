@@ -23,7 +23,13 @@ execute_process(
     COMMAND python3 -c "import os, gnuradio; print(os.path.dirname(gnuradio.__file__))"
     OUTPUT_VARIABLE GNURADIO_PYTHON_DIR
     OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+    RESULT_VARIABLE GNURADIO_PYTHON_RESULT
 )
+# Validate the result
+if(NOT GNURADIO_PYTHON_DIR OR GNURADIO_PYTHON_RESULT)
+    message(FATAL_ERROR "Could not find gnuradio Python installation. Make sure GNU Radio is installed and python3 can import gnuradio.")
+endif()
 # Install our module INTO the gnuradio namespace
 set(GR_PYTHON_DIR ${GNURADIO_PYTHON_DIR})
 message(STATUS "GnuRadio Python location: ${GNURADIO_PYTHON_DIR}")

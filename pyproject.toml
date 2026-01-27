@@ -1,0 +1,131 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kraken-passive-radar"
+version = "0.1.0"
+description = "Passive bistatic radar system using KrakenSDR"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Dr Robert W McGwier, PhD", email = "rwmcgwier@gmail.com"}
+]
+requires-python = ">=3.8"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Signal Processing",
+]
+keywords = ["radar", "passive-radar", "bistatic", "krakensdr", "gnuradio", "sdr"]
+dependencies = [
+    "numpy>=1.20",
+    "matplotlib>=3.5",
+    "scipy>=1.7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=6.0",
+    "pytest-cov>=2.12.0",
+    "black",
+    "isort",
+    "mypy",
+    "flake8",
+]
+gnuradio = [
+    # GNU Radio is typically installed system-wide
+    # This is a placeholder for documentation
+]
+
+[project.urls]
+Homepage = "https://github.com/n4hy/PassiveRadar_Kraken"
+Documentation = "https://github.com/n4hy/PassiveRadar_Kraken#readme"
+Repository = "https://github.com/n4hy/PassiveRadar_Kraken.git"
+Issues = "https://github.com/n4hy/PassiveRadar_Kraken/issues"
+
+[project.scripts]
+# Command-line entry points can be added here
+# kraken-radar-gui = "kraken_passive_radar.radar_gui:main"
+
+[tool.setuptools]
+packages = ["kraken_passive_radar"]
+package-dir = {"" = "."}
+
+[tool.setuptools.package-data]
+kraken_passive_radar = ["*.so", "*.dll"]
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--tb=short",
+    "-ra",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["kraken_passive_radar", "src"]
+omit = [
+    "tests/*",
+    "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+show_missing = true
+
+[tool.black]
+line-length = 100
+target-version = ["py38", "py39", "py310", "py311", "py312"]
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+    | \.mypy_cache
+    | \.pytest_cache
+    | __pycache__
+    | build
+    | dist
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 100
+skip_gitignore = true
+known_first_party = ["kraken_passive_radar"]
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+exclude = [
+    "build",
+    "dist",
+    "__pycache__",
+]

@@ -513,13 +513,20 @@ int tracker_impl::work(int noutput_items,
                 frame_tracks[base + 12] = static_cast<float>(track.age);
                 frame_tracks[base + 13] = track.score;
 
-                // Recent history (up to 3 points)
-                int hist_len = std::min(static_cast<int>(track.history.size()), 3);
+                // Recent history (up to 2 points to fit within 20 floats per track)
+                // Fields 15-18 = 4 floats for 2 history points (range, doppler each)
+                // Field 19 is unused padding
+                int hist_len = std::min(static_cast<int>(track.history.size()), 2);
                 frame_tracks[base + 14] = static_cast<float>(hist_len);
-                for (int h = 0; h < hist_len; h++) {
+                for (int h = 0; h < hist_len && (base + 15 + h*2 + 1) < (out_idx + 1) * 20; h++) {
                     int hist_idx = track.history.size() - hist_len + h;
                     frame_tracks[base + 15 + h*2] = track.history[hist_idx][0];
                     frame_tracks[base + 16 + h*2] = track.history[hist_idx][1];
+                }
+                // Zero padding for remaining slots
+                for (int h = hist_len; h < 2; h++) {
+                    frame_tracks[base + 15 + h*2] = 0.0f;
+                    frame_tracks[base + 16 + h*2] = 0.0f;
                 }
 
                 out_idx++;

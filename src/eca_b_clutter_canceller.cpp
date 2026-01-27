@@ -3,6 +3,7 @@
 #include <cmath>
 #include <algorithm>
 #include <iostream>
+#include <atomic>
 
 #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__)
 #include <xmmintrin.h>
@@ -87,7 +88,8 @@ private:
     // Interpretation:
     //   If surv[n] contains ref delayed by D samples (plus channel), then set delay=D.
     //
-    int delay_samples;
+    // Use atomic for thread-safe access from set_delay()
+    std::atomic<int> delay_samples;
 
     // We keep history_len = (num_taps - 1) + max_delay samples of ref history.
     // That gives us enough "past" to align the FIR at delay_samples without
@@ -162,19 +164,22 @@ public:
     void set_delay(int d) {
         if (d < 0) d = 0;
         if (d > max_delay) d = max_delay;
-        delay_samples = d;
+        delay_samples.store(d, std::memory_order_release);
     }
 
-    int get_delay() const { return delay_samples; }
+    int get_delay() const { return delay_samples.load(std::memory_order_acquire); }
 
     void process(const Complex* ref_in, const Complex* surv_in, Complex* out_err, int n_samples) {
         if (n_samples == 0) return;
+
+        // Load delay_samples atomically for thread safety
+        const int current_delay = delay_samples.load(std::memory_order_acquire);
 
         // Base index where surv[0] aligns in full_ref:
         //   base = history_len + delay_samples
         // In the original code, base=(num_taps-1) which was == history_len.
         // We updated history_len to be larger, so we must use history_len as the reference point for ref_in[0].
-        const int base = history_len + delay_samples;
+        const int base = history_len + current_delay;
 
         // 1. Prepare Reference Data
         const int full_ref_len = history_len + n_samples;
@@ -243,8 +248,8 @@ public:
 
                 // Indices in full_ref for the diagonal update.
                 // The original code derived these indices assuming base=(num_taps-1).
-                // Here, the aligned "window start" is start = (base - (num_taps-1)) = delay_samples.
-                const int start = delay_samples;
+                // Here, the aligned "window start" is start = (base - (num_taps-1)) = current_delay.
+                const int start = current_delay;
 
                 // u_prev_* corresponds to the sample just BEFORE the current window for that tap.
                 // u_last_* corresponds to the sample just AFTER the current window for that tap.
@@ -253,12 +258,19 @@ public:
                 // The element before the window is at (base - j - 1) = (start + (num_taps-2) - j).
                 // The last element in the window is at (base - j + (n_samples - 1)).
                 // The element after the window is at (base - j + n_samples).
+                // Note: use local 'start' which was computed from current_delay
                 int idx_prev_j = (base - 1) - j;          // base - 1 - j
                 int idx_prev_k = (base - 1) - k;
                 int idx_last_j = (base + n_samples - 1) - j;  // Remove term at n=N-1 (which was at end of previous window)
                 int idx_last_k = (base + n_samples - 1) - k;
 
-                // Bounds should be safe given history_len >= base and full_ref_len = history_len + n_samples.
+                // Validate bounds before access
+                if (idx_prev_j < 0 || idx_prev_j >= (int)full_ref.size() ||
+                    idx_prev_k < 0 || idx_prev_k >= (int)full_ref.size() ||
+                    idx_last_j < 0 || idx_last_j >= (int)full_ref.size() ||
+                    idx_last_k < 0 || idx_last_k >= (int)full_ref.size()) {
+                    continue; // Skip this update if indices are out of bounds
+                }
                 Complex u_prev_j = full_ref[idx_prev_j];
                 Complex u_prev_k = full_ref[idx_prev_k];
                 Complex u_last_j = full_ref[idx_last_j];
@@ -346,7 +358,7 @@ void eca_b_destroy(void* ptr) {
 }
 
 void eca_b_process(void* ptr, const float* ref_in, const float* surv_in, float* out_err, int n_samples) {
-    if (!ptr) return;
+    if (!ptr || !ref_in || !surv_in || !out_err || n_samples <= 0) return;
     ECABCanceller* obj = static_cast<ECABCanceller*>(ptr);
     const Complex* c_ref  = reinterpret_cast<const Complex*>(ref_in);
     const Complex* c_surv = reinterpret_cast<const Complex*>(surv_in);

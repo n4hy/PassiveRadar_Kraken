@@ -15,6 +15,19 @@
 #include <cmath>
 #include <algorithm>
 #include <cstdio>
+#include <mutex>
+
+// FFTW thread initialization (call once per process)
+namespace {
+    std::once_flag fftw_init_flag;
+    void init_fftw_threads() {
+        std::call_once(fftw_init_flag, []() {
+            fftwf_init_threads();
+            // Use 1 thread per plan by default; can be increased for large FFTs
+            fftwf_plan_with_nthreads(1);
+        });
+    }
+}
 
 // Check for OptMathKernels availability
 #if __has_include(<optmath/radar_kernels.hpp>)
@@ -62,6 +75,11 @@ private:
     std::vector<float> shifted_re, shifted_im;
     std::vector<float> caf_out;
 
+    // Cached buffers for compute_range_profile (avoid allocation in hot path)
+    std::vector<float> fft_surv_re, fft_surv_im;
+    std::vector<float> fft_ref_re, fft_ref_im;
+    std::vector<float> prod_re, prod_im;
+
     // Precomputed Doppler shift phasors
     std::vector<std::vector<float>> doppler_phasor_re;
     std::vector<std::vector<float>> doppler_phasor_im;
@@ -108,6 +126,9 @@ public:
           doppler_step(dop_step),
           sample_rate(fs)
     {
+        // Initialize FFTW thread support (safe to call multiple times)
+        init_fftw_threads();
+
         // FFT length: next power of 2 >= 2 * n_samples for linear correlation
         fft_len = 1;
         while (fft_len < 2 * n_samples) fft_len <<= 1;
@@ -131,16 +152,24 @@ public:
         shifted_im.resize(n_samples);
         caf_out.resize(n_doppler * n_range);
 
+        // Pre-allocate buffers for compute_range_profile
+        fft_surv_re.resize(fft_len);
+        fft_surv_im.resize(fft_len);
+        fft_ref_re.resize(fft_len);
+        fft_ref_im.resize(fft_len);
+        prod_re.resize(fft_len);
+        prod_im.resize(fft_len);
+
         // Precompute Doppler phasors
         precompute_doppler_phasors();
 
         // Check for OptMathKernels
 #if HAVE_OPTMATHKERNELS
         use_optmath = true;
-        printf("CAF Processor: Using OptMathKernels NEON optimization\n");
+        // Note: OptMathKernels NEON optimization enabled
 #else
         use_optmath = false;
-        printf("CAF Processor: Using scalar implementation\n");
+        // Note: Using scalar implementation
 #endif
     }
 
@@ -188,11 +217,7 @@ public:
 
 #if HAVE_OPTMATHKERNELS
         // Use NEON-optimized complex conjugate multiply
-        // Deinterleave FFT outputs for NEON processing
-        std::vector<float> fft_surv_re(fft_len), fft_surv_im(fft_len);
-        std::vector<float> fft_ref_re(fft_len), fft_ref_im(fft_len);
-        std::vector<float> prod_re(fft_len), prod_im(fft_len);
-
+        // Deinterleave FFT outputs for NEON processing (use pre-allocated buffers)
         for (int i = 0; i < fft_len; i++) {
             fft_surv_re[i] = buf_surv[i][0];
             fft_surv_im[i] = buf_surv[i][1];
@@ -356,7 +381,7 @@ extern "C" {
     }
 
     void caf_process(void* ptr, const float* ref, const float* surv, float* out) {
-        if (!ptr) return;
+        if (!ptr || !ref || !surv || !out) return;
         CafProcessor* obj = static_cast<CafProcessor*>(ptr);
         obj->process(reinterpret_cast<const Complex*>(ref),
                      reinterpret_cast<const Complex*>(surv),
@@ -364,7 +389,7 @@ extern "C" {
     }
 
     void caf_process_full(void* ptr, const float* ref, const float* surv, float* out) {
-        if (!ptr) return;
+        if (!ptr || !ref || !surv || !out) return;
         CafProcessor* obj = static_cast<CafProcessor*>(ptr);
         obj->process_caf(reinterpret_cast<const Complex*>(ref),
                          reinterpret_cast<const Complex*>(surv),

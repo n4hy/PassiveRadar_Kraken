@@ -35,6 +35,7 @@ public:
                     }
                 }
 
+                if (count == 0) continue; // Avoid division by zero
                 float noise = sum / count;
                 float cell = input[r * cols + c];
 
@@ -77,10 +78,12 @@ public:
 
 extern "C" {
     void cfar_2d(const float* input, float* output, int rows, int cols, int guard, int train, float threshold) {
+        if (!input || !output || rows <= 0 || cols <= 0) return;
         Backend::cfar_1d(input, output, rows, cols, guard, train, threshold);
     }
 
     void fusion_process(const float** inputs, int num_inputs, float* output, int size) {
+        if (!inputs || !output || num_inputs <= 0 || size <= 0) return;
         Backend::fusion(inputs, num_inputs, output, size);
     }
 }

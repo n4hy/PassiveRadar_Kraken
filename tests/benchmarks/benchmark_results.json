@@ -1,0 +1,32 @@
+[
+  {
+    "name": "CAF 4096 samples",
+    "mean_ms": 0.04310758784413338,
+    "std_ms": 0.006929835884979195,
+    "iterations": 100
+  },
+  {
+    "name": "CFAR 2D 64x256",
+    "mean_ms": 28.66251839324832,
+    "std_ms": 0.27617984096430614,
+    "iterations": 50
+  },
+  {
+    "name": "ECA 4096 samples, 64 taps",
+    "mean_ms": 0.15626280393917114,
+    "std_ms": 0.007134270004786771,
+    "iterations": 100
+  },
+  {
+    "name": "NumPy FFT 4096",
+    "mean_ms": 0.02013073128182441,
+    "std_ms": 0.00037626507013336264,
+    "iterations": 100
+  },
+  {
+    "name": "NumPy cross-correlation 4096",
+    "mean_ms": 0.06251357262954116,
+    "std_ms": 0.0007115186017152963,
+    "iterations": 100
+  }
+]

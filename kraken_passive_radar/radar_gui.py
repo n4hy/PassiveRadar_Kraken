@@ -26,13 +26,21 @@ import time
 import sys
 import os
 
-# Import display components
-from range_doppler_display import (
-    RangeDopplerDisplay, RDDisplayParams, Detection, Track as RDTrack
-)
-from radar_display import PPIDisplay, PPIDisplayParams, PPIDetection, PPITrack
-from calibration_panel import CalibrationPanel, CalibrationPanelParams, CalibrationStatus
-from metrics_dashboard import MetricsDashboard, MetricsDashboardParams, ProcessingMetrics
+# Import display components (support both package and direct execution)
+try:
+    from .range_doppler_display import (
+        RangeDopplerDisplay, RDDisplayParams, Detection, Track as RDTrack
+    )
+    from .radar_display import PPIDisplay, PPIDisplayParams, PPIDetection, PPITrack
+    from .calibration_panel import CalibrationPanel, CalibrationPanelParams, CalibrationStatus
+    from .metrics_dashboard import MetricsDashboard, MetricsDashboardParams, ProcessingMetrics
+except ImportError:
+    from range_doppler_display import (
+        RangeDopplerDisplay, RDDisplayParams, Detection, Track as RDTrack
+    )
+    from radar_display import PPIDisplay, PPIDisplayParams, PPIDetection, PPITrack
+    from calibration_panel import CalibrationPanel, CalibrationPanelParams, CalibrationStatus
+    from metrics_dashboard import MetricsDashboard, MetricsDashboardParams, ProcessingMetrics
 
 
 @dataclass
@@ -366,8 +374,14 @@ class RadarGUI:
 
         # Update PPI
         if tracks:
-            # Simple azimuth estimation (would come from AoA in real system)
-            track_angles = [np.radians(45 * (i % 8)) for i, _ in enumerate(tracks)]
+            # Use actual AoA if available, otherwise use track ID for demo display
+            track_angles = []
+            for t in tracks:
+                if hasattr(t, 'aoa_deg') and t.aoa_deg is not None:
+                    track_angles.append(np.radians(t.aoa_deg))
+                else:
+                    # Fallback: distribute tracks around display for visibility
+                    track_angles.append(np.radians(45 * (t.id % 8)) if hasattr(t, 'id') else 0)
             track_ranges = [t.range_m / 1000.0 for t in tracks]
             self.ppi_track_scatter.set_offsets(np.column_stack([track_angles, track_ranges]))
         else:
@@ -438,9 +452,10 @@ class RadarGUI:
             )
 
     def _stop_animation(self):
-        """Stop the animation."""
+        """Stop the animation and clean up resources."""
         if self.anim is not None:
             self.anim.event_source.stop()
+            self.anim = None
 
     def _reset(self):
         """Reset all data."""

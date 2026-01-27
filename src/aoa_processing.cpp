@@ -230,6 +230,7 @@ public:
 
 extern "C" {
     void* aoa_create(int n_ant, float spacing, int type) {
+        if (n_ant <= 0) return nullptr;
         return new AoAProcessor(n_ant, spacing, type);
     }
 
@@ -239,7 +240,7 @@ extern "C" {
 
     // 1D (Legacy/Simple) - Scans Azimuth -90 to +90 at Elevation 0
     void aoa_process(void* ptr, const float* inputs, float lambda, float* output, int n_angles) {
-        if (!ptr) return;
+        if (!ptr || !inputs || !output || n_angles <= 0 || lambda <= 0.0f) return;
         AoAProcessor* obj = static_cast<AoAProcessor*>(ptr);
         // Temporary buffer for 3D output (full az/el scan is inefficient here, so just do 1D logic)
         // Re-implementing simplified 1D for compatibility:
@@ -275,7 +276,7 @@ extern "C" {
     // output size: n_az * n_el
     void aoa_process_3d(void* ptr, const float* inputs, float lambda, float* output,
                         int n_az, int n_el, bool use_ref) {
-        if (!ptr) return;
+        if (!ptr || !inputs || !output || n_az <= 0 || n_el <= 0 || lambda <= 0.0f) return;
         AoAProcessor* obj = static_cast<AoAProcessor*>(ptr);
         const Complex* c_inputs = reinterpret_cast<const Complex*>(inputs);
         obj->compute_bartlett_3d(c_inputs, lambda, output, n_az, n_el, use_ref);

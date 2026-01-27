@@ -38,6 +38,11 @@ templates:
   make: |-
     EcaBClutterCanceller(num_taps=${num_taps}, num_surv_channels=${num_surv_channels}, lib_path=${lib_path})
 
+asserts:
+  - num_taps > 0
+  - num_surv_channels > 0
+  - num_surv_channels <= 8
+
 documentation: |-
   Batch ECA-B-based clutter canceller for passive radar.
   Input 0: reference channel (direct-path illuminator signal).

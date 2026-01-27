@@ -18,8 +18,9 @@ from matplotlib.patches import Rectangle, Circle, Wedge
 from matplotlib.collections import PatchCollection
 import matplotlib.colors as mcolors
 import threading
+from collections import deque
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Deque
 import time
 
 
@@ -70,10 +71,10 @@ class CalibrationPanel:
         self.status = CalibrationStatus()
         self.last_cal_time = time.time()
 
-        # History for drift tracking
+        # History for drift tracking (using deque for O(1) popleft)
         max_history = int(self.params.history_seconds * 1000 / self.params.update_interval_ms)
-        self.phase_history = [[] for _ in range(self.params.num_channels)]
-        self.time_history = []
+        self.phase_history = [deque(maxlen=max_history) for _ in range(self.params.num_channels)]
+        self.time_history: Deque[float] = deque(maxlen=max_history)
 
         # Matplotlib objects
         self.fig = None
@@ -336,18 +337,12 @@ class CalibrationPanel:
 
     def _update_drift_history(self, status: CalibrationStatus, current_time: float):
         """Update phase drift history plot."""
-        # Add current phase offsets to history
+        # Add current phase offsets to history (deque handles maxlen automatically)
         self.time_history.append(current_time)
         for i in range(self.params.num_channels):
             self.phase_history[i].append(status.phase_offsets_deg[i])
 
-        # Trim old data
-        cutoff_time = current_time - self.params.history_seconds
-        while self.time_history and self.time_history[0] < cutoff_time:
-            self.time_history.pop(0)
-            for i in range(self.params.num_channels):
-                if self.phase_history[i]:
-                    self.phase_history[i].pop(0)
+        # Note: Trimming is handled automatically by deque's maxlen
 
         # Update drift lines (surveillance channels only)
         if len(self.time_history) > 1:
@@ -405,9 +400,14 @@ class CalibrationPanel:
             plt.show(block=False)
 
     def stop(self):
-        """Stop the display."""
+        """Stop the display and clean up resources."""
         self.running = False
-        plt.close(self.fig)
+        if hasattr(self, 'anim') and self.anim is not None:
+            self.anim.event_source.stop()
+            self.anim = None
+        if self.fig is not None:
+            plt.close(self.fig)
+            self.fig = None
 
 
 def demo_calibration_panel():

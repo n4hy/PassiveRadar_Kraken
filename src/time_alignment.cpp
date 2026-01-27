@@ -4,6 +4,19 @@
 #include <cmath>
 #include <algorithm>
 #include <cstring>
+#include <mutex>
+
+// FFTW thread initialization (call once per process)
+namespace {
+    std::once_flag fftw_init_flag;
+    void init_fftw_threads() {
+        std::call_once(fftw_init_flag, []() {
+            fftwf_init_threads();
+            // Use 1 thread per plan by default; can be increased for large FFTs
+            fftwf_plan_with_nthreads(1);
+        });
+    }
+}
 
 using Complex = std::complex<float>;
 
@@ -23,6 +36,9 @@ class TimeAligner {
 
 public:
     TimeAligner(int samples) : n_samples(samples) {
+        // Initialize FFTW thread support (safe to call multiple times)
+        init_fftw_threads();
+
         fft_len = 1;
         while (fft_len < 2 * n_samples) fft_len <<= 1;
 
@@ -73,8 +89,8 @@ public:
 
         // Find Peak
         int best_idx = 0;
-        float max_mag = -1.0f;
-        Complex best_val = 0.0f;
+        float max_mag = 0.0f;
+        Complex best_val = Complex(buf_prod[0][0], buf_prod[0][1]);
 
         // Search full range?
         // Correlation lag 0 is at 0.
@@ -105,8 +121,9 @@ public:
 
 extern "C" {
     void* align_create(int n) { return new TimeAligner(n); }
-    void align_destroy(void* p) { delete static_cast<TimeAligner*>(p); }
+    void align_destroy(void* p) { if (p) delete static_cast<TimeAligner*>(p); }
     void align_compute(void* p, const float* ref, const float* surv, int* delay, float* phase) {
+        if (!p || !ref || !surv) return;
         static_cast<TimeAligner*>(p)->compute_offset(
             reinterpret_cast<const Complex*>(ref),
             reinterpret_cast<const Complex*>(surv),
