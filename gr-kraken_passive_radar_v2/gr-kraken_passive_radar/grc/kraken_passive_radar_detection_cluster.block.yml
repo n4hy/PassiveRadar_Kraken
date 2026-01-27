@@ -1,0 +1,112 @@
+id: kraken_passive_radar_detection_cluster
+label: Detection Clustering
+category: '[Kraken Passive Radar]'
+
+templates:
+  imports: from gnuradio import kraken_passive_radar
+  make: >-
+    kraken_passive_radar.detection_cluster(
+        ${num_range_bins}, ${num_doppler_bins},
+        ${min_cluster_size}, ${max_cluster_extent},
+        ${range_resolution_m}, ${doppler_resolution_hz},
+        ${max_detections})
+  callbacks:
+    - set_min_cluster_size(${min_cluster_size})
+    - set_max_cluster_extent(${max_cluster_extent})
+    - set_range_resolution(${range_resolution_m})
+    - set_doppler_resolution(${doppler_resolution_hz})
+
+parameters:
+  - id: num_range_bins
+    label: Range Bins
+    dtype: int
+    default: 1024
+
+  - id: num_doppler_bins
+    label: Doppler Bins
+    dtype: int
+    default: 64
+
+  - id: min_cluster_size
+    label: Min Cluster Size
+    dtype: int
+    default: 1
+
+  - id: max_cluster_extent
+    label: Max Cluster Extent
+    dtype: int
+    default: 50
+
+  - id: range_resolution_m
+    label: Range Resolution (m)
+    dtype: float
+    default: 600.0
+
+  - id: doppler_resolution_hz
+    label: Doppler Resolution (Hz)
+    dtype: float
+    default: 3.9
+
+  - id: max_detections
+    label: Max Detections
+    dtype: int
+    default: 100
+
+inputs:
+  - label: det_mask
+    domain: stream
+    dtype: float
+    vlen: ${num_range_bins * num_doppler_bins}
+
+  - label: power_db
+    domain: stream
+    dtype: float
+    vlen: ${num_range_bins * num_doppler_bins}
+
+outputs:
+  - label: detections
+    domain: stream
+    dtype: float
+    vlen: ${max_detections * 10}
+
+asserts:
+  - num_range_bins > 0
+  - num_doppler_bins > 0
+  - min_cluster_size >= 1
+  - max_cluster_extent >= 1
+  - range_resolution_m > 0
+  - doppler_resolution_hz > 0
+  - max_detections >= 1
+
+documentation: |-
+  Detection Clustering for Passive Radar
+
+  Merges adjacent CFAR detections into target clusters using connected
+  components analysis with 8-connectivity (includes diagonal neighbors).
+
+  For each cluster, computes:
+    - Power-weighted centroid (fractional range/Doppler bin)
+    - Physical range (meters) and Doppler (Hz)
+    - Peak SNR and total power
+    - Cluster size (number of cells)
+
+  Inputs:
+    det_mask: Binary CFAR detection mask (1.0 = detection)
+    power_db: Power map in dB (for centroid weighting)
+
+  Output:
+    Packed detection vector, 10 floats per detection:
+      [id, range_bin, doppler_bin, range_m, doppler_hz,
+       snr_db, power_sum, cluster_size, peak_range, peak_doppler]
+
+  Parameters:
+    Min Cluster Size: Minimum cells to form a valid detection
+    Max Cluster Extent: Maximum cells before cluster is truncated
+    Range/Doppler Resolution: For converting bins to physical units
+    Max Detections: Maximum detections output per frame
+
+  Typical values:
+    Min Cluster Size = 1-3 (filter noise speckles)
+    Max Cluster Extent = 20-50 (limit extended clutter)
+
+file_format: 1

@@ -5,6 +5,9 @@ pybind11_add_module(kraken_passive_radar_python
     doppler_processor_python.cc
     cfar_detector_python.cc
     coherence_monitor_python.cc
+    detection_cluster_python.cc
+    tracker_python.cc
+    aoa_estimator_python.cc
 )
 
 target_link_libraries(kraken_passive_radar_python PRIVATE

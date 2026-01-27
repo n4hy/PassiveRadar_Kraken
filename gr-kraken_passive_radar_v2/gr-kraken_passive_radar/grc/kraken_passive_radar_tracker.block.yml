@@ -1,0 +1,133 @@
+id: kraken_passive_radar_tracker
+label: Multi-Target Tracker
+category: '[Kraken Passive Radar]'
+
+templates:
+  imports: from gnuradio import kraken_passive_radar
+  make: >-
+    kraken_passive_radar.tracker(
+        ${dt}, ${process_noise_range}, ${process_noise_doppler},
+        ${meas_noise_range}, ${meas_noise_doppler},
+        ${gate_threshold}, ${confirm_hits}, ${delete_misses},
+        ${max_tracks}, ${max_detections})
+  callbacks:
+    - set_process_noise(${process_noise_range}, ${process_noise_doppler})
+    - set_measurement_noise(${meas_noise_range}, ${meas_noise_doppler})
+    - set_gate_threshold(${gate_threshold})
+    - set_confirm_hits(${confirm_hits})
+    - set_delete_misses(${delete_misses})
+
+parameters:
+  - id: dt
+    label: Frame Period (s)
+    dtype: float
+    default: 0.1
+
+  - id: process_noise_range
+    label: Process Noise Range (m)
+    dtype: float
+    default: 50.0
+
+  - id: process_noise_doppler
+    label: Process Noise Doppler (Hz)
+    dtype: float
+    default: 5.0
+
+  - id: meas_noise_range
+    label: Measurement Noise Range (m)
+    dtype: float
+    default: 100.0
+
+  - id: meas_noise_doppler
+    label: Measurement Noise Doppler (Hz)
+    dtype: float
+    default: 2.0
+
+  - id: gate_threshold
+    label: Gate Threshold (chi2)
+    dtype: float
+    default: 9.21
+
+  - id: confirm_hits
+    label: Hits to Confirm
+    dtype: int
+    default: 3
+
+  - id: delete_misses
+    label: Misses to Delete
+    dtype: int
+    default: 5
+
+  - id: max_tracks
+    label: Max Tracks
+    dtype: int
+    default: 50
+
+  - id: max_detections
+    label: Max Detections (Input)
+    dtype: int
+    default: 100
+
+inputs:
+  - label: detections
+    domain: stream
+    dtype: float
+    vlen: ${max_detections * 10}
+
+outputs:
+  - label: tracks
+    domain: stream
+    dtype: float
+    vlen: ${max_tracks * 20}
+
+asserts:
+  - dt > 0
+  - process_noise_range > 0
+  - process_noise_doppler > 0
+  - meas_noise_range > 0
+  - meas_noise_doppler > 0
+  - gate_threshold > 0
+  - confirm_hits >= 1
+  - delete_misses >= 1
+  - max_tracks >= 1
+  - max_detections >= 1
+
+documentation: |-
+  Multi-Target Kalman Tracker for Passive Radar
+
+  Implements Extended Kalman Filter with Global Nearest Neighbor (GNN)
+  data association for tracking multiple bistatic radar targets.
+
+  State Model:
+    Constant velocity in range and Doppler
+    x = [range, doppler, range_rate, doppler_rate]^T
+
+  Track Lifecycle:
+    TENTATIVE (0): New track, needs confirmation
+    CONFIRMED (1): Track with sufficient measurement history
+    COASTING (2): No recent measurement, predicting forward
+
+  Input:
+    Detection list from clustering block (10 floats per detection):
+    [id, range_bin, doppler_bin, range_m, doppler_hz, snr_db, ...]
+
+  Output:
+    Track list (20 floats per track):
+    [id, status, range, doppler, range_rate, doppler_rate,
+     cov_rr, cov_dd, cov_rr', cov_dd',
+     hits, misses, age, score,
+     hist_len, hist[0].r, hist[0].d, hist[1].r, hist[1].d, hist[2].r]
+
+  Parameters:
+    Frame Period: Time between measurements (for state prediction)
+    Process Noise: Target maneuverability (higher = more maneuvering)
+    Measurement Noise: Sensor accuracy (from CFAR/clustering)
+    Gate Threshold: Chi-squared threshold for association (9.21 = 99% for 2 DOF)
+    Confirm/Delete: Track lifecycle thresholds
+
+  Typical Values:
+    Process noise: 50 m, 5 Hz (moderate maneuvers)
+    Measurement noise: 100 m, 2 Hz (typical passive radar accuracy)
+    Gate threshold: 9.21 (chi2 @ 99%, 2 DOF) or 5.99 (@ 95%)
+
+file_format: 1

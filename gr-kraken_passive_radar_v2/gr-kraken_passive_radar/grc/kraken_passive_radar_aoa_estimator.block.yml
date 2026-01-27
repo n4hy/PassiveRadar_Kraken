@@ -1,0 +1,141 @@
+id: kraken_passive_radar_aoa_estimator
+label: AoA Estimator
+category: '[Kraken Passive Radar]'
+
+templates:
+  imports: from gnuradio import kraken_passive_radar
+  make: >-
+    kraken_passive_radar.aoa_estimator(
+        ${num_elements}, ${d_lambda}, ${n_angles},
+        ${min_angle_deg}, ${max_angle_deg}, ${array_type},
+        ${num_range_bins}, ${num_doppler_bins}, ${max_detections})
+  callbacks:
+    - set_d_lambda(${d_lambda})
+    - set_scan_range(${min_angle_deg}, ${max_angle_deg})
+    - set_array_type(${array_type})
+
+parameters:
+  - id: num_elements
+    label: Array Elements
+    dtype: int
+    default: 4
+
+  - id: d_lambda
+    label: Spacing (wavelengths)
+    dtype: float
+    default: 0.5
+
+  - id: n_angles
+    label: Angular Resolution
+    dtype: int
+    default: 181
+
+  - id: min_angle_deg
+    label: Min Angle (deg)
+    dtype: float
+    default: -90.0
+
+  - id: max_angle_deg
+    label: Max Angle (deg)
+    dtype: float
+    default: 90.0
+
+  - id: array_type
+    label: Array Type
+    dtype: int
+    default: 0
+    options: [0, 1]
+    option_labels: [ULA, UCA]
+
+  - id: num_range_bins
+    label: Range Bins
+    dtype: int
+    default: 256
+
+  - id: num_doppler_bins
+    label: Doppler Bins
+    dtype: int
+    default: 64
+
+  - id: max_detections
+    label: Max Detections
+    dtype: int
+    default: 100
+
+inputs:
+  - label: caf0
+    domain: stream
+    dtype: complex
+    vlen: ${num_range_bins * num_doppler_bins}
+
+  - label: caf1
+    domain: stream
+    dtype: complex
+    vlen: ${num_range_bins * num_doppler_bins}
+
+  - label: caf2
+    domain: stream
+    dtype: complex
+    vlen: ${num_range_bins * num_doppler_bins}
+
+  - label: caf3
+    domain: stream
+    dtype: complex
+    vlen: ${num_range_bins * num_doppler_bins}
+
+  - label: detections
+    domain: stream
+    dtype: float
+    vlen: ${max_detections * 10}
+
+outputs:
+  - label: det_aoa
+    domain: stream
+    dtype: float
+    vlen: ${max_detections * 12}
+
+asserts:
+  - num_elements >= 2
+  - d_lambda > 0
+  - n_angles >= 3
+  - min_angle_deg < max_angle_deg
+  - num_range_bins > 0
+  - num_doppler_bins > 0
+  - max_detections >= 1
+
+documentation: |-
+  Angle-of-Arrival Estimator for Passive Radar
+
+  Computes AoA for each detection using Bartlett beamforming on
+  the 4 surveillance channels of KrakenSDR.
+
+  Algorithm:
+    Bartlett spectrum: P(theta) = |a(theta)^H * x|^2
+    where a(theta) is the steering vector and x is the array response
+    at the detection range/Doppler bin.
+
+  Array Types:
+    ULA: Uniform Linear Array (default for KrakenSDR)
+    UCA: Uniform Circular Array
+
+  Inputs:
+    caf0-caf3: Complex CAF outputs from 4 surveillance channels
+    detections: Detection list from clustering (10 floats per detection)
+
+  Output:
+    AoA-augmented detections (12 floats per detection):
+    Original 10 fields + [aoa_deg, aoa_confidence]
+
+  Parameters:
+    Array Elements: Number of antenna elements (4 for KrakenSDR)
+    Spacing: Element spacing in wavelengths (0.5 = half-wavelength)
+    Angular Resolution: Number of angles in scan (affects precision)
+    Min/Max Angle: Scan range in degrees from broadside
+    Array Type: ULA (linear) or UCA (circular)
+
+  Notes:
+    - AoA is relative to array broadside (perpendicular to ULA)
+    - Confidence based on peak sharpness and SNR
+    - Typical KrakenSDR setup: ULA, d=0.5*lambda, 4 elements
+
+file_format: 1

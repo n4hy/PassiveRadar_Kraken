@@ -4,6 +4,9 @@ list(APPEND kraken_passive_radar_sources
     doppler_processor_impl.cc
     cfar_detector_impl.cc
     coherence_monitor_impl.cc
+    detection_cluster_impl.cc
+    tracker_impl.cc
+    aoa_estimator_impl.cc
 )
 
 # Find FFTW3 for Doppler processing
