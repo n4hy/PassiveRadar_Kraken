@@ -1,4 +1,43 @@
 #!/usr/bin/env python3
+"""
+Passive Radar Run - Main Signal Processing Pipeline
+Copyright (c) 2026 Dr Robert W McGwier, PhD
+SPDX-License-Identifier: MIT
+
+Signal Flow (with automatic phase calibration):
+
+    KrakenSDR Source (5 channels)
+           |
+           v
+    +------------------+
+    | Calibration      |  <-- Monitors coherence, triggers calibration
+    | Controller       |      when drift exceeds threshold
+    +------------------+
+           |
+           | When calibration needed:
+           |   1. Enable noise source (HW switch isolates antennas)
+           |   2. Capture noise samples (common to all channels)
+           |   3. Compute phase correction phasors
+           |   4. Disable noise source (HW switch reconnects antennas)
+           |   5. Apply corrections to subsequent samples
+           v
+    Phase Correction (per channel)  <-- BEFORE ECA
+           |
+           v
+    Conditioning (AGC)
+           |
+           v
+    ECA Clutter Canceller  <-- Requires phase-coherent inputs
+           |
+           v
+    CAF -> Doppler -> CFAR -> Display
+
+IMPORTANT: The KrakenSDR has an internal noise source with a high-isolation
+silicon switch. When the noise source is enabled via software, the switch
+DISCONNECTS all antennas and routes ONLY the internal noise to all receivers.
+This is a hardware feature essential for phase calibration.
+"""
+
 import sys
 import time
 import signal
@@ -16,6 +55,7 @@ from kraken_passive_radar.krakensdr_source import krakensdr_source
 from kraken_passive_radar.eca_b_clutter_canceller import EcaBClutterCanceller
 from kraken_passive_radar.custom_blocks import ConditioningBlock, CafBlock, BackendBlock, TimeAlignmentBlock, AoAProcessingBlock
 from kraken_passive_radar.doppler_processing import DopplerProcessingBlock
+from kraken_passive_radar.calibration_controller import CalibrationController
 
 # New Display
 try:
@@ -23,6 +63,50 @@ try:
     HAS_DISPLAY = True
 except ImportError:
     HAS_DISPLAY = False
+
+
+class PhaseCorrectorBlock(gr.sync_block):
+    """
+    GNU Radio block that applies phase corrections from CalibrationController.
+
+    This block sits between the KrakenSDR source and the conditioning/ECA blocks.
+    It ensures phase coherence is maintained by:
+    1. Applying stored phase corrections during normal operation
+    2. Feeding samples to CalibrationController during calibration
+    3. Outputting zeros during calibration (antennas are isolated anyway)
+
+    IMPORTANT: This MUST be in the signal path BEFORE ECA processing.
+    The ECA clutter canceller requires phase-coherent inputs to work correctly.
+    """
+
+    def __init__(self, cal_controller: CalibrationController, channel: int):
+        gr.sync_block.__init__(
+            self,
+            name=f"Phase Corrector Ch{channel}",
+            in_sig=[np.complex64],
+            out_sig=[np.complex64]
+        )
+        self.cal_controller = cal_controller
+        self.channel = channel
+
+    def work(self, input_items, output_items):
+        samples = input_items[0]
+        n_samples = len(samples)
+
+        if self.cal_controller.is_calibrating:
+            # During calibration: feed samples to controller and output zeros
+            # (The KrakenSDR HW switch has isolated antennas, so samples are
+            # from the internal noise source, not antennas)
+            self.cal_controller.process_calibration_samples(self.channel, samples)
+            output_items[0][:n_samples] = 0
+        else:
+            # Normal operation: apply phase correction
+            output_items[0][:n_samples] = self.cal_controller.apply_phase_correction(
+                self.channel, samples
+            )
+
+        return n_samples
+
 
 class PassiveRadarTopBlock(gr.top_block):
     def __init__(self, freq=100e6, gain=30, geometry='ULA', calibration_file=None, use_ref_aoa=False):
@@ -58,12 +142,42 @@ class PassiveRadarTopBlock(gr.top_block):
             num_channels=5, sample_rate=2.4e6
         )
 
+        # 1b. Calibration Controller
+        # Manages automatic phase calibration when coherence degrades.
+        # When calibration is triggered:
+        #   - Enables noise source (KrakenSDR HW switch isolates antennas)
+        #   - Captures calibration samples (noise only, no antenna signals)
+        #   - Computes phase correction phasors
+        #   - Disables noise source (HW switch reconnects antennas)
+        #   - Applies corrections to subsequent samples
+        self.cal_controller = CalibrationController(
+            source=self.source,
+            num_channels=5,
+            cal_samples=24000,  # 10ms at 2.4 MHz
+            settle_time_ms=50.0,
+            on_calibration_complete=self._on_calibration_complete
+        )
+
+        # 1c. Phase Corrector Blocks (one per channel)
+        # These apply phase corrections BEFORE ECA processing.
+        # During calibration, they pass samples to CalibrationController.
+        self.phase_correctors = []
+        for i in range(5):
+            blk = PhaseCorrectorBlock(
+                cal_controller=self.cal_controller,
+                channel=i
+            )
+            self.phase_correctors.append(blk)
+            self.connect((self.source, i), (blk, 0))
+
         # 2. Conditioning (5 channels)
+        # Connected to phase correctors, NOT directly to source
         self.cond_blocks = []
         for i in range(5):
             blk = ConditioningBlock(rate=1e-5)
             self.cond_blocks.append(blk)
-            self.connect((self.source, i), (blk, 0))
+            # Source -> PhaseCorrector -> Conditioning -> ECA
+            self.connect((self.phase_correctors[i], 0), (blk, 0))
 
         # 2b. Time Alignment Probe (Calibration)
         self.align_blocks = []
@@ -190,6 +304,50 @@ class PassiveRadarTopBlock(gr.top_block):
         if hasattr(self, 'display_ref') and self.display_ref:
             self.display_ref.update_detections(mapped)
 
+    def _on_calibration_complete(self, result):
+        """
+        Callback when automatic calibration completes.
+
+        Args:
+            result: CalibrationResult with phase offsets and correlation
+        """
+        print(f"Calibration #{self.cal_controller.calibration_count} complete:")
+        print(f"  Phase corrections (deg): {np.degrees(result.phase_offsets)}")
+        print(f"  Correlations: {result.correlation}")
+
+        # Save calibration to file for persistence
+        cal_data = {
+            f"ch{i}": float(result.phase_offsets[i])
+            for i in range(5)
+        }
+        cal_data['timestamp'] = result.timestamp
+        cal_data['calibration_count'] = self.cal_controller.calibration_count
+
+        try:
+            with open("calibration.json", 'w') as f:
+                json.dump(cal_data, f, indent=2)
+        except Exception as e:
+            print(f"Warning: Could not save calibration: {e}")
+
+    def trigger_calibration(self, reason: str = "manual"):
+        """
+        Manually trigger a calibration cycle.
+
+        This enables the noise source (which isolates antennas via HW switch),
+        captures calibration samples, computes phase corrections, and resumes
+        normal operation.
+
+        Args:
+            reason: Reason for calibration (for logging)
+        """
+        print(f"Triggering calibration: {reason}")
+        self.cal_controller.handle_cal_request(reason)
+
+    def get_calibration_status(self) -> dict:
+        """Get current calibration status."""
+        return self.cal_controller.get_status()
+
+
 class RadarSink(gr.sync_block):
     def __init__(self, rows, cols, display_callback=None):
         gr.sync_block.__init__(
@@ -218,20 +376,34 @@ class RadarSink(gr.sync_block):
         return len(input_items[0])
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--freq", type=float, default=100e6)
-    parser.add_argument("--gain", type=float, default=30)
-    parser.add_argument("--geometry", choices=['ULA', 'URA'], default='ULA', help="Antenna array geometry")
-    parser.add_argument("--include-ref", action="store_true", help="Include Reference antenna in AoA array")
-    parser.add_argument("--calibrate", action="store_true", help="Run calibration routine first")
-    parser.add_argument("--visualize", action="store_true", help="Show GUI display")
-    args = parser.parse_args()
+    parser = argparse.ArgumentParser(
+        description="Passive Bistatic Radar using KrakenSDR",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Signal Flow:
+  KrakenSDR -> Phase Correction -> AGC -> ECA -> CAF -> Doppler -> CFAR -> Display
 
-    if args.calibrate:
-        print("Running Calibration Mode...")
-        import subprocess
-        subprocess.check_call(["python3", "calibrate_krakensdr.py", "--freq", str(args.freq)])
-        print("Calibration Done.")
+Calibration:
+  The system automatically calibrates phase coherence at startup and whenever
+  drift is detected. During calibration, the KrakenSDR's internal noise source
+  is enabled, which activates a hardware switch that DISCONNECTS all antennas
+  and routes only the internal noise to all receivers. This provides a common
+  reference for measuring inter-channel phase offsets.
+        """
+    )
+    parser.add_argument("--freq", type=float, default=100e6,
+                        help="Center frequency in Hz (default: 100 MHz)")
+    parser.add_argument("--gain", type=float, default=30,
+                        help="Receiver gain in dB (default: 30)")
+    parser.add_argument("--geometry", choices=['ULA', 'URA'], default='ULA',
+                        help="Antenna array geometry (default: ULA)")
+    parser.add_argument("--include-ref", action="store_true",
+                        help="Include Reference antenna in AoA array")
+    parser.add_argument("--no-startup-cal", action="store_true",
+                        help="Skip startup calibration (use saved calibration only)")
+    parser.add_argument("--visualize", action="store_true",
+                        help="Show GUI display")
+    args = parser.parse_args()
 
     tb = PassiveRadarTopBlock(
         freq=args.freq,
@@ -240,6 +412,25 @@ def main():
         calibration_file="calibration.json",
         use_ref_aoa=args.include_ref
     )
+
+    # Startup calibration
+    # This uses the integrated CalibrationController which:
+    # 1. Enables noise source (HW switch isolates antennas)
+    # 2. Captures calibration samples
+    # 3. Computes phase corrections
+    # 4. Disables noise source (HW switch reconnects antennas)
+    if not args.no_startup_cal:
+        print("\n" + "="*60)
+        print("STARTUP CALIBRATION")
+        print("Enabling noise source (antennas will be isolated by HW switch)")
+        print("="*60 + "\n")
+        tb.trigger_calibration("startup")
+        # Wait for calibration to complete
+        while tb.cal_controller.is_calibrating:
+            time.sleep(0.1)
+        print("\nStartup calibration complete. Normal operation starting.\n")
+    else:
+        print("Skipping startup calibration (using saved calibration if available)")
 
     if args.visualize and HAS_DISPLAY:
         print("Starting GUI...")
@@ -256,6 +447,8 @@ def main():
         disp.start()
     else:
         print("Running Headless...")
+        print("Press Ctrl+C to stop")
+        print(f"Calibration status: {tb.get_calibration_status()}")
         tb.start()
         try:
             while True:
