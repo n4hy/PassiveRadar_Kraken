@@ -383,8 +383,8 @@ OptMathKernels provides the hardware-accelerated math kernels used by PassiveRad
 ```bash
 # Clone OptMathKernels
 cd ~
-git clone https://github.com/n4hy/OptimizedKernelsForRaspberryPi5.git
-cd OptimizedKernelsForRaspberryPi5
+git clone https://github.com/n4hy/OptimizedKernelsForRaspberryPi5_NvidiaCUDA.git
+cd OptimizedKernelsForRaspberryPi5_NvidiaCUDA
 
 # Create build directory
 mkdir -p build && cd build
@@ -720,7 +720,7 @@ ls /usr/local/lib/cmake/OptMathKernels/
 # Should contain OptMathKernelsConfig.cmake
 
 # If missing, reinstall:
-cd ~/OptimizedKernelsForRaspberryPi5/build
+cd ~/OptimizedKernelsForRaspberryPi5_NvidiaCUDA/build
 sudo make install
 sudo ldconfig
 ```
@@ -728,7 +728,7 @@ sudo ldconfig
 **"-fPIC" linking error**:
 ```bash
 # Rebuild OptMathKernels with position-independent code
-cd ~/OptimizedKernelsForRaspberryPi5/build
+cd ~/OptimizedKernelsForRaspberryPi5_NvidiaCUDA/build
 cmake -DCMAKE_POSITION_INDEPENDENT_CODE=ON ..
 make -j$(nproc)
 sudo make install
@@ -876,6 +876,8 @@ SOFTWARE.
 **N4HY - Bob McGwier**
 Science Bob
 Dr Robert W McGwier, PhD
+
+ALL unit tests, and documentation and debugging done with the aid of claude code.
 
 ---
 
