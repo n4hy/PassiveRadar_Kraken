@@ -138,7 +138,7 @@ check_prerequisites() {
 
     # Check C++ libraries
     local libs_found=0
-    for lib in libkraken_caf_processing.so libkraken_eca_b_clutter_canceller.so libkraken_doppler_processing.so; do
+    for lib in libkraken_caf_processing.so libkraken_eca_b_clutter_canceller.so libkraken_doppler_processing.so libkraken_backend.so libkraken_conditioning.so libkraken_time_alignment.so; do
         if [ -f "src/$lib" ]; then
             print_success "Found: src/$lib"
             ((libs_found++)) || true
@@ -248,6 +248,30 @@ run_cpp_tests() {
         print_success "Doppler library tests"
     else
         print_skip "Doppler library not built"
+    fi
+
+    # Test Backend library
+    if [ -f "src/libkraken_backend.so" ]; then
+        python3 -m unittest tests.test_backend_cpp -v || print_failure "Backend tests"
+        print_success "Backend library tests"
+    else
+        print_skip "Backend library not built"
+    fi
+
+    # Test Conditioning library
+    if [ -f "src/libkraken_conditioning.so" ]; then
+        python3 -m unittest tests.test_conditioning_cpp -v || print_failure "Conditioning tests"
+        print_success "Conditioning library tests"
+    else
+        print_skip "Conditioning library not built"
+    fi
+
+    # Test Time Alignment library
+    if [ -f "src/libkraken_time_alignment.so" ]; then
+        python3 -m unittest tests.test_time_alignment_cpp -v || print_failure "Time alignment tests"
+        print_success "Time alignment library tests"
+    else
+        print_skip "Time alignment library not built"
     fi
 }
 

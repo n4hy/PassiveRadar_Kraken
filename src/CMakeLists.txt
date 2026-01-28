@@ -41,7 +41,19 @@ endif()
 
 # Common Link Libraries
 find_package(PkgConfig)
+find_package(Threads REQUIRED)
 pkg_check_modules(FFTW3 fftw3f)
+pkg_check_modules(FFTW3_THREADS fftw3f_threads)
+
+# Fallback for fftw3f_threads if pkg-config fails
+if(NOT FFTW3_THREADS_FOUND)
+    find_library(FFTW3F_THREADS_LIB fftw3f_threads)
+    if(FFTW3F_THREADS_LIB)
+        set(FFTW3_THREADS_FOUND TRUE)
+        set(FFTW3_THREADS_LIBRARIES ${FFTW3F_THREADS_LIB})
+        message(STATUS "Found fftw3f_threads via find_library: ${FFTW3F_THREADS_LIB}")
+    endif()
+endif()
 
 # OptMathKernels for NEON acceleration (optional)
 find_package(OptMathKernels QUIET)
@@ -80,13 +92,13 @@ install(TARGETS kraken_conditioning LIBRARY DESTINATION ${GR_PYTHON_DIR}/kraken_
 # 3. Time Alignment (Needs FFTW)
 if(FFTW3_FOUND)
     add_library(kraken_time_alignment SHARED time_alignment.cpp)
-    target_link_libraries(kraken_time_alignment ${FFTW3_LIBRARIES} m)
+    target_link_libraries(kraken_time_alignment ${FFTW3_LIBRARIES} ${FFTW3_THREADS_LIBRARIES} Threads::Threads m)
     target_include_directories(kraken_time_alignment PRIVATE ${FFTW3_INCLUDE_DIRS})
     install(TARGETS kraken_time_alignment LIBRARY DESTINATION ${GR_PYTHON_DIR}/kraken_passive_radar)
 
     # 4. CAF Processing (with optional OptMathKernels NEON optimization)
     add_library(kraken_caf_processing SHARED caf_processing.cpp)
-    target_link_libraries(kraken_caf_processing ${FFTW3_LIBRARIES} m)
+    target_link_libraries(kraken_caf_processing ${FFTW3_LIBRARIES} ${FFTW3_THREADS_LIBRARIES} Threads::Threads m)
     target_include_directories(kraken_caf_processing PRIVATE ${FFTW3_INCLUDE_DIRS})
     if(OptMathKernels_FOUND)
         target_link_libraries(kraken_caf_processing OptMathKernels::OptMathKernels)
@@ -95,7 +107,7 @@ if(FFTW3_FOUND)
 
     # 5. Doppler Processing
     add_library(kraken_doppler_processing SHARED doppler_processing.cpp)
-    target_link_libraries(kraken_doppler_processing ${FFTW3_LIBRARIES} m)
+    target_link_libraries(kraken_doppler_processing ${FFTW3_LIBRARIES} ${FFTW3_THREADS_LIBRARIES} Threads::Threads m)
     target_include_directories(kraken_doppler_processing PRIVATE ${FFTW3_INCLUDE_DIRS})
     install(TARGETS kraken_doppler_processing LIBRARY DESTINATION ${GR_PYTHON_DIR}/kraken_passive_radar)
 else()
