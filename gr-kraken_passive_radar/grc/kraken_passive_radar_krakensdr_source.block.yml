@@ -29,7 +29,7 @@ outputs:
   multiplicity: 5
 
 templates:
-  imports: from kraken_passive_radar import krakensdr_source
+  imports: from gnuradio.kraken_passive_radar import krakensdr_source
   make: krakensdr_source(frequency=${frequency}, sample_rate=${sample_rate}, gain=${gain})
   callbacks:
   - set_frequency(${frequency})

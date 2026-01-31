@@ -31,7 +31,7 @@ outputs:
 
 templates:
   imports: |-
-    from kraken_passive_radar import ClutterCanceller
+    from gnuradio.kraken_passive_radar import ClutterCanceller
   make: |-
     ClutterCanceller(num_taps=${num_taps}, mu=${mu})
 

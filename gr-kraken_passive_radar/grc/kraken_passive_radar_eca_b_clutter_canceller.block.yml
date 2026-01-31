@@ -34,7 +34,7 @@ outputs:
 
 templates:
   imports: |-
-    from kraken_passive_radar import EcaBClutterCanceller
+    from gnuradio.kraken_passive_radar import EcaBClutterCanceller
   make: |-
     EcaBClutterCanceller(num_taps=${num_taps}, num_surv_channels=${num_surv_channels}, lib_path=${lib_path})
 
