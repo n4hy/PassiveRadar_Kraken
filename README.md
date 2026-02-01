@@ -6,6 +6,16 @@ GNU Radio Out-of-Tree (OOT) module and Python display system for passive bistati
 
 ---
 
+## Recent Updates
+
+**2026-01-31**: Fixed GRC block.yml assert syntax errors (commit 615178b)
+- Corrected assert format in all 5 GRC block definitions (krakensdr_source, eca_canceller, eca_b_clutter_canceller, clutter_canceller, doppler_processing)
+- Changed from `${var} > 0` to `${ var > 0 }` format required by GRC
+- Blocks now load correctly in GNU Radio Companion without "is not a mako substitution" errors
+- Added `install_fixed_blocks.sh` script for quick block reinstallation
+
+---
+
 ## Table of Contents
 
 - [System Architecture](#system-architecture)
@@ -486,8 +496,8 @@ sudo ldconfig
 # Return to repo root
 cd ../..
 
-# Build GNU Radio OOT v2 module
-cd gr-kraken_passive_radar_v2/gr-kraken_passive_radar
+# Build GNU Radio OOT module
+cd gr-kraken_passive_radar
 mkdir -p build && cd build
 cmake -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_INSTALL_PREFIX=/usr/local \
@@ -496,27 +506,77 @@ make -j$(nproc)
 sudo make install
 sudo ldconfig
 
+# Clear GRC cache to ensure new blocks are loaded
+rm -rf ~/.cache/grc_gnuradio
+
 # Return to repo root
-cd ../../..
+cd ../..
 
 # Verify installation
 python3 -c "from gnuradio import kraken_passive_radar; print('GNU Radio blocks loaded successfully')"
 ```
 
+**Note**: After installing or updating GRC blocks, always clear the GRC cache (`rm -rf ~/.cache/grc_gnuradio`) to ensure GNU Radio Companion picks up the latest block definitions.
+
+### Quick Block Reinstall
+
+If you only need to update the GRC block definitions (after pulling new changes), use the quick install script:
+
+```bash
+# Run the quick block reinstall script
+./install_fixed_blocks.sh
+```
+
+This script copies the corrected `.block.yml` files to the GRC blocks directory and clears the cache.
+
 ---
 
-## GNU Radio v2 Blocks
+## GNU Radio Blocks
+
+The project provides GRC blocks through the `gr-kraken_passive_radar` OOT module. All blocks use corrected assert syntax (as of commit 615178b).
 
 | Block | Description | Key Parameters |
 |-------|-------------|----------------|
-| **KrakenSDR Source** | 5-channel coherent source | frequency, sample_rate, gain |
-| **ECA Canceller** | NLMS adaptive clutter filter | num_taps, mu, epsilon |
-| **Doppler Processor** | Range-Doppler FFT processing | num_range_bins, num_doppler_bins, window_type |
+| **KrakenSDR Source** | 5-channel coherent source with noise control | frequency, sample_rate, gain |
+| **ECA Canceller** | Batched ECA-B clutter canceller (multi-channel) | num_taps, reg_factor, num_surv |
+| **ECA-B Clutter Canceller** | Single/multi-channel ECA-B with C++ backend | num_taps, num_surv_channels, lib_path |
+| **Clutter Canceller** | NLMS adaptive clutter filter | num_taps, mu |
+| **Doppler Processing** | Range-Doppler FFT processing (C++) | fft_len, doppler_len |
+
+**Additional blocks from `gr-kraken_passive_radar_v2`**:
+| Block | Description | Key Parameters |
+|-------|-------------|----------------|
 | **CFAR Detector** | Constant False Alarm Rate detection | guard_cells, ref_cells, pfa, cfar_type |
 | **Coherence Monitor** | Phase coherence monitoring | corr_threshold, phase_threshold_deg |
 | **Detection Cluster** | Connected components clustering | min_cluster_size, max_cluster_extent |
 | **Tracker** | Kalman filter multi-target tracker | process_noise, gate_threshold, confirm_hits |
 | **AoA Estimator** | Bartlett beamformer | d_lambda, n_angles, array_type |
+
+**Block Definition Files**: All GRC block.yml files are in `gr-kraken_passive_radar/grc/` and install to `/usr/local/share/gnuradio/grc/blocks/`.
+
+### Example Flowgraphs
+
+The repository includes example GNU Radio Companion flowgraphs:
+
+- **`kraken_passive_radar_103_7MHz.grc`**: Complete passive radar flowgraph using 103.7 MHz FM station as illuminator
+  - Uses KrakenSDR Source for 5-channel coherent acquisition
+  - Implements ECA clutter cancellation
+  - Performs Cross-Ambiguity Function (CAF) processing
+  - Displays fused range profile from 4 surveillance channels
+
+- **`kraken_sdr_5ch_monitor.grc`**: Simple 5-channel monitoring flowgraph
+  - Displays all 5 KrakenSDR channels
+  - Useful for verification and debugging
+
+To use these flowgraphs:
+```bash
+# Open in GNU Radio Companion
+gnuradio-companion kraken_passive_radar_103_7MHz.grc
+
+# Or compile and run directly
+grcc kraken_passive_radar_103_7MHz.grc
+python3 kraken_passive_radar_103_7MHz.py
+```
 
 ---
 
@@ -696,7 +756,7 @@ python3 kraken_passive_radar/radar_gui.py
 
 ## Testing
 
-PassiveRadar_Kraken includes a comprehensive test suite with 118+ tests.
+PassiveRadar_Kraken includes a comprehensive test suite with 138+ tests across 20 test files.
 
 ### Running Tests
 
@@ -801,8 +861,34 @@ export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
 
 **Block not appearing in GRC**:
 ```bash
-grcc --force-load
-# Or restart GNU Radio Companion
+# Clear GRC cache and restart
+rm -rf ~/.cache/grc_gnuradio
+# Then restart GNU Radio Companion
+```
+
+**"is not a mako substitution" error when loading GRC blocks**:
+
+This error occurs if GRC block.yml files have incorrect assert syntax. The error message looks like:
+```
+ValueError: ${num_taps} > 0 is not a mako substitution in kraken_passive_radar_eca_canceller
+```
+
+**Fix**: Asserts must have the entire expression wrapped in `${ }` with spaces:
+```yaml
+# Incorrect:
+asserts:
+  - ${num_taps} > 0
+
+# Correct:
+asserts:
+  - ${ num_taps > 0 }
+```
+
+If you encounter this after a git pull, reinstall the corrected blocks:
+```bash
+cd ~/PassiveRadar_Kraken
+sudo cp gr-kraken_passive_radar/grc/*.block.yml /usr/local/share/gnuradio/grc/blocks/
+rm -rf ~/.cache/grc_gnuradio
 ```
 
 **Display not updating**:
@@ -844,57 +930,74 @@ nvidia-smi
 
 ```
 PassiveRadar_Kraken/
-├── gr-kraken_passive_radar/
-│   └── python/kraken_passive_radar/
-│       ├── krakensdr_source.py        # KrakenSDR source with noise control
-│       ├── calibration_controller.py  # Automatic phase calibration
-│       ├── eca_b_clutter_canceller.py # ECA-B wrapper
-│       └── custom_blocks.py           # Conditioning, CAF, Backend blocks
-├── gr-kraken_passive_radar_v2/
+├── gr-kraken_passive_radar/           # GNU Radio OOT module (primary)
+│   ├── grc/
+│   │   ├── kraken_passive_radar_krakensdr_source.block.yml
+│   │   ├── kraken_passive_radar_eca_canceller.block.yml
+│   │   ├── kraken_passive_radar_eca_b_clutter_canceller.block.yml
+│   │   ├── kraken_passive_radar_clutter_canceller.block.yml
+│   │   ├── kraken_passive_radar_doppler_processing.block.yml
+│   │   └── CMakeLists.txt         # Installs to /usr/local/share/gnuradio/grc/blocks/
+│   ├── python/kraken_passive_radar/
+│   │   ├── krakensdr_source.py    # KrakenSDR source with noise control
+│   │   ├── calibration_controller.py  # Automatic phase calibration
+│   │   ├── eca_b_clutter_canceller.py # ECA-B wrapper
+│   │   └── custom_blocks.py       # Conditioning, CAF, Backend blocks
+│   ├── lib/
+│   │   └── (C++ block implementations if any)
+│   ├── include/gnuradio/kraken_passive_radar/
+│   │   └── (Block headers)
+│   ├── build/                     # Build artifacts
+│   ├── build_and_install.sh       # Quick build script
+│   └── CMakeLists.txt             # Main OOT module build configuration
+├── gr-kraken_passive_radar_v2/    # Alternative v2 module (contains AoA, tracker, etc.)
 │   └── gr-kraken_passive_radar/
 │       ├── include/gnuradio/kraken_passive_radar/
 │       │   ├── aoa_estimator.h
 │       │   ├── detection_cluster.h
-│       │   ├── tracker.h
-│       │   └── ... (other block headers)
+│       │   └── tracker.h
 │       ├── lib/
 │       │   ├── aoa_estimator_impl.{h,cc}
 │       │   ├── detection_cluster_impl.{h,cc}
-│       │   ├── tracker_impl.{h,cc}
-│       │   ├── eca_canceller_impl.{h,cc}
-│       │   └── CMakeLists.txt
-│       ├── grc/
-│       │   └── *.block.yml (GRC block definitions with asserts)
+│       │   └── tracker_impl.{h,cc}
 │       └── python/kraken_passive_radar/bindings/
 │           └── *_python.cc (pybind11 bindings)
-├── kraken_passive_radar/
-│   ├── __init__.py               # Package initialization
-│   ├── radar_gui.py              # Integrated multi-panel GUI
-│   ├── radar_display.py          # PPI display with tracking
-│   ├── range_doppler_display.py  # CAF heatmap display
-│   ├── calibration_panel.py      # Calibration monitoring
-│   └── metrics_dashboard.py      # System metrics
-├── src/
-│   ├── caf_processing.cpp        # CAF with OptMathKernels + FFTW threads
-│   ├── eca_b_clutter_canceller.cpp  # Thread-safe with std::atomic
-│   ├── doppler_processing.cpp    # FFTW thread initialization
-│   ├── time_alignment.cpp        # FFTW thread initialization
+├── kraken_passive_radar/          # Python display package (local development)
+│   ├── __init__.py                # Package initialization
+│   ├── radar_gui.py               # Integrated multi-panel GUI
+│   ├── radar_display.py           # PPI display with tracking
+│   ├── range_doppler_display.py   # CAF heatmap display
+│   ├── calibration_panel.py       # Calibration monitoring
+│   └── metrics_dashboard.py       # System metrics
+├── src/                           # Standalone C++ libraries (ctypes-loaded)
+│   ├── caf_processing.cpp         # CAF with OptMathKernels + FFTW threads
+│   ├── eca_b_clutter_canceller.cpp # Thread-safe with std::atomic
+│   ├── doppler_processing.cpp     # FFTW thread initialization
+│   ├── time_alignment.cpp         # FFTW thread initialization
 │   ├── nlms_clutter_canceller.cpp
-│   ├── backend.cpp               # CFAR with div-by-zero guards
-│   └── CMakeLists.txt            # C++17, auto GR_PYTHON_DIR detection
+│   ├── backend.cpp                # CFAR with div-by-zero guards
+│   ├── conditioning.cpp
+│   ├── aoa_processing.cpp
+│   └── CMakeLists.txt             # Builds .so libraries for ctypes
 ├── tests/
-│   ├── unit/                     # 117+ unit tests
-│   ├── integration/              # End-to-end pipeline tests
-│   ├── benchmarks/               # Performance measurements
-│   └── fixtures/                 # Synthetic target/clutter/noise generators
-├── run_passive_radar.py          # Main application with CalibrationController
-├── calibrate_krakensdr.py        # Standalone calibration script
-├── run_tests.sh                  # Comprehensive test runner
-├── pyproject.toml                # Modern Python packaging
-├── requirements.txt              # Python dependencies
-├── FunctionsIncluded.md          # Complete API reference
-└── README.md                     # This file
+│   ├── unit/                      # 138+ unit tests across 20 files
+│   ├── integration/               # End-to-end pipeline tests
+│   ├── benchmarks/                # Performance measurements
+│   └── fixtures/                  # Synthetic target/clutter/noise generators
+├── run_passive_radar.py           # Main application with CalibrationController
+├── calibrate_krakensdr.py         # Standalone calibration script
+├── run_tests.sh                   # Comprehensive test runner
+├── install_fixed_blocks.sh        # Reinstalls corrected GRC blocks
+├── pyproject.toml                 # Modern Python packaging
+├── requirements.txt               # Python dependencies
+├── FunctionsIncluded.md           # Complete API reference (396+ functions)
+├── BLOCKS_V2_SUMMARY.md           # GNU Radio v2 blocks documentation
+└── README.md                      # This file
 ```
+
+**Note**: The project contains two GNU Radio OOT modules:
+- `gr-kraken_passive_radar/` - Primary module with KrakenSDR source, ECA cancellers, and core blocks
+- `gr-kraken_passive_radar_v2/` - Extended module with AoA estimator, detection clustering, and tracking blocks
 
 ---
 
