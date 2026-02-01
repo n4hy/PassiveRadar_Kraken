@@ -29,7 +29,7 @@ templates:
   make: DopplerProcessingBlock(fft_len=${fft_len}, doppler_len=${doppler_len})
 
 asserts:
-  - fft_len > 0
-  - doppler_len > 0
+  - ${ fft_len > 0 }
+  - ${ doppler_len > 0 }
 
 file_format: 1

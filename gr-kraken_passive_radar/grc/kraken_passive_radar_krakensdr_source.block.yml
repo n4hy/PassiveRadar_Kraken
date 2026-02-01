@@ -37,8 +37,8 @@ templates:
   - set_gain(${gain})
 
 asserts:
-  - frequency > 0
-  - sample_rate > 0
-  - gain >= 0 and gain <= 76
+  - ${ frequency > 0 }
+  - ${ sample_rate > 0 }
+  - ${ gain >= 0 and gain <= 76 }
 
 file_format: 1

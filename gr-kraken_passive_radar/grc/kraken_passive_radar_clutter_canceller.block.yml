@@ -36,8 +36,8 @@ templates:
     ClutterCanceller(num_taps=${num_taps}, mu=${mu})
 
 asserts:
-  - num_taps > 0
-  - mu > 0 and mu < 2
+  - ${ num_taps > 0 }
+  - ${ mu > 0 and mu < 2 }
 
 documentation: |-
   NLMS-based adaptive clutter canceller for passive radar.
