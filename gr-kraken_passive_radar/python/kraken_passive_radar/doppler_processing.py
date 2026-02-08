@@ -4,10 +4,16 @@ import numpy as np
 from gnuradio import gr
 import sys
 import time
+import warnings
 
 class DopplerProcessingBlock(gr.basic_block):
     """
-    Doppler Processing Block (C++ Accelerated)
+    Doppler Processing Block (C++ Accelerated via ctypes)
+
+    .. deprecated::
+        Use ``gnuradio.kraken_passive_radar.doppler_processor`` (C++ pybind11
+        block) instead. It provides the same functionality with better
+        integration into the GNU Radio scheduler.
 
     Accumulates 'doppler_len' vectors of size 'fft_len', performs
     Range-Doppler processing (Windowing + FFT + LogMag), and outputs
@@ -15,6 +21,12 @@ class DopplerProcessingBlock(gr.basic_block):
     """
 
     def __init__(self, fft_len=1024, doppler_len=128):
+        warnings.warn(
+            "DopplerProcessingBlock is deprecated. Use "
+            "gnuradio.kraken_passive_radar.doppler_processor (C++ block) instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         gr.basic_block.__init__(
             self,
             name="Doppler Processing (C++)",
@@ -113,7 +125,7 @@ class DopplerProcessingBlock(gr.basic_block):
         self.frames_processed += num_blocks
         now = time.time()
         dt = now - self.last_log_time
-        if dt > self.log_interval:
+        if dt > self.log_interval and self.frames_processed > 0:
             rate = self.frames_processed / dt
             # Avg time per frame
             avg_ms = (self.total_proc_time / self.frames_processed) * 1000

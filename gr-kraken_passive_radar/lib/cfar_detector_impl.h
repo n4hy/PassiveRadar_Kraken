@@ -32,6 +32,8 @@ private:
     int d_num_detections;
     
     std::vector<float> d_ref_samples;
+    std::vector<float> d_leading_samples;   // GO/SO-CFAR: range-leading cells
+    std::vector<float> d_lagging_samples;   // GO/SO-CFAR: range-lagging cells
     
     gr::thread::mutex d_mutex;
     

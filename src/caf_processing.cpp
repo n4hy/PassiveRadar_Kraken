@@ -17,22 +17,12 @@
 #include <cstdio>
 #include <mutex>
 
-// FFTW thread initialization (call once per process)
-namespace {
-    std::once_flag fftw_init_flag;
-    void init_fftw_threads() {
-        std::call_once(fftw_init_flag, []() {
-            fftwf_init_threads();
-            // Use 1 thread per plan by default; can be increased for large FFTs
-            fftwf_plan_with_nthreads(1);
-        });
-    }
-}
+// Centralized FFTW init (shared across all .so files in this project)
+#include "fftw_init.h"
 
-// Check for OptMathKernels availability
-#if __has_include(<optmath/radar_kernels.hpp>)
-#define HAVE_OPTMATHKERNELS 1
-#include <optmath/radar_kernels.hpp>
+// OptMathKernels availability is set by CMake via target_compile_definitions
+// (HAVE_OPTMATHKERNELS is defined when OptMathKernels_FOUND is true)
+#ifdef HAVE_OPTMATHKERNELS
 #include <optmath/neon_kernels.hpp>
 #else
 #define HAVE_OPTMATHKERNELS 0
@@ -126,8 +116,8 @@ public:
           doppler_step(dop_step),
           sample_rate(fs)
     {
-        // Initialize FFTW thread support (safe to call multiple times)
-        init_fftw_threads();
+        // Initialize FFTW thread support (centralized, safe to call multiple times)
+        kraken_fftw_init();
 
         // FFT length: next power of 2 >= 2 * n_samples for linear correlation
         fft_len = 1;

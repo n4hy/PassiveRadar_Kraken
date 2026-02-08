@@ -59,13 +59,14 @@ public:
     static void fusion(const float* const* inputs, int num_inputs, float* output, int size) {
         std::vector<float> sum_linear(size, 0.0f);
 
+        // log(10)/10 precomputed for dB-to-linear conversion: 10^(db/10) = exp(db * ln10/10)
+        constexpr float db_to_ln = 0.23025850929940458f; // ln(10)/10
+
         for (int k = 0; k < num_inputs; ++k) {
             const float* in = inputs[k];
             for (int i = 0; i < size; ++i) {
-                // dB to Linear Power
-                float db = in[i];
-                float pwr = std::pow(10.0f, db / 10.0f);
-                sum_linear[i] += pwr;
+                // dB to Linear Power using expf (much faster than pow on ARM)
+                sum_linear[i] += expf(in[i] * db_to_ln);
             }
         }
 

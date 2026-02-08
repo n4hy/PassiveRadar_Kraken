@@ -6,6 +6,7 @@ install(FILES
     custom_blocks.py
     doppler_processing.py
     eca_b_clutter_canceller.py
+    vector_zero_pad.py
     DESTINATION ${GR_PYTHON_DIR}/kraken_passive_radar
 )
 

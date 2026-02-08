@@ -4,10 +4,13 @@ set -eu  # Exit on error, treat unset variables as errors
 # Get script directory for reliable paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-echo "Compiling C++ kernels..."
+echo "Compiling C++ kernels (out-of-source build)..."
 cd "$SCRIPT_DIR/src" || { echo "ERROR: Cannot enter src directory"; exit 1; }
-make clean || true  # Don't fail if nothing to clean
+mkdir -p build
+cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
 make -j"$(nproc)"
+cd "$SCRIPT_DIR/src"
 
 echo "Copying libraries to Python package..."
 # Copy to local source tree

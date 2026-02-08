@@ -4,6 +4,7 @@ import numpy as np
 from gnuradio import gr
 import sys
 import time
+import warnings
 
 # Constants for ECA-B processing
 DEFAULT_CHUNK_SIZE = 4096  # Larger chunks to reduce overhead, fits in L2 cache
@@ -12,6 +13,10 @@ LOGGING_INTERVAL_SEC = 2.0  # How often to log performance metrics
 class EcaBClutterCanceller(gr.sync_block):
     """
     ECA-B-based clutter canceller using an external C++ kernel loaded via ctypes.
+
+    .. deprecated::
+        Use ``gnuradio.kraken_passive_radar.eca_canceller`` (C++ pybind11
+        block with VOLK acceleration) instead.
 
     Inputs
     ------
@@ -24,6 +29,12 @@ class EcaBClutterCanceller(gr.sync_block):
     """
 
     def __init__(self, num_taps=16, num_surv_channels=1, lib_path=""):
+        warnings.warn(
+            "EcaBClutterCanceller is deprecated. Use "
+            "gnuradio.kraken_passive_radar.eca_canceller (C++ VOLK block) instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.num_surv_channels = int(num_surv_channels)
         if self.num_surv_channels < 1:
             raise ValueError("Number of surveillance channels must be at least 1")
@@ -148,7 +159,7 @@ class EcaBClutterCanceller(gr.sync_block):
             self.items_processed += n
             now = time.time()
             dt = now - self.last_log_time
-            if dt > self.log_interval:
+            if dt > self.log_interval and self.items_processed > 0:
                 rate_msps = (self.items_processed / dt) / 1e6
                 # Average processing time per sample (across all channels)
                 # total_proc_time is sum of 4 calls per chunk.

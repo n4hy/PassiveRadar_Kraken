@@ -11,10 +11,19 @@ Multi-panel display combining:
 """
 
 import numpy as np
+import os
 import matplotlib
-matplotlib.use('TkAgg')  # Ensure Tk backend for GUI
+# Use TkAgg for GUI, but allow headless environments (CI/testing)
+if os.environ.get('DISPLAY') or os.environ.get('WAYLAND_DISPLAY'):
+    matplotlib.use('TkAgg')
+else:
+    matplotlib.use('Agg')  # Headless fallback
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+try:
+    from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+except ImportError:
+    FigureCanvasTkAgg = None
+    NavigationToolbar2Tk = None
 from matplotlib.figure import Figure
 from matplotlib.animation import FuncAnimation
 import tkinter as tk
@@ -231,7 +240,7 @@ class RadarGUI:
 
         # Initial heatmap
         self.rd_im = self.rd_ax.imshow(
-            self.caf_data,
+            self.caf_data_read,
             aspect='auto',
             origin='lower',
             extent=[0, self.params.max_range_km, -125, 125],
@@ -451,7 +460,8 @@ class RadarGUI:
     def _reset(self):
         """Reset all data."""
         with self.lock:
-            self.caf_data = np.zeros((self.params.n_doppler_bins, self.params.n_range_bins))
+            self.caf_data_write = np.zeros((self.params.n_doppler_bins, self.params.n_range_bins))
+            self.caf_data_read = np.zeros((self.params.n_doppler_bins, self.params.n_range_bins))
             self.detections.clear()
             self.tracks.clear()
             self.metrics = ProcessingMetrics()

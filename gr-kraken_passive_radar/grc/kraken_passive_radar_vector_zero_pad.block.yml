@@ -1,0 +1,31 @@
+id: kraken_passive_radar_vector_zero_pad
+label: Vector Zero Pad
+category: '[Kraken Passive Radar]'
+
+templates:
+  imports: from gnuradio import kraken_passive_radar
+  make: kraken_passive_radar.vector_zero_pad(${in_size}, ${out_size})
+
+parameters:
+- id: in_size
+  label: Input Size
+  dtype: int
+  default: '1024'
+- id: out_size
+  label: Output Size
+  dtype: int
+  default: '2048'
+
+inputs:
+- label: in
+  domain: stream
+  dtype: complex
+  vlen: ${in_size}
+
+outputs:
+- label: out
+  domain: stream
+  dtype: complex
+  vlen: ${out_size}
+
+file_format: 1

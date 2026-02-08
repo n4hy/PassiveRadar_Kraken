@@ -6,20 +6,14 @@
 #include <fftw3.h>
 #include <mutex>
 
-// FFTW thread initialization (call once per process)
-namespace {
-    std::once_flag fftw_init_flag;
-    void init_fftw_threads() {
-        std::call_once(fftw_init_flag, []() {
-            fftwf_init_threads();
-            // Use 1 thread per plan by default; can be increased for large FFTs
-            fftwf_plan_with_nthreads(1);
-        });
-    }
-}
+// Centralized FFTW init (shared across all .so files in this project)
+#include "fftw_init.h"
 
-// Constants
-const float PI = 3.14159265358979323846f;
+// Use standard M_PI (POSIX) or define it
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+static constexpr float PI = static_cast<float>(M_PI);
 
 using Complex = std::complex<float>;
 
@@ -37,8 +31,8 @@ private:
 
 public:
     DopplerProcessor(int n_fft, int n_doppler) : fft_len(n_fft), doppler_len(n_doppler) {
-        // Initialize FFTW thread support (safe to call multiple times)
-        init_fftw_threads();
+        // Initialize FFTW thread support (centralized, safe to call multiple times)
+        kraken_fftw_init();
 
         // Pre-calculate Hamming window
         window.resize(doppler_len);

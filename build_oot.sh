@@ -19,9 +19,10 @@ if [ -z "$PY_SITE" ]; then
 fi
 echo "Detected Python install dir: $PY_SITE"
 
-# Configure with explicit Python path and force RELEASE build type with architecture optimizations
-# User preferred install prefix: /usr/local
-cmake -DCMAKE_INSTALL_PREFIX=/usr/local -DGR_PYTHON_DIR="$PY_SITE" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-O3 -march=native" ..
+# Configure with explicit Python path and force RELEASE build type
+# Architecture-specific optimization is handled by each module's CMakeLists.txt
+# Use -DNATIVE_OPTIMIZATION=ON if building and running on the same machine
+cmake -DCMAKE_INSTALL_PREFIX=/usr/local -DGR_PYTHON_DIR="$PY_SITE" -DCMAKE_BUILD_TYPE=Release ..
 
 # Build
 make -j"$(nproc)"

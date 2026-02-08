@@ -43,7 +43,7 @@ public:
 
 extern "C" {
     void* cond_create(float rate) { return new Conditioning(rate); }
-    void cond_destroy(void* p) { delete static_cast<Conditioning*>(p); }
+    void cond_destroy(void* p) { if (p) delete static_cast<Conditioning*>(p); }
     void cond_process(void* p, float* buf, int n) {
         static_cast<Conditioning*>(p)->process(reinterpret_cast<Complex*>(buf), n);
     }

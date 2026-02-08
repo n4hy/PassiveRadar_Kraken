@@ -227,8 +227,10 @@ class TestKernelBenchmarks(unittest.TestCase):
         self.results.append(result)
         print(f"\n{result}")
 
-        # Target: < 20ms for real-time
-        self.assertLess(mean_ms, 50.0, f"CFAR too slow: {mean_ms:.3f} ms")
+        # Target: < 20ms on x86_64, ~100ms acceptable on Pi 5 (aarch64)
+        import platform
+        threshold = 150.0 if platform.machine() in ('aarch64', 'arm64') else 50.0
+        self.assertLess(mean_ms, threshold, f"CFAR too slow: {mean_ms:.3f} ms (threshold {threshold:.0f} ms)")
 
 
 class TestMemoryBenchmarks(unittest.TestCase):

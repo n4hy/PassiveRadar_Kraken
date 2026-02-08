@@ -10,6 +10,25 @@ find_package(Gnuradio "3.10" REQUIRED COMPONENTS runtime blocks fft filter)
 # Find pybind11
 find_package(pybind11 REQUIRED)
 
+# Find FFTW3 (required for Doppler processor)
+find_package(PkgConfig)
+pkg_check_modules(FFTW3 fftw3f)
+if(NOT FFTW3_FOUND)
+    find_library(FFTW3F_LIB fftw3f)
+    find_path(FFTW3_INCLUDE_DIR fftw3.h)
+    if(FFTW3F_LIB AND FFTW3_INCLUDE_DIR)
+        set(FFTW3_FOUND TRUE)
+        set(FFTW3_LIBRARIES ${FFTW3F_LIB})
+        set(FFTW3_INCLUDE_DIRS ${FFTW3_INCLUDE_DIR})
+    else()
+        message(FATAL_ERROR "FFTW3f not found. Install: libfftw3-dev (Debian/Ubuntu)")
+    endif()
+endif()
+message(STATUS "FFTW3 found: ${FFTW3_LIBRARIES}")
+
+# Find Volk (required for optimized vector operations)
+find_package(Volk REQUIRED)
+
 # Set installation directories
 include(GNUInstallDirs)
 set(GR_RUNTIME_DIR ${CMAKE_INSTALL_BINDIR})

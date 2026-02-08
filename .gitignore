@@ -31,8 +31,13 @@ gr-kraken_passive_radar/.cache/
 gr-kraken_passive_radar/*.log
 gr-kraken_passive_radar/**/*.so
 gr-kraken_passive_radar/**/*.o
-ar-kraken_passive_radar/**/*.a
+gr-kraken_passive_radar/**/*.a
 kraken_sdr_5ch*.py
+
+############################################
+# src/ kernel build artifacts (out-of-source)
+############################################
+src/build/
 ############################################
 # CMake
 ############################################

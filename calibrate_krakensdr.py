@@ -22,10 +22,9 @@ def calibrate(args):
     # We need high gain or just enough to see noise source.
     # Noise source is usually strong.
     source = krakensdr_source(
-        center_freq=args.freq,
+        frequency=args.freq,
         sample_rate=2.4e6,
-        gain=args.gain,
-        num_channels=5
+        gain=args.gain
     )
 
     # Turn on Noise Source

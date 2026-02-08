@@ -4,9 +4,9 @@ options:
     catch_exceptions: 'True'
     category: '[GRC Hier Blocks]'
     cmake_opt: ''
-    comment: 'KrakenSDR Passive Radar - 103.7 MHz FM Illuminator'
+    comment: KrakenSDR Passive Radar - 103.7 MHz FM Illuminator
     copyright: ''
-    description: 'Passive Bistatic Radar using FM broadcast as illuminator of opportunity'
+    description: Passive Bistatic Radar using FM broadcast as illuminator of opportunity
     gen_cmake: 'On'
     gen_linking: dynamic
     generate_options: qt_gui
@@ -22,7 +22,7 @@ options:
     run_options: prompt
     sizing_mode: fixed
     thread_safe_setters: ''
-    title: 'KrakenSDR Passive Radar'
+    title: KrakenSDR Passive Radar
     window_size: (1920,1080)
   states:
     bus_sink: false
@@ -33,27 +33,11 @@ options:
     state: enabled
 
 blocks:
-# ============================================================================
-# VARIABLES
-# ============================================================================
-- name: samp_rate
-  id: variable
-  parameters:
-    comment: 'KrakenSDR native sample rate'
-    value: '2400000'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [8, 160]
-    rotation: 0
-    state: enabled
-
 - name: center_freq
   id: variable
   parameters:
-    comment: 'FM station frequency'
-    value: '103.7e6'
+    comment: FM station frequency
+    value: 103.7e6
   states:
     bus_sink: false
     bus_source: false
@@ -61,64 +45,11 @@ blocks:
     coordinate: [8, 240]
     rotation: 0
     state: enabled
-
-- name: rf_gain
-  id: variable
-  parameters:
-    comment: 'RF gain for all channels'
-    value: '40.0'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [8, 320]
-    rotation: 0
-    state: enabled
-
-- name: signal_bw
-  id: variable
-  parameters:
-    comment: 'Signal bandwidth of interest'
-    value: '250000'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [8, 400]
-    rotation: 0
-    state: enabled
-
-- name: decimation
-  id: variable
-  parameters:
-    comment: 'Decimation factor'
-    value: 'int(samp_rate / signal_bw)'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [8, 480]
-    rotation: 0
-    state: enabled
-
-- name: decimated_rate
-  id: variable
-  parameters:
-    comment: 'Post-decimation sample rate'
-    value: 'int(samp_rate / decimation)'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [8, 560]
-    rotation: 0
-    state: enabled
-
 - name: cpi_samples
   id: variable
   parameters:
-    comment: 'Coherent Processing Interval in samples (~100ms)'
-    value: 'int(decimated_rate * 0.1)'
+    comment: Coherent Processing Interval in samples (power-of-2, ~123ms at 266kHz)
+    value: '32768'
   states:
     bus_sink: false
     bus_source: false
@@ -126,12 +57,11 @@ blocks:
     coordinate: [8, 640]
     rotation: 0
     state: enabled
-
-- name: eca_taps
+- name: fft_size
   id: variable
   parameters:
-    comment: 'ECA filter taps (clutter delay spread)'
-    value: '128'
+    comment: Power-of-2 FFT size for efficient processing
+    value: '32768'
   states:
     bus_sink: false
     bus_source: false
@@ -139,11 +69,34 @@ blocks:
     coordinate: [8, 720]
     rotation: 0
     state: enabled
-
+- name: decimated_rate
+  id: variable
+  parameters:
+    comment: Post-decimation sample rate
+    value: int(samp_rate / decimation)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [8, 560]
+    rotation: 0
+    state: enabled
+- name: decimation
+  id: variable
+  parameters:
+    comment: Decimation factor
+    value: int(samp_rate / signal_bw)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [8, 480]
+    rotation: 0
+    state: enabled
 - name: eca_reg
   id: variable
   parameters:
-    comment: 'ECA regularization factor'
+    comment: ECA regularization factor
     value: '0.001'
   states:
     bus_sink: false
@@ -152,12 +105,23 @@ blocks:
     coordinate: [8, 800]
     rotation: 0
     state: enabled
-
+- name: eca_taps
+  id: variable
+  parameters:
+    comment: ECA filter taps (clutter delay spread)
+    value: '128'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [8, 720]
+    rotation: 0
+    state: enabled
 - name: lpf_taps
   id: variable
   parameters:
-    comment: 'Low-pass filter taps for decimation'
-    value: 'firdes.low_pass(1.0, samp_rate, signal_bw/2, signal_bw/10, window.WIN_HAMMING)'
+    comment: Low-pass filter taps for decimation
+    value: firdes.low_pass(1.0, samp_rate, signal_bw/2, signal_bw/10, window.WIN_HAMMING)
   states:
     bus_sink: false
     bus_source: false
@@ -165,39 +129,271 @@ blocks:
     coordinate: [120, 160]
     rotation: 0
     state: enabled
-
-# ============================================================================
-# SOURCE: KrakenSDR 5-Channel Coherent Receiver
-# Channel 0 = Reference, Channels 1-4 = Surveillance
-# ============================================================================
-- name: kraken_src
-  id: kraken_passive_radar_krakensdr_source
+- name: rf_gain
+  id: variable
   parameters:
-    affinity: ''
-    alias: ''
-    comment: 'KrakenSDR 5-Channel Coherent Source'
-    frequency: center_freq
-    gain: rf_gain
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    sample_rate: samp_rate
+    comment: RF gain for all channels
+    value: '40.0'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [240, 280]
+    coordinate: [8, 320]
     rotation: 0
     state: enabled
-
-# ============================================================================
-# DC BLOCKING (per channel)
-# ============================================================================
+- name: samp_rate
+  id: variable
+  parameters:
+    comment: KrakenSDR native sample rate
+    value: '2400000'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [8, 160]
+    rotation: 0
+    state: enabled
+- name: signal_bw
+  id: variable
+  parameters:
+    comment: Signal bandwidth of interest
+    value: '250000'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [8, 400]
+    rotation: 0
+    state: enabled
+- name: zero_pad_ref
+  id: kraken_passive_radar_vector_zero_pad
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: Zero-pad reference to FFT size
+    in_size: cpi_samples
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    out_size: fft_size
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1280, 132]
+    rotation: 0
+    state: enabled
+- name: zero_pad_surv0
+  id: kraken_passive_radar_vector_zero_pad
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: Zero-pad surv0 to FFT size
+    in_size: cpi_samples
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    out_size: fft_size
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1520, 232]
+    rotation: 0
+    state: enabled
+- name: zero_pad_surv1
+  id: kraken_passive_radar_vector_zero_pad
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: Zero-pad surv1 to FFT size
+    in_size: cpi_samples
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    out_size: fft_size
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1520, 312]
+    rotation: 0
+    state: enabled
+- name: zero_pad_surv2
+  id: kraken_passive_radar_vector_zero_pad
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: Zero-pad surv2 to FFT size
+    in_size: cpi_samples
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    out_size: fft_size
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1520, 392]
+    rotation: 0
+    state: enabled
+- name: zero_pad_surv3
+  id: kraken_passive_radar_vector_zero_pad
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: Zero-pad surv3 to FFT size
+    in_size: cpi_samples
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    out_size: fft_size
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1520, 472]
+    rotation: 0
+    state: enabled
+- name: add_fusion
+  id: blocks_add_xx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Non-coherent fusion: sum power'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_inputs: '4'
+    type: float
+    vlen: fft_size
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2560, 312]
+    rotation: 0
+    state: enabled
+- name: agc_ref
+  id: analog_agc2_xx
+  parameters:
+    affinity: ''
+    alias: ''
+    attack_rate: '0.01'
+    comment: Reference AGC (slow)
+    decay_rate: '0.001'
+    gain: '1.0'
+    max_gain: '65536'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    reference: '1.0'
+    type: complex
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [920, 104]
+    rotation: 0
+    state: enabled
+- name: agc_surv0
+  id: analog_agc2_xx
+  parameters:
+    affinity: ''
+    alias: ''
+    attack_rate: '0.01'
+    comment: Surv0 AGC
+    decay_rate: '0.001'
+    gain: '1.0'
+    max_gain: '65536'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    reference: '1.0'
+    type: complex
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [920, 204]
+    rotation: 0
+    state: enabled
+- name: agc_surv1
+  id: analog_agc2_xx
+  parameters:
+    affinity: ''
+    alias: ''
+    attack_rate: '0.01'
+    comment: Surv1 AGC
+    decay_rate: '0.001'
+    gain: '1.0'
+    max_gain: '65536'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    reference: '1.0'
+    type: complex
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [920, 304]
+    rotation: 0
+    state: enabled
+- name: agc_surv2
+  id: analog_agc2_xx
+  parameters:
+    affinity: ''
+    alias: ''
+    attack_rate: '0.01'
+    comment: Surv2 AGC
+    decay_rate: '0.001'
+    gain: '1.0'
+    max_gain: '65536'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    reference: '1.0'
+    type: complex
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [920, 404]
+    rotation: 0
+    state: enabled
+- name: agc_surv3
+  id: analog_agc2_xx
+  parameters:
+    affinity: ''
+    alias: ''
+    attack_rate: '0.01'
+    comment: Surv3 AGC
+    decay_rate: '0.001'
+    gain: '1.0'
+    max_gain: '65536'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    reference: '1.0'
+    type: complex
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [920, 504]
+    rotation: 0
+    state: enabled
+- name: conjugate_ref
+  id: blocks_conjugate_cc
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: Conjugate reference
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1680, 68]
+    rotation: 0
+    state: enabled
 - name: dc_blocker_ref
   id: dc_blocker_xx
   parameters:
     affinity: ''
     alias: ''
-    comment: 'Reference channel DC block'
+    comment: Reference channel DC block
     length: '32'
     long_form: 'True'
     maxoutbuf: '0'
@@ -210,13 +406,12 @@ blocks:
     coordinate: [480, 132]
     rotation: 0
     state: enabled
-
 - name: dc_blocker_surv0
   id: dc_blocker_xx
   parameters:
     affinity: ''
     alias: ''
-    comment: 'Surveillance ch0 DC block'
+    comment: Surveillance ch0 DC block
     length: '32'
     long_form: 'True'
     maxoutbuf: '0'
@@ -229,13 +424,12 @@ blocks:
     coordinate: [480, 232]
     rotation: 0
     state: enabled
-
 - name: dc_blocker_surv1
   id: dc_blocker_xx
   parameters:
     affinity: ''
     alias: ''
-    comment: 'Surveillance ch1 DC block'
+    comment: Surveillance ch1 DC block
     length: '32'
     long_form: 'True'
     maxoutbuf: '0'
@@ -248,13 +442,12 @@ blocks:
     coordinate: [480, 332]
     rotation: 0
     state: enabled
-
 - name: dc_blocker_surv2
   id: dc_blocker_xx
   parameters:
     affinity: ''
     alias: ''
-    comment: 'Surveillance ch2 DC block'
+    comment: Surveillance ch2 DC block
     length: '32'
     long_form: 'True'
     maxoutbuf: '0'
@@ -267,13 +460,12 @@ blocks:
     coordinate: [480, 432]
     rotation: 0
     state: enabled
-
 - name: dc_blocker_surv3
   id: dc_blocker_xx
   parameters:
     affinity: ''
     alias: ''
-    comment: 'Surveillance ch3 DC block'
+    comment: Surveillance ch3 DC block
     length: '32'
     long_form: 'True'
     maxoutbuf: '0'
@@ -286,10 +478,129 @@ blocks:
     coordinate: [480, 532]
     rotation: 0
     state: enabled
-
-# ============================================================================
-# FREQUENCY TRANSLATION + DECIMATION (per channel)
-# ============================================================================
+- name: eca_canceller
+  id: kraken_passive_radar_eca_canceller
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ECA-B Clutter Cancellation
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_surv: '4'
+    num_taps: eca_taps
+    reg_factor: eca_reg
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1160, 280]
+    rotation: 0
+    state: enabled
+- name: fft_ref
+  id: fft_vxx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: Reference FFT for CAF
+    fft_size: fft_size
+    forward: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    nthreads: '1'
+    shift: 'False'
+    type: complex
+    window: '[]'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1400, 120]
+    rotation: 0
+    state: enabled
+- name: fft_surv0
+  id: fft_vxx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: Surv0 FFT
+    fft_size: fft_size
+    forward: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    nthreads: '1'
+    shift: 'False'
+    type: complex
+    window: '[]'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1600, 220]
+    rotation: 0
+    state: enabled
+- name: fft_surv1
+  id: fft_vxx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: Surv1 FFT
+    fft_size: fft_size
+    forward: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    nthreads: '1'
+    shift: 'False'
+    type: complex
+    window: '[]'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1600, 300]
+    rotation: 0
+    state: enabled
+- name: fft_surv2
+  id: fft_vxx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: Surv2 FFT
+    fft_size: fft_size
+    forward: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    nthreads: '1'
+    shift: 'False'
+    type: complex
+    window: '[]'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1600, 380]
+    rotation: 0
+    state: enabled
+- name: fft_surv3
+  id: fft_vxx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: Surv3 FFT
+    fft_size: fft_size
+    forward: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    nthreads: '1'
+    shift: 'False'
+    type: complex
+    window: '[]'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1600, 460]
+    rotation: 0
+    state: enabled
 - name: freq_xlating_fir_ref
   id: freq_xlating_fir_filter_xxx
   parameters:
@@ -310,7 +621,6 @@ blocks:
     coordinate: [680, 112]
     rotation: 0
     state: enabled
-
 - name: freq_xlating_fir_surv0
   id: freq_xlating_fir_filter_xxx
   parameters:
@@ -331,7 +641,6 @@ blocks:
     coordinate: [680, 212]
     rotation: 0
     state: enabled
-
 - name: freq_xlating_fir_surv1
   id: freq_xlating_fir_filter_xxx
   parameters:
@@ -352,7 +661,6 @@ blocks:
     coordinate: [680, 312]
     rotation: 0
     state: enabled
-
 - name: freq_xlating_fir_surv2
   id: freq_xlating_fir_filter_xxx
   parameters:
@@ -373,7 +681,6 @@ blocks:
     coordinate: [680, 412]
     rotation: 0
     state: enabled
-
 - name: freq_xlating_fir_surv3
   id: freq_xlating_fir_filter_xxx
   parameters:
@@ -394,504 +701,13 @@ blocks:
     coordinate: [680, 512]
     rotation: 0
     state: enabled
-
-# ============================================================================
-# AGC CONDITIONING (per channel)
-# ============================================================================
-- name: agc_ref
-  id: analog_agc2_xx
-  parameters:
-    affinity: ''
-    alias: ''
-    attack_rate: '0.01'
-    comment: 'Reference AGC (slow)'
-    decay_rate: '0.001'
-    gain: '1.0'
-    max_gain: '65536'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    reference: '1.0'
-    type: complex
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [920, 104]
-    rotation: 0
-    state: enabled
-
-- name: agc_surv0
-  id: analog_agc2_xx
-  parameters:
-    affinity: ''
-    alias: ''
-    attack_rate: '0.01'
-    comment: 'Surv0 AGC'
-    decay_rate: '0.001'
-    gain: '1.0'
-    max_gain: '65536'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    reference: '1.0'
-    type: complex
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [920, 204]
-    rotation: 0
-    state: enabled
-
-- name: agc_surv1
-  id: analog_agc2_xx
-  parameters:
-    affinity: ''
-    alias: ''
-    attack_rate: '0.01'
-    comment: 'Surv1 AGC'
-    decay_rate: '0.001'
-    gain: '1.0'
-    max_gain: '65536'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    reference: '1.0'
-    type: complex
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [920, 304]
-    rotation: 0
-    state: enabled
-
-- name: agc_surv2
-  id: analog_agc2_xx
-  parameters:
-    affinity: ''
-    alias: ''
-    attack_rate: '0.01'
-    comment: 'Surv2 AGC'
-    decay_rate: '0.001'
-    gain: '1.0'
-    max_gain: '65536'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    reference: '1.0'
-    type: complex
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [920, 404]
-    rotation: 0
-    state: enabled
-
-- name: agc_surv3
-  id: analog_agc2_xx
-  parameters:
-    affinity: ''
-    alias: ''
-    attack_rate: '0.01'
-    comment: 'Surv3 AGC'
-    decay_rate: '0.001'
-    gain: '1.0'
-    max_gain: '65536'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    reference: '1.0'
-    type: complex
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [920, 504]
-    rotation: 0
-    state: enabled
-
-# ============================================================================
-# ECA CLUTTER CANCELLATION
-# ============================================================================
-- name: eca_canceller
-  id: kraken_passive_radar_eca_canceller
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: 'ECA-B Clutter Cancellation'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    num_surv: '4'
-    num_taps: eca_taps
-    reg_factor: eca_reg
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1160, 280]
-    rotation: 0
-    state: enabled
-
-# ============================================================================
-# STREAM TO VECTOR (CPI segmentation)
-# ============================================================================
-- name: s2v_ref
-  id: blocks_stream_to_vector
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: 'Reference: stream to CPI vectors'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    num_items: cpi_samples
-    type: complex
-    vlen: '1'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1160, 140]
-    rotation: 0
-    state: enabled
-
-- name: s2v_surv0
-  id: blocks_stream_to_vector
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: 'Surv0: stream to CPI vectors'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    num_items: cpi_samples
-    type: complex
-    vlen: '1'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1400, 220]
-    rotation: 0
-    state: enabled
-
-- name: s2v_surv1
-  id: blocks_stream_to_vector
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: 'Surv1: stream to CPI vectors'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    num_items: cpi_samples
-    type: complex
-    vlen: '1'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1400, 300]
-    rotation: 0
-    state: enabled
-
-- name: s2v_surv2
-  id: blocks_stream_to_vector
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: 'Surv2: stream to CPI vectors'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    num_items: cpi_samples
-    type: complex
-    vlen: '1'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1400, 380]
-    rotation: 0
-    state: enabled
-
-- name: s2v_surv3
-  id: blocks_stream_to_vector
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: 'Surv3: stream to CPI vectors'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    num_items: cpi_samples
-    type: complex
-    vlen: '1'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1400, 460]
-    rotation: 0
-    state: enabled
-
-# ============================================================================
-# FFT for CAF (Reference)
-# ============================================================================
-- name: fft_ref
-  id: fft_vxx
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: 'Reference FFT for CAF'
-    fft_size: cpi_samples
-    forward: 'True'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    nthreads: '1'
-    shift: 'False'
-    type: complex
-    window: '[]'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1400, 120]
-    rotation: 0
-    state: enabled
-
-# ============================================================================
-# Surveillance FFTs
-# ============================================================================
-- name: fft_surv0
-  id: fft_vxx
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: 'Surv0 FFT'
-    fft_size: cpi_samples
-    forward: 'True'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    nthreads: '1'
-    shift: 'False'
-    type: complex
-    window: '[]'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1600, 220]
-    rotation: 0
-    state: enabled
-
-- name: fft_surv1
-  id: fft_vxx
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: 'Surv1 FFT'
-    fft_size: cpi_samples
-    forward: 'True'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    nthreads: '1'
-    shift: 'False'
-    type: complex
-    window: '[]'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1600, 300]
-    rotation: 0
-    state: enabled
-
-- name: fft_surv2
-  id: fft_vxx
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: 'Surv2 FFT'
-    fft_size: cpi_samples
-    forward: 'True'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    nthreads: '1'
-    shift: 'False'
-    type: complex
-    window: '[]'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1600, 380]
-    rotation: 0
-    state: enabled
-
-- name: fft_surv3
-  id: fft_vxx
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: 'Surv3 FFT'
-    fft_size: cpi_samples
-    forward: 'True'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    nthreads: '1'
-    shift: 'False'
-    type: complex
-    window: '[]'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1600, 460]
-    rotation: 0
-    state: enabled
-
-# ============================================================================
-# Conjugate the reference FFT for correlation
-# blocks_conjugate_cc works on streams, so we need V2S -> conjugate -> S2V
-# ============================================================================
-- name: v2s_ref_for_conj
-  id: blocks_vector_to_stream
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: 'V2S for conjugate'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    num_items: cpi_samples
-    type: complex
-    vlen: '1'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1560, 60]
-    rotation: 0
-    state: enabled
-
-- name: conjugate_ref
-  id: blocks_conjugate_cc
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: 'Conjugate reference'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1680, 68]
-    rotation: 0
-    state: enabled
-
-- name: s2v_ref_conj
-  id: blocks_stream_to_vector
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: 'S2V after conjugate'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    num_items: cpi_samples
-    type: complex
-    vlen: '1'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1800, 60]
-    rotation: 0
-    state: enabled
-
-# ============================================================================
-# Cross-spectrum: Surv * conj(Ref)
-# Using blocks_multiply_xx with vlen for vector operation
-# ============================================================================
-- name: multiply_surv0
-  id: blocks_multiply_xx
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: 'Cross-spectrum surv0 * conj(ref)'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    num_inputs: '2'
-    type: complex
-    vlen: cpi_samples
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1960, 160]
-    rotation: 0
-    state: enabled
-
-- name: multiply_surv1
-  id: blocks_multiply_xx
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: 'Cross-spectrum surv1 * conj(ref)'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    num_inputs: '2'
-    type: complex
-    vlen: cpi_samples
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1960, 280]
-    rotation: 0
-    state: enabled
-
-- name: multiply_surv2
-  id: blocks_multiply_xx
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: 'Cross-spectrum surv2 * conj(ref)'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    num_inputs: '2'
-    type: complex
-    vlen: cpi_samples
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1960, 400]
-    rotation: 0
-    state: enabled
-
-- name: multiply_surv3
-  id: blocks_multiply_xx
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: 'Cross-spectrum surv3 * conj(ref)'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    num_inputs: '2'
-    type: complex
-    vlen: cpi_samples
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1960, 520]
-    rotation: 0
-    state: enabled
-
-# ============================================================================
-# IFFT for range profile
-# ============================================================================
 - name: ifft_surv0
   id: fft_vxx
   parameters:
     affinity: ''
     alias: ''
-    comment: 'IFFT -> Range profile surv0'
-    fft_size: cpi_samples
+    comment: IFFT -> Range profile surv0
+    fft_size: fft_size
     forward: 'False'
     maxoutbuf: '0'
     minoutbuf: '0'
@@ -906,14 +722,13 @@ blocks:
     coordinate: [2160, 160]
     rotation: 0
     state: enabled
-
 - name: ifft_surv1
   id: fft_vxx
   parameters:
     affinity: ''
     alias: ''
-    comment: 'IFFT -> Range profile surv1'
-    fft_size: cpi_samples
+    comment: IFFT -> Range profile surv1
+    fft_size: fft_size
     forward: 'False'
     maxoutbuf: '0'
     minoutbuf: '0'
@@ -928,14 +743,13 @@ blocks:
     coordinate: [2160, 280]
     rotation: 0
     state: enabled
-
 - name: ifft_surv2
   id: fft_vxx
   parameters:
     affinity: ''
     alias: ''
-    comment: 'IFFT -> Range profile surv2'
-    fft_size: cpi_samples
+    comment: IFFT -> Range profile surv2
+    fft_size: fft_size
     forward: 'False'
     maxoutbuf: '0'
     minoutbuf: '0'
@@ -950,14 +764,13 @@ blocks:
     coordinate: [2160, 400]
     rotation: 0
     state: enabled
-
 - name: ifft_surv3
   id: fft_vxx
   parameters:
     affinity: ''
     alias: ''
-    comment: 'IFFT -> Range profile surv3'
-    fft_size: cpi_samples
+    comment: IFFT -> Range profile surv3
+    fft_size: fft_size
     forward: 'False'
     maxoutbuf: '0'
     minoutbuf: '0'
@@ -972,19 +785,33 @@ blocks:
     coordinate: [2160, 520]
     rotation: 0
     state: enabled
-
-# ============================================================================
-# MAGNITUDE SQUARED (power detection)
-# ============================================================================
+- name: kraken_src
+  id: kraken_passive_radar_krakensdr_source
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: KrakenSDR 5-Channel Coherent Source
+    frequency: center_freq
+    gain: rf_gain
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    sample_rate: samp_rate
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [240, 280]
+    rotation: 0
+    state: enabled
 - name: mag_squared_surv0
   id: blocks_complex_to_mag_squared
   parameters:
     affinity: ''
     alias: ''
-    comment: 'Power surv0'
+    comment: Power surv0
     maxoutbuf: '0'
     minoutbuf: '0'
-    vlen: cpi_samples
+    vlen: fft_size
   states:
     bus_sink: false
     bus_source: false
@@ -992,16 +819,15 @@ blocks:
     coordinate: [2360, 172]
     rotation: 0
     state: enabled
-
 - name: mag_squared_surv1
   id: blocks_complex_to_mag_squared
   parameters:
     affinity: ''
     alias: ''
-    comment: 'Power surv1'
+    comment: Power surv1
     maxoutbuf: '0'
     minoutbuf: '0'
-    vlen: cpi_samples
+    vlen: fft_size
   states:
     bus_sink: false
     bus_source: false
@@ -1009,16 +835,15 @@ blocks:
     coordinate: [2360, 292]
     rotation: 0
     state: enabled
-
 - name: mag_squared_surv2
   id: blocks_complex_to_mag_squared
   parameters:
     affinity: ''
     alias: ''
-    comment: 'Power surv2'
+    comment: Power surv2
     maxoutbuf: '0'
     minoutbuf: '0'
-    vlen: cpi_samples
+    vlen: fft_size
   states:
     bus_sink: false
     bus_source: false
@@ -1026,16 +851,15 @@ blocks:
     coordinate: [2360, 412]
     rotation: 0
     state: enabled
-
 - name: mag_squared_surv3
   id: blocks_complex_to_mag_squared
   parameters:
     affinity: ''
     alias: ''
-    comment: 'Power surv3'
+    comment: Power surv3
     maxoutbuf: '0'
     minoutbuf: '0'
-    vlen: cpi_samples
+    vlen: fft_size
   states:
     bus_sink: false
     bus_source: false
@@ -1043,43 +867,89 @@ blocks:
     coordinate: [2360, 532]
     rotation: 0
     state: enabled
-
-# ============================================================================
-# NON-COHERENT FUSION
-# ============================================================================
-- name: add_fusion
-  id: blocks_add_xx
+- name: multiply_surv0
+  id: blocks_multiply_xx
   parameters:
     affinity: ''
     alias: ''
-    comment: 'Non-coherent fusion: sum power'
+    comment: Cross-spectrum surv0 * conj(ref)
     maxoutbuf: '0'
     minoutbuf: '0'
-    num_inputs: '4'
-    type: float
-    vlen: cpi_samples
+    num_inputs: '2'
+    type: complex
+    vlen: fft_size
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [2560, 312]
+    coordinate: [1960, 160]
     rotation: 0
     state: enabled
-
-# ============================================================================
-# LOG SCALE FOR DISPLAY
-# ============================================================================
+- name: multiply_surv1
+  id: blocks_multiply_xx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: Cross-spectrum surv1 * conj(ref)
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_inputs: '2'
+    type: complex
+    vlen: fft_size
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1960, 280]
+    rotation: 0
+    state: enabled
+- name: multiply_surv2
+  id: blocks_multiply_xx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: Cross-spectrum surv2 * conj(ref)
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_inputs: '2'
+    type: complex
+    vlen: fft_size
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1960, 400]
+    rotation: 0
+    state: enabled
+- name: multiply_surv3
+  id: blocks_multiply_xx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: Cross-spectrum surv3 * conj(ref)
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_inputs: '2'
+    type: complex
+    vlen: fft_size
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1960, 520]
+    rotation: 0
+    state: enabled
 - name: nlog10
   id: blocks_nlog10_ff
   parameters:
     affinity: ''
     alias: ''
-    comment: '10*log10 for dB display'
+    comment: 10*log10 for dB display
     k: '0'
     maxoutbuf: '0'
     minoutbuf: '0'
     n: '10'
-    vlen: cpi_samples
+    vlen: fft_size
   states:
     bus_sink: false
     bus_source: false
@@ -1087,10 +957,87 @@ blocks:
     coordinate: [2720, 324]
     rotation: 0
     state: enabled
-
-# ============================================================================
-# VISUALIZATION
-# ============================================================================
+- name: qtgui_freq_sink_x_0
+  id: qtgui_freq_sink_x
+  parameters:
+    affinity: ''
+    alias: ''
+    alpha1: '1.0'
+    alpha10: '1.0'
+    alpha2: '1.0'
+    alpha3: '1.0'
+    alpha4: '1.0'
+    alpha5: '1.0'
+    alpha6: '1.0'
+    alpha7: '1.0'
+    alpha8: '1.0'
+    alpha9: '1.0'
+    autoscale: 'False'
+    average: '1.0'
+    axislabels: 'True'
+    bw: samp_rate
+    color1: '"blue"'
+    color10: '"dark blue"'
+    color2: '"red"'
+    color3: '"green"'
+    color4: '"black"'
+    color5: '"cyan"'
+    color6: '"magenta"'
+    color7: '"yellow"'
+    color8: '"dark red"'
+    color9: '"dark green"'
+    comment: ''
+    ctrlpanel: 'False'
+    fc: '0'
+    fftsize: '2048'
+    freqhalf: 'True'
+    grid: 'False'
+    gui_hint: ''
+    label: Relative Gain
+    label1: ''
+    label10: ''''''
+    label2: ''''''
+    label3: ''''''
+    label4: ''''''
+    label5: ''''''
+    label6: ''''''
+    label7: ''''''
+    label8: ''''''
+    label9: ''''''
+    legend: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    name: '""'
+    nconnections: '1'
+    norm_window: 'False'
+    showports: 'False'
+    tr_chan: '0'
+    tr_level: '0.0'
+    tr_mode: qtgui.TRIG_MODE_FREE
+    tr_tag: '""'
+    type: complex
+    units: dB
+    update_time: '0.10'
+    width1: '1'
+    width10: '1'
+    width2: '1'
+    width3: '1'
+    width4: '1'
+    width5: '1'
+    width6: '1'
+    width7: '1'
+    width8: '1'
+    width9: '1'
+    wintype: window.WIN_BLACKMAN_hARRIS
+    ymax: '10'
+    ymin: '-140'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [240, 560.0]
+    rotation: 0
+    state: enabled
 - name: qtgui_vector_sink
   id: qtgui_vector_sink_f
   parameters:
@@ -1118,10 +1065,10 @@ blocks:
     color7: '"yellow"'
     color8: '"dark red"'
     color9: '"dark green"'
-    comment: 'Range Profile Display'
+    comment: Range Profile Display
     grid: 'True'
     gui_hint: 0,0,1,2
-    label1: 'Range Profile (dB)'
+    label1: Range Profile (dB)
     label10: ''
     label2: ''
     label3: ''
@@ -1139,7 +1086,7 @@ blocks:
     ref_level: '0'
     showports: 'False'
     update_time: '0.10'
-    vlen: cpi_samples
+    vlen: fft_size
     width1: '1'
     width10: '1'
     width2: '1'
@@ -1165,96 +1112,196 @@ blocks:
     coordinate: [2880, 260]
     rotation: 0
     state: enabled
+- name: s2v_ref
+  id: blocks_stream_to_vector
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Reference: stream to CPI vectors'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_items: cpi_samples
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1160, 140]
+    rotation: 0
+    state: enabled
+- name: s2v_ref_conj
+  id: blocks_stream_to_vector
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: S2V after conjugate
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_items: fft_size
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1800, 60]
+    rotation: 0
+    state: enabled
+- name: s2v_surv0
+  id: blocks_stream_to_vector
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Surv0: stream to CPI vectors'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_items: cpi_samples
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1400, 220]
+    rotation: 0
+    state: enabled
+- name: s2v_surv1
+  id: blocks_stream_to_vector
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Surv1: stream to CPI vectors'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_items: cpi_samples
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1400, 300]
+    rotation: 0
+    state: enabled
+- name: s2v_surv2
+  id: blocks_stream_to_vector
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Surv2: stream to CPI vectors'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_items: cpi_samples
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1400, 380]
+    rotation: 0
+    state: enabled
+- name: s2v_surv3
+  id: blocks_stream_to_vector
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Surv3: stream to CPI vectors'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_items: cpi_samples
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1400, 460]
+    rotation: 0
+    state: enabled
+- name: v2s_ref_for_conj
+  id: blocks_vector_to_stream
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: V2S for conjugate
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_items: fft_size
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1560, 60]
+    rotation: 0
+    state: enabled
 
-# ============================================================================
-# CONNECTIONS
-# ============================================================================
 connections:
-# KrakenSDR source to DC blockers (5 coherent outputs: ch0-ch4)
-- [kraken_src, '0', dc_blocker_ref, '0']
-- [kraken_src, '1', dc_blocker_surv0, '0']
-- [kraken_src, '2', dc_blocker_surv1, '0']
-- [kraken_src, '3', dc_blocker_surv2, '0']
-- [kraken_src, '4', dc_blocker_surv3, '0']
-
-# DC blockers to freq xlating filters
+- [add_fusion, '0', nlog10, '0']
+- [agc_ref, '0', eca_canceller, '0']
+- [agc_ref, '0', s2v_ref, '0']
+- [agc_surv0, '0', eca_canceller, '1']
+- [agc_surv1, '0', eca_canceller, '2']
+- [agc_surv2, '0', eca_canceller, '3']
+- [agc_surv3, '0', eca_canceller, '4']
+- [conjugate_ref, '0', s2v_ref_conj, '0']
 - [dc_blocker_ref, '0', freq_xlating_fir_ref, '0']
 - [dc_blocker_surv0, '0', freq_xlating_fir_surv0, '0']
 - [dc_blocker_surv1, '0', freq_xlating_fir_surv1, '0']
 - [dc_blocker_surv2, '0', freq_xlating_fir_surv2, '0']
 - [dc_blocker_surv3, '0', freq_xlating_fir_surv3, '0']
-
-# Freq xlating to AGC
+- [eca_canceller, '0', s2v_surv0, '0']
+- [eca_canceller, '1', s2v_surv1, '0']
+- [eca_canceller, '2', s2v_surv2, '0']
+- [eca_canceller, '3', s2v_surv3, '0']
+- [fft_ref, '0', v2s_ref_for_conj, '0']
+- [fft_surv0, '0', multiply_surv0, '0']
+- [fft_surv1, '0', multiply_surv1, '0']
+- [fft_surv2, '0', multiply_surv2, '0']
+- [fft_surv3, '0', multiply_surv3, '0']
 - [freq_xlating_fir_ref, '0', agc_ref, '0']
 - [freq_xlating_fir_surv0, '0', agc_surv0, '0']
 - [freq_xlating_fir_surv1, '0', agc_surv1, '0']
 - [freq_xlating_fir_surv2, '0', agc_surv2, '0']
 - [freq_xlating_fir_surv3, '0', agc_surv3, '0']
-
-# Reference AGC to ECA and to S2V for CAF
-- [agc_ref, '0', eca_canceller, '0']
-- [agc_ref, '0', s2v_ref, '0']
-
-# Surveillance AGC to ECA
-- [agc_surv0, '0', eca_canceller, '1']
-- [agc_surv1, '0', eca_canceller, '2']
-- [agc_surv2, '0', eca_canceller, '3']
-- [agc_surv3, '0', eca_canceller, '4']
-
-# ECA outputs to S2V
-- [eca_canceller, '0', s2v_surv0, '0']
-- [eca_canceller, '1', s2v_surv1, '0']
-- [eca_canceller, '2', s2v_surv2, '0']
-- [eca_canceller, '3', s2v_surv3, '0']
-
-# Reference S2V to FFT
-- [s2v_ref, '0', fft_ref, '0']
-
-# Reference FFT -> V2S -> Conjugate -> S2V (to get conj(Ref) as vector)
-- [fft_ref, '0', v2s_ref_for_conj, '0']
-- [v2s_ref_for_conj, '0', conjugate_ref, '0']
-- [conjugate_ref, '0', s2v_ref_conj, '0']
-
-# Surveillance S2V to FFTs
-- [s2v_surv0, '0', fft_surv0, '0']
-- [s2v_surv1, '0', fft_surv1, '0']
-- [s2v_surv2, '0', fft_surv2, '0']
-- [s2v_surv3, '0', fft_surv3, '0']
-
-# FFT outputs and conjugate ref to multipliers (cross-spectrum)
-- [fft_surv0, '0', multiply_surv0, '0']
-- [s2v_ref_conj, '0', multiply_surv0, '1']
-- [fft_surv1, '0', multiply_surv1, '0']
-- [s2v_ref_conj, '0', multiply_surv1, '1']
-- [fft_surv2, '0', multiply_surv2, '0']
-- [s2v_ref_conj, '0', multiply_surv2, '1']
-- [fft_surv3, '0', multiply_surv3, '0']
-- [s2v_ref_conj, '0', multiply_surv3, '1']
-
-# Multipliers to IFFT
-- [multiply_surv0, '0', ifft_surv0, '0']
-- [multiply_surv1, '0', ifft_surv1, '0']
-- [multiply_surv2, '0', ifft_surv2, '0']
-- [multiply_surv3, '0', ifft_surv3, '0']
-
-# IFFT to magnitude squared
 - [ifft_surv0, '0', mag_squared_surv0, '0']
 - [ifft_surv1, '0', mag_squared_surv1, '0']
 - [ifft_surv2, '0', mag_squared_surv2, '0']
 - [ifft_surv3, '0', mag_squared_surv3, '0']
-
-# Magnitude squared to fusion
+- [kraken_src, '0', dc_blocker_ref, '0']
+- [kraken_src, '1', dc_blocker_surv0, '0']
+- [kraken_src, '2', dc_blocker_surv1, '0']
+- [kraken_src, '3', dc_blocker_surv2, '0']
+- [kraken_src, '4', dc_blocker_surv3, '0']
+- [kraken_src, '4', qtgui_freq_sink_x_0, '0']
 - [mag_squared_surv0, '0', add_fusion, '0']
 - [mag_squared_surv1, '0', add_fusion, '1']
 - [mag_squared_surv2, '0', add_fusion, '2']
 - [mag_squared_surv3, '0', add_fusion, '3']
-
-# Fusion to log scale
-- [add_fusion, '0', nlog10, '0']
-
-# Log scale to display
+- [multiply_surv0, '0', ifft_surv0, '0']
+- [multiply_surv1, '0', ifft_surv1, '0']
+- [multiply_surv2, '0', ifft_surv2, '0']
+- [multiply_surv3, '0', ifft_surv3, '0']
 - [nlog10, '0', qtgui_vector_sink, '0']
+- [s2v_ref, '0', zero_pad_ref, '0']
+- [zero_pad_ref, '0', fft_ref, '0']
+- [s2v_ref_conj, '0', multiply_surv0, '1']
+- [s2v_ref_conj, '0', multiply_surv1, '1']
+- [s2v_ref_conj, '0', multiply_surv2, '1']
+- [s2v_ref_conj, '0', multiply_surv3, '1']
+- [s2v_surv0, '0', zero_pad_surv0, '0']
+- [zero_pad_surv0, '0', fft_surv0, '0']
+- [s2v_surv1, '0', zero_pad_surv1, '0']
+- [zero_pad_surv1, '0', fft_surv1, '0']
+- [s2v_surv2, '0', zero_pad_surv2, '0']
+- [zero_pad_surv2, '0', fft_surv2, '0']
+- [s2v_surv3, '0', zero_pad_surv3, '0']
+- [zero_pad_surv3, '0', fft_surv3, '0']
+- [v2s_ref_for_conj, '0', conjugate_ref, '0']
 
 metadata:
   file_format: 1
-  grc_version: 3.10.9.2
+  grc_version: 3.10.12.0

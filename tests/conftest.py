@@ -8,10 +8,11 @@ from pathlib import Path
 
 # Add project paths
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+TESTS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(PROJECT_ROOT))
+sys.path.insert(0, str(TESTS_DIR))
 sys.path.insert(0, str(PROJECT_ROOT / "kraken_passive_radar"))
 sys.path.insert(0, str(PROJECT_ROOT / "gr-kraken_passive_radar" / "python"))
-sys.path.insert(0, str(PROJECT_ROOT / "gr-kraken_passive_radar_v2" / "gr-kraken_passive_radar" / "python"))
 
 
 @pytest.fixture

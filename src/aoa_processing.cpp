@@ -161,7 +161,7 @@ public:
         // Output size: n_az * n_el
         // Scan loop
         for (int el_idx = 0; el_idx < n_el; ++el_idx) {
-            float phi_deg = 90.0f * el_idx / (n_el - 1); // 0 to 90
+            float phi_deg = (n_el > 1) ? 90.0f * el_idx / (n_el - 1) : 0.0f; // 0 to 90
             float phi_rad = phi_deg * PI / 180.0f;
             float cos_phi = std::cos(phi_rad);
             float sin_phi = std::sin(phi_rad);
@@ -209,8 +209,9 @@ public:
                         active_ants++;
                         p_idx = 1;
                     }
-                    // Ch1..4
-                    for(int m=1; m<5; ++m) {
+                    // Ch1..4 (bounded by actual num_antennas)
+                    for(int m=1; m < num_antennas && m < 5; ++m) {
+                        if (p_idx >= (int)positions.size()) break;
                         Pos p = positions[p_idx++];
                         float phase = k * (p.x * ux + p.y * uy + p.z * uz);
                         sum_val += antenna_data[m] * std::polar(1.0f, -phase);
@@ -252,7 +253,7 @@ extern "C" {
         int start_idx = 1;
 
         for (int i = 0; i < n_angles; ++i) {
-            float theta_deg = -90.0f + (180.0f * i / (n_angles - 1));
+            float theta_deg = (n_angles > 1) ? -90.0f + (180.0f * i / (n_angles - 1)) : 0.0f;
             float theta_rad = theta_deg * PI / 180.0f;
             float ux = std::sin(theta_rad);
             float uy = std::cos(theta_rad);

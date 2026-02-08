@@ -372,8 +372,9 @@ class CalibrationPanel:
     def update_status(self, status: CalibrationStatus):
         """Thread-safe update of calibration status."""
         with self.lock:
+            was_valid = self.status.is_valid
             self.status = status
-            if status.is_valid and not self.status.is_valid:
+            if status.is_valid and not was_valid:
                 # New valid calibration
                 self.last_cal_time = time.time()
 

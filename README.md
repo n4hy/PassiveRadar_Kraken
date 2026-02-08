@@ -1,1212 +1,665 @@
 # PassiveRadar_Kraken
 
-**Production-Ready Passive Bistatic Radar System for KrakenSDR**
+**Passive Bistatic Radar System for KrakenSDR**
 
-[![Tests](https://img.shields.io/badge/tests-passing-brightgreen)]() [![Code Quality](https://img.shields.io/badge/code%20quality-A-brightgreen)]() [![License](https://img.shields.io/badge/license-MIT-blue)]() [![Platform](https://img.shields.io/badge/platform-Linux-lightgrey)]()
+[![CI](https://github.com/n4hy/PassiveRadar_Kraken/actions/workflows/ci.yml/badge.svg)](https://github.com/n4hy/PassiveRadar_Kraken/actions) [![License](https://img.shields.io/badge/license-MIT-blue)]() [![Platform](https://img.shields.io/badge/platform-RPi5%20%7C%20x86__64-lightgrey)]() [![GNU Radio](https://img.shields.io/badge/GNU%20Radio-3.10+-green)]()
 
-GNU Radio Out-of-Tree (OOT) module and Python display system for passive bistatic radar applications using the KrakenSDR 5-channel coherent SDR receiver. Implements the full radar processing chain from coherent acquisition through detection, tracking, and visualization with hardware-accelerated signal processing.
-
----
-
-## 🚀 Recent Updates
-
-### **2026-02-08**: Major Code Quality & Performance Improvements
-**All critical bugs fixed, system now production-ready:**
-
-#### Critical Bug Fixes (P0)
-- ✅ **Fixed array bounds bug** in v2 ECA canceller (memory corruption eliminated)
-- ✅ **Implemented NLMS algorithm** in main ECA canceller (was non-functional placeholder)
-- ✅ **Fixed division by zero** in Doppler processor with proper validation
-
-#### Performance Optimizations (P1)
-- 🚀 **5-10x speedup** in ECA processing (VOLK optimization added)
-- 🚀 **6.5 MB/s reduction** in display memory bandwidth (double-buffering)
-- 🚀 **Faster initialization** (FFTW_ESTIMATE vs FFTW_MEASURE)
-
-#### Code Quality Improvements
-- ✨ Specific exception handling (better debugging)
-- ✨ Extracted magic numbers to named constants
-- ✨ Improved shell script robustness (`set -u`, dynamic paths)
-- ✨ Enhanced documentation (module architecture clarified)
-
-#### Build System Fixes
-- 🔧 Removed malformed `{include` directory
-- 🔧 Fixed portable installation paths (uses Python sysconfig)
-- 🔧 Dynamic GRC block path detection
-
-**Code Quality**: B+ → **A-**
-**Stability**: C+ → **A**
-**Performance**: A- → **A**
-
-### **2026-01-31**: GRC Block.yml Assert Syntax Fixed
-- Corrected assert format in all 5 GRC block definitions
-- Changed from `${var} > 0` to `${ var > 0 }` format required by GRC
-- Blocks now load correctly in GNU Radio Companion
-- Added `install_fixed_blocks.sh` script for quick block reinstallation
+GNU Radio Out-of-Tree (OOT) module for passive bistatic radar using the KrakenSDR 5-channel coherent SDR receiver. Implements the full processing chain from coherent acquisition through clutter cancellation, Doppler processing, CFAR detection, AoA estimation, and multi-target tracking, all in C++ with Python bindings.
 
 ---
 
-## 📋 Table of Contents
+## Table of Contents
 
-- [Test Results](#-test-results)
-- [System Architecture](#-system-architecture)
-- [Module Architecture](#-module-architecture)
-- [Features](#-features)
-- [Export Control Compliance: ITAR and EAR](#️-export-control-compliance-itar-and-ear)
-- [Hardware Support](#-hardware-support)
-- [Installation](#-installation)
-- [Quick Start](#-quick-start)
-- [Performance Benchmarks](#-performance-benchmarks)
-- [API Reference](#-api-reference)
-- [Display System](#-display-system)
-- [Testing](#-testing)
-- [Examples](#-examples)
-- [Troubleshooting](#-troubleshooting)
-- [Contributing](#-contributing)
-- [License](#-license)
-- [References](#-references)
-
----
-
-## ✅ Test Results
-
-**Latest Test Run**: 2026-02-08
-
-### Quick Test Suite
-```
-✓ Quick smoke tests       14 passed
-✓ C++ library quick test   0 failed
-✓ Fixture tests            0 skipped
-```
-
-### Full Test Suite
-```
-╔═══════════════════════════════════════════════════════════════╗
-║     PassiveRadar_Kraken Comprehensive Test Suite             ║
-╚═══════════════════════════════════════════════════════════════╝
-
-Prerequisites:
-  ✓ Python 3.12.3
-  ✓ numpy 1.26.4
-  ✓ All C++ libraries found (6/6)
-  ✓ All display modules found (4/4)
-
-Test Categories:
-  ✓ Unit Tests             - 20 passed, 0 failed
-  ✓ Integration Tests      - 5 passed, 0 failed
-  ✓ C++ Library Tests      - 6 passed, 0 failed
-  ✓ Display Module Tests   - 19 passed, 0 failed (5 skipped)
-  ✓ Fixture Tests          - All passed
-
-Total: 50+ tests passed, 0 failures
-Status: ALL TESTS PASSING ✅
-```
-
-### Test Coverage
-| Component | Test Files | Status |
-|-----------|------------|--------|
-| **C++ Kernels** | 6 | ✅ Passing |
-| **GNU Radio Blocks** | 2 | ✅ Passing |
-| **Display System** | 4 | ✅ Passing |
-| **Integration** | 1 | ✅ Passing |
-| **Fixtures** | 3 | ✅ Passing |
-| **End-to-End** | 1 | ✅ Passing |
+- [Test Results](#test-results)
+- [System Architecture](#system-architecture)
+- [Project Structure](#project-structure)
+- [Signal Processing Chain](#signal-processing-chain)
+- [GNU Radio Blocks](#gnu-radio-blocks)
+- [C++ Kernel Libraries](#c-kernel-libraries)
+- [Export Control Compliance](#export-control-compliance-itar-and-ear)
+- [Prerequisites](#prerequisites)
+- [Building](#building)
+- [Running](#running)
+- [Testing](#testing)
+- [Display System](#display-system)
+- [API Reference](#api-reference)
+- [Troubleshooting](#troubleshooting)
+- [License](#license)
+- [References](#references)
 
 ---
 
-## 🏗️ System Architecture
+## Test Results
+
+**Platform**: Raspberry Pi 5 (aarch64), Python 3.13.5, GNU Radio 3.10.12
+
+**Date**: 2026-02-08
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         KrakenSDR 5-Channel Coherent SDR                    │
-│                    (Ch0: Reference, Ch1-4: Surveillance)                    │
-│                                                                             │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │  INTERNAL NOISE SOURCE with HIGH-ISOLATION SILICON SWITCH           │   │
-│  │  When enabled: Switch DISCONNECTS all antennas, routes noise only   │   │
-│  │  When disabled: Switch RECONNECTS antennas for normal operation     │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                                      ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                      Calibration Controller                                 │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │  Monitors phase coherence. When drift exceeds threshold:            │   │
-│  │  1. Enable noise source (HW switch isolates antennas)               │   │
-│  │  2. Capture calibration samples (noise only, no antenna signals)    │   │
-│  │  3. Compute phase correction phasors                                │   │
-│  │  4. Disable noise source (HW switch reconnects antennas)            │   │
-│  │  5. Apply corrections to all subsequent samples                     │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-│                                      │                                      │
-│                    ┌─────────────────┴─────────────────┐                    │
-│                    ▼                                   ▼                    │
-│         ┌──────────────────┐                ┌──────────────────┐           │
-│         │ Phase Correction │                │ Phase Correction │           │
-│         │   (per channel)  │                │   (per channel)  │           │
-│         └──────────────────┘                └──────────────────┘           │
-│                    │  MUST occur BEFORE ECA │                               │
-└────────────────────┼────────────────────────┼───────────────────────────────┘
-                     ▼                        ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                        GNU Radio Signal Processing                          │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐    │
-│  │   Coherence  │  │     ECA      │  │   Doppler    │  │    CFAR      │    │
-│  │   Monitor    │→ │  Canceller   │→ │  Processor   │→ │  Detector    │    │
-│  │              │  │   (NLMS)     │  │  (VOLK opt)  │  │ (CA/GO/SO/OS)│    │
-│  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘    │
-│         │                 ▲                                   │             │
-│         │                 │                                   │             │
-│         │    Requires phase-coherent inputs                   │             │
-│         │                                                     │             │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐        │             │
-│  │   Detection  │← │    Tracker   │← │     AoA      │←───────┘             │
-│  │   Cluster    │  │   (Kalman)   │  │  Estimator   │                      │
-│  └──────────────┘  └──────────────┘  └──────────────┘                      │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                                      ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                        Python Display System                                │
-│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐          │
-│  │  Range-Doppler   │  │       PPI        │  │   Calibration    │          │
-│  │      Display     │  │     Display      │  │      Panel       │          │
-│  └──────────────────┘  └──────────────────┘  └──────────────────┘          │
-│  ┌──────────────────┐  ┌──────────────────────────────────────────┐        │
-│  │     Metrics      │  │           Integrated Radar GUI           │        │
-│  │    Dashboard     │  │        (Optimized Rendering)             │        │
-│  └──────────────────┘  └──────────────────────────────────────────┘        │
-└─────────────────────────────────────────────────────────────────────────────┘
+========================= test session starts =========================
+platform linux -- Python 3.13.5, pytest-8.3.5
+collected 196 items
+
+tests/benchmarks/test_bench_kernels.py
+  TestKernelBenchmarks::test_bench_caf_4096                        PASSED
+  TestKernelBenchmarks::test_bench_cfar_2d                         PASSED
+  TestKernelBenchmarks::test_bench_eca_4096                        PASSED
+  TestKernelBenchmarks::test_bench_numpy_fft                       PASSED
+  TestKernelBenchmarks::test_bench_numpy_xcorr                     PASSED
+  TestMemoryBenchmarks::test_allocation_overhead                   PASSED
+
+tests/integration/test_full_pipeline.py
+  TestPipelineIntegration::test_eca_improves_detection             PASSED
+  TestPipelineIntegration::test_multi_target_scenario              PASSED
+  TestPipelineIntegration::test_single_target_detection            PASSED
+  TestProcessingChainValidation::test_power_conservation           PASSED
+  TestProcessingChainValidation::test_signal_dimensions            PASSED
+
+tests/test_aoa_cpp.py
+  TestAoACpp::test_aoa_estimation                                  PASSED
+
+tests/test_backend_cpp.py
+  TestBackendCpp::test_cfar_detects_target                         PASSED
+
+tests/test_caf_cpp.py
+  TestCafCpp::test_caf_process                                     PASSED
+
+tests/test_conditioning_cpp.py
+  TestConditioningCpp::test_agc_normalizes_level                   PASSED
+
+tests/test_doppler_cpp.py
+  TestDopplerCpp::test_doppler_processing                          PASSED
+
+tests/test_eca_b_cpp.py
+  TestEcaBCpp::test_eca_b_reduces_clutter_power                    PASSED
+
+tests/test_end_to_end.py
+  TestEndToEndOffline::test_manual_pipeline                        PASSED
+
+tests/test_gr_cpp_blocks.py
+  TestEcaCanceller      (4 tests)                                  PASSED
+  TestDopplerProcessor  (5 tests)                                  PASSED
+  TestCfarDetector      (8 tests)                                  PASSED
+  TestCoherenceMonitor  (7 tests)                                  PASSED
+  TestDetectionCluster  (8 tests)                                  PASSED
+  TestAoaEstimator      (8 tests)                                  PASSED
+  TestTracker          (12 tests)                                  PASSED
+  TestTrackStatusEnum   (3 tests)                                  PASSED
+  TestTrackStruct       (3 tests)                                  PASSED
+
+tests/test_krakensdr_source.py
+  TestKrakenSDRSource::test_initialization                         PASSED
+  TestKrakenSDRSource::test_setters                                PASSED
+
+tests/test_time_alignment_cpp.py
+  TestTimeAlignmentCpp::test_detects_known_delay                   PASSED
+
+tests/unit/test_aoa_kernels.py        (8 tests)                   PASSED
+tests/unit/test_caf_kernels.py        (8 tests)                   PASSED
+tests/unit/test_cfar_kernels.py       (8 tests)                   PASSED
+tests/unit/test_clustering.py        (11 tests)                   PASSED
+tests/unit/test_display_modules.py   (12 passed, 5 skipped)
+tests/unit/test_doppler_kernels.py   (10 tests)                   PASSED
+tests/unit/test_eca_kernels.py        (7 tests)                   PASSED
+tests/unit/test_fixtures.py          (28 tests)                   PASSED
+tests/unit/test_tracker.py           (10 tests)                   PASSED
+
+=============== 191 passed, 5 skipped in 17.16s ======================
 ```
 
-### KrakenSDR Noise Source and Phase Calibration
+### Summary
 
-The KrakenSDR contains an **internal wideband noise source** with a **high-isolation silicon switch**. This is critical for maintaining phase coherence:
+| Category | Tests | Status |
+|----------|------:|--------|
+| C++ kernel libraries | 7 | 7 passed |
+| GNU Radio C++ blocks (pybind11) | 58 | 58 passed |
+| GNU Radio Python blocks | 2 | 2 passed |
+| Unit tests (algorithms) | 74 | 74 passed |
+| Integration / end-to-end | 6 | 6 passed |
+| Benchmarks | 6 | 6 passed |
+| Test fixtures | 28 | 28 passed |
+| Display module math | 10 | 10 passed |
+| Display module imports | 5 | 5 skipped (headless) |
+| **Total** | **196** | **191 passed, 5 skipped** |
 
-- **When noise source is ENABLED**: The silicon switch **physically disconnects ALL antennas** from the signal path. Only the internal noise source feeds all 5 receiver channels. This provides a common reference signal for measuring inter-channel phase offsets.
-
-- **When noise source is DISABLED**: The silicon switch **reconnects the antennas** and normal operation resumes.
-
-This hardware-level isolation means that during calibration, there is **NO antenna signal contamination** - the calibration samples contain only the noise source signal, ensuring accurate phase offset measurement.
-
-**Calibration is triggered automatically** when the coherence monitor detects phase drift exceeding the configured threshold. The entire calibration cycle (enable noise, capture, compute, disable noise) typically completes in under 100ms.
-
----
-
-## 📦 Module Architecture
-
-This project contains **three main components** that work together:
-
-### 1. C++ Kernels (`src/`)
-**Hardware-accelerated shared libraries** (build first):
-- `libkraken_eca_b_clutter_canceller.so` - ECA-B NLMS clutter cancellation
-- `libkraken_conditioning.so` - Signal conditioning (AGC)
-- `libkraken_time_alignment.so` - Cross-correlation time alignment
-- `libkraken_caf_processing.so` - Cross-Ambiguity Function processing
-- `libkraken_doppler_processing.so` - Range-Doppler map generation
-- `libkraken_backend.so` - CFAR detection and fusion
-
-**Optimizations**: NEON SIMD, CUDA, Vulkan, FFTW3 threading
-**Build**: `cd src/build && cmake .. && make -j$(nproc)`
-
-### 2. Primary GNU Radio Module (`gr-kraken_passive_radar/`)
-**Core signal processing blocks** for basic passive radar:
-
-| Block | Description | Type |
-|-------|-------------|------|
-| `krakensdr_source` | 5-channel coherent SDR source wrapper | Python |
-| `eca_canceller` | NLMS clutter cancellation | C++ (pybind11) |
-| `eca_b_clutter_canceller` | ECA-B clutter cancellation | Python+ctypes |
-| `clutter_canceller` | Basic NLMS filter | C++ |
-| `doppler_processing` | Doppler processing | Python+ctypes |
-
-**Dependencies**: GNU Radio 3.10+, pybind11
-**Build order**: Build after C++ kernels
-
-### 3. V2 GNU Radio Module (`gr-kraken_passive_radar_v2/`)
-**Advanced signal processing blocks** for complete radar chain:
-
-| Block | Description | Optimization |
-|-------|-------------|--------------|
-| `eca_canceller` | Enhanced NLMS clutter canceller | VOLK accelerated |
-| `doppler_processor` | Range-Doppler map via FFTW3 | FFTW_ESTIMATE |
-| `cfar_detector` | CFAR (CA/GO/SO/OS algorithms) | Vectorized |
-| `coherence_monitor` | Phase coherence monitoring | - |
-| `detection_cluster` | Connected components clustering | - |
-| `tracker` | Kalman filter with GNN association | - |
-| `aoa_estimator` | Bartlett beamforming AoA | - |
-
-**Dependencies**: FFTW3, VOLK, GNU Radio 3.10+
-**Build order**: Build after primary module
-
-### 4. Display System (`kraken_passive_radar/`)
-**Python visualization modules**:
-- `radar_gui.py` - Integrated multi-panel Tkinter GUI
-- `range_doppler_display.py` - Range-Doppler heatmap (optimized rendering)
-- `radar_display.py` - PPI polar display with track trails
-- `calibration_panel.py` - Phase/SNR monitoring
-- `metrics_dashboard.py` - Processing latency metrics
-
-**Optimizations**: Double-buffering (eliminates 6.5 MB/s overhead)
-
-### Helper Scripts
-| Script | Purpose |
-|--------|---------|
-| `build_oot.sh` | Builds both OOT modules in correct order |
-| `rebuild_libs.sh` | Rebuilds C++ kernels, copies to install dirs |
-| `install_fixed_blocks.sh` | Quick reinstall of GRC block definitions |
-| `run_tests.sh` | Comprehensive test suite (50+ tests, 20 test files) |
-| `setup_krakensdr_permissions.sh` | Hardware permissions setup |
+The 5 skipped tests are display module import checks that require a GUI environment (DISPLAY or WAYLAND_DISPLAY). All algorithmic tests for those modules still pass.
 
 ---
 
-## ✨ Features
+## System Architecture
 
-### Signal Processing
-- ✅ **ECA Clutter Cancellation**: NLMS adaptive filter with VOLK optimization (5-10x faster)
-- ✅ **Cross-Ambiguity Function (CAF)**: Range-Doppler processing with NEON/CUDA/Vulkan acceleration
-- ✅ **CFAR Detection**: CA/GO/SO/OS variants with configurable Pfa
-- ✅ **Detection Clustering**: Connected components analysis for merged detections
-- ✅ **Multi-Target Tracking**: Kalman filter with Global Nearest Neighbor (GNN) association
-- ✅ **AoA Estimation**: Bartlett beamformer for angle-of-arrival (ULA/UCA arrays)
+```
+KrakenSDR 5-Channel Coherent SDR
+  Ch0: Reference (illuminator-facing antenna)
+  Ch1-4: Surveillance (target-facing array)
+        |
+        v
++-------------------+     +-----------------+
+| Calibration       |     | Coherence       |
+| Controller        |<--->| Monitor (C++)   |
+| (noise src ctrl)  |     | (phase drift)   |
++-------------------+     +-----------------+
+        |
+        v
+  Phase Correction (per channel)
+        |
+        v
+  Conditioning / AGC
+        |
+        v
++-------------------+     +-------------------+     +-------------------+
+| ECA Canceller     | --> | CAF               | --> | Doppler Processor |
+| (C++/VOLK)        |     | (cross-ambiguity) |     | (C++/FFTW)        |
+| NLMS adaptive     |     | range profiles    |     | slow-time FFT     |
++-------------------+     +-------------------+     +-------------------+
+                                                            |
+                                                            v
++-------------------+     +-------------------+     +-------------------+
+| Tracker           | <-- | AoA Estimator     | <-- | CFAR Detector     |
+| (C++ Kalman+GNN)  |     | (C++ Bartlett)    |     | (C++ CA/GO/SO/OS) |
+| multi-target      |     | ULA/UCA arrays    |     +-------------------+
++-------------------+     +-------------------+             ^
+        |                                                   |
+        v                                           +-------------------+
+  Display System                                    | Detection Cluster |
+  (Tkinter + matplotlib)                            | (C++ 8-connected) |
+                                                    +-------------------+
+```
 
-### Hardware Acceleration
-- 🚀 **VOLK**: SIMD-accelerated complex dot products (5-10x speedup)
-- 🚀 **NEON**: ARM Cortex-A76 acceleration on Raspberry Pi 5
-- 🚀 **CUDA**: NVIDIA GPU acceleration (RTX 2000/3000/4000/5000)
-- 🚀 **Vulkan Compute**: Cross-platform GPU acceleration
-- 🚀 **FFTW3**: Multi-threaded optimized FFT library
+### Calibration
 
-### Display System
-- 📊 **Range-Doppler Map**: Real-time CAF heatmap with detection overlays
-- 📊 **PPI Display**: Polar plot with track trails and velocity vectors
-- 📊 **Calibration Panel**: Per-channel SNR, phase offsets, correlation monitoring
-- 📊 **Metrics Dashboard**: Processing latencies, detection rates, system health
-- 📊 **Integrated GUI**: Multi-panel Tkinter application with optimized rendering
-
-### Code Quality
-- ✅ **Production-ready**: All critical bugs fixed, extensive testing
-- ✅ **Memory-safe**: Proper bounds checking, validation
-- ✅ **Well-documented**: Comprehensive API docs and examples
-- ✅ **Portable**: Dynamic path detection, cross-platform build system
+The KrakenSDR has an internal wideband noise source with a high-isolation silicon switch. When the noise source is enabled, the switch physically disconnects all antennas and routes only the internal noise to all 5 receivers. This provides a common reference signal for measuring inter-channel phase offsets. The `CalibrationController` automates this cycle and the `coherence_monitor` block triggers it when phase drift is detected.
 
 ---
 
-## ⚖️ Export Control Compliance: ITAR and EAR
+## Project Structure
 
-### What are ITAR and EAR?
+```
+PassiveRadar_Kraken/
+|-- gr-kraken_passive_radar/         GNU Radio OOT module (the main module)
+|   |-- lib/                         C++ block implementations (7 blocks)
+|   |-- include/gnuradio/             Public C++ headers
+|   |   +-- kraken_passive_radar/
+|   |-- python/kraken_passive_radar/
+|   |   |-- bindings/               pybind11 binding files
+|   |   |-- __init__.py             Module entry point
+|   |   |-- krakensdr_source.py     KrakenSDR source block
+|   |   |-- calibration_controller.py
+|   |   |-- custom_blocks.py        Conditioning, CAF, TimeAlignment
+|   |   |-- vector_zero_pad.py
+|   |   |-- eca_b_clutter_canceller.py   (deprecated)
+|   |   +-- doppler_processing.py        (deprecated)
+|   +-- grc/                         GRC block YAML definitions (12 blocks)
+|
+|-- src/                             C++ kernel libraries (10 .so)
+|   |-- build/                       Out-of-source CMake build directory
+|   |-- CMakeLists.txt
+|   |-- eca_b_clutter_canceller.cpp
+|   |-- conditioning.cpp
+|   |-- caf_processing.cpp
+|   |-- doppler_processing.cpp
+|   |-- backend.cpp
+|   |-- aoa_processing.cpp
+|   |-- time_alignment.cpp
+|   |-- fftw_init.cpp               Centralized FFTW thread init
+|   |-- resampler.cpp
+|   +-- nlms_clutter_canceller.cpp
+|
+|-- kraken_passive_radar/            Display system (Tkinter + matplotlib)
+|   |-- radar_gui.py
+|   |-- range_doppler_display.py
+|   |-- radar_display.py
+|   |-- calibration_panel.py
+|   +-- metrics_dashboard.py
+|
+|-- tests/                           Test suite (196 tests)
+|   |-- conftest.py                  Shared pytest fixtures
+|   |-- mock_gnuradio.py            GNU Radio mock for headless testing
+|   |-- test_gr_cpp_blocks.py       58 pybind11 block tests
+|   |-- test_end_to_end.py          Full pipeline test
+|   |-- test_krakensdr_source.py    Source block tests
+|   |-- test_*_cpp.py               Per-kernel C++ tests (7 files)
+|   |-- unit/                       Algorithm unit tests (9 files)
+|   |-- integration/                Pipeline integration tests
+|   |-- benchmarks/                 Performance benchmarks
+|   +-- fixtures/                   Synthetic targets, clutter, noise
+|
+|-- .github/workflows/ci.yml        GitHub Actions CI
+|-- run_passive_radar.py             Main application script
+|-- build_oot.sh                     OOT module build script
+|-- rebuild_libs.sh                  Kernel library build script
++-- kraken_passive_radar_103_7MHz.grc  Example GRC flowgraph
+```
 
-**ITAR (International Traffic in Arms Regulations)**:
-- US federal regulations administered by the Department of State's Directorate of Defense Trade Controls (DDTC)
-- Controls the export and import of defense-related articles, services, and technical data
-- Applies to items specifically designed, developed, configured, adapted, or modified for military applications
-- Violations carry severe civil and criminal penalties
+---
 
-**EAR (Export Administration Regulations)**:
-- US federal regulations administered by the Department of Commerce's Bureau of Industry and Security (BIS)
-- Controls the export of dual-use items that have both civilian and military applications
-- Covers items not regulated by ITAR, including most commercial technologies
-- Uses the Commerce Control List (CCL) with Export Control Classification Numbers (ECCNs)
+## Signal Processing Chain
 
-### Radar Systems and Export Controls
+The `run_passive_radar.py` script implements the full processing chain using C++ blocks:
 
-Radar systems can fall under export controls when they:
-- Exceed specific technical parameters (range, resolution, bandwidth, frequency)
-- Are designed for military targeting, fire control, or weapon guidance
-- Incorporate classified or restricted signal processing techniques
-- Operate in restricted frequency bands
+```
+Source -> PhaseCorr -> AGC -> ECA(C++) -> CAF -> Doppler(C++) ->
+  CFAR(C++) -> Cluster(C++) -> AoA(C++) -> Tracker(C++) -> Display
+```
 
-High-performance radar systems may be controlled under:
-- **ITAR Category XI** (Military Electronics): Advanced radar with specific military capabilities
-- **EAR ECCN 3A001.b.1** (Electronic equipment): Radar with bandwidth >50 MHz or pulse compression >1000
+| Stage | Block | Language | Description |
+|-------|-------|----------|-------------|
+| 1 | `krakensdr_source` | Python | 5-channel osmosdr source wrapper |
+| 2 | `PhaseCorrectorBlock` | Python | Applies calibration phase corrections |
+| 3 | `ConditioningBlock` | Python+ctypes | AGC / signal conditioning |
+| 4 | `eca_canceller` | C++ (VOLK) | NLMS adaptive clutter cancellation |
+| 5 | `CafBlock` | Python+ctypes | Cross-ambiguity function (range profiles) |
+| 6 | `doppler_processor` | C++ (FFTW) | Slow-time FFT for range-Doppler map |
+| 7 | `cfar_detector` | C++ | CA/GO/SO/OS-CFAR detection |
+| 8 | `detection_cluster` | C++ | 8-connected component target extraction |
+| 9 | `aoa_estimator` | C++ | Bartlett beamforming AoA (ULA/UCA) |
+| 10 | `tracker` | C++ | Kalman filter + GNN association |
 
-### PassiveRadar_Kraken Compliance
+---
 
-**This passive radar system is ITAR and EAR compliant** for the following technical reasons:
+## GNU Radio Blocks
 
-#### 1. Limited Bandwidth
-- **Operating bandwidth**: 2.4 MHz maximum sample rate
-- **Well below EAR threshold**: EAR ECCN 3A001.b.1 requires >50 MHz instantaneous bandwidth
-- **Civilian SDR hardware**: KrakenSDR is a commercial off-the-shelf (COTS) receiver widely available for amateur radio and educational use
-- **No classified processing**: All algorithms (NLMS, CFAR, Kalman tracking) are published in open academic literature
+The single OOT module `gr-kraken_passive_radar` provides 14 blocks: 7 C++ (pybind11) and 7 Python.
 
-#### 2. Low Operating Frequency
-- **Primary frequency range**: FM broadcast band (88-108 MHz)
-- **Civilian illuminators only**: Uses FM radio, DAB, DVB-T, or other commercial broadcast signals
-- **No military frequency bands**: Does not operate in restricted military radar bands (e.g., X-band, Ka-band)
+### C++ Blocks (pybind11)
+
+| Block | Description | Key Parameters |
+|-------|-------------|----------------|
+| `eca_canceller` | VOLK-accelerated NLMS clutter canceller | `num_taps`, `reg_factor`, `num_surv` |
+| `doppler_processor` | Range-Doppler map via slow-time FFT | `num_range_bins`, `num_doppler_bins`, `window_type` |
+| `cfar_detector` | CA/GO/SO/OS-CFAR detection | `pfa`, `cfar_type`, guard/ref cells |
+| `coherence_monitor` | Phase coherence monitoring + cal trigger | `corr_threshold`, `phase_threshold_deg` |
+| `detection_cluster` | Connected-component target extraction | `min_cluster_size`, `range_resolution_m` |
+| `aoa_estimator` | Bartlett beamforming AoA estimation | `num_elements`, `d_lambda`, `array_type` |
+| `tracker` | Multi-target Kalman tracker with GNN | `dt`, process/meas noise, `gate_threshold` |
+
+### Python Blocks
+
+| Block | Description | Status |
+|-------|-------------|--------|
+| `krakensdr_source` | 5-channel coherent SDR source (osmosdr) | Active |
+| `CalibrationController` | Automatic phase calibration manager | Active |
+| `ConditioningBlock` | AGC / signal conditioning (ctypes) | Active |
+| `CafBlock` | Cross-ambiguity function (ctypes) | Active |
+| `TimeAlignmentBlock` | Delay/phase measurement (ctypes) | Active |
+| `vector_zero_pad` | Zero-pad vectors for FFT alignment | Active |
+| `EcaBClutterCanceller` | ECA-B clutter cancellation (ctypes) | Deprecated - use `eca_canceller` |
+| `DopplerProcessingBlock` | Doppler processing (ctypes) | Deprecated - use `doppler_processor` |
+| `BackendBlock` | CFAR + fusion (ctypes) | Deprecated - use `cfar_detector` + `detection_cluster` |
+
+---
+
+## C++ Kernel Libraries
+
+Ten shared libraries built from `src/` provide the DSP kernels used by both the OOT module and the Python+ctypes wrappers.
+
+| Library | Description | Dependencies |
+|---------|-------------|--------------|
+| `libkraken_eca_b_clutter_canceller.so` | ECA-B NLMS clutter cancellation | libm |
+| `libkraken_conditioning.so` | Signal conditioning / AGC | libm |
+| `libkraken_fftw_init.so` | Centralized FFTW thread init (pthread_once) | fftw3f, fftw3f_threads |
+| `libkraken_time_alignment.so` | Cross-correlation time alignment | fftw3f, kraken_fftw_init |
+| `libkraken_caf_processing.so` | Cross-ambiguity function | fftw3f, kraken_fftw_init, OptMathKernels (optional) |
+| `libkraken_doppler_processing.so` | Range-Doppler map generation | fftw3f, kraken_fftw_init |
+| `libkraken_backend.so` | CFAR detection and sensor fusion | libm |
+| `libkraken_aoa_processing.so` | Angle-of-arrival processing | libm |
+| `libkraken_resampler.so` | Sample rate conversion | libm |
+| `libkraken_nlms_clutter_canceller.so` | NLMS adaptive filter | libm |
+
+OptMathKernels (v0.2.1+) provides optional NEON acceleration for `caf_processing` via `neon_complex_mul_f32`. The build auto-detects it via CMake `find_package`.
+
+---
+
+## Export Control Compliance: ITAR and EAR
+
+This passive radar system is ITAR and EAR compliant:
+
+- **Limited bandwidth**: 2.4 MHz max sample rate, well below EAR ECCN 3A001.b.1 threshold (>50 MHz)
+- **Low operating frequency**: FM broadcast band (88-108 MHz), civilian illuminators only
 - **Passive reception only**: No active transmission capability
+- **Open-source**: All algorithms published in open academic literature (NLMS, CFAR, Kalman)
+- **COTS hardware**: KrakenSDR is a commercially available consumer SDR (~$400)
+- **Performance class**: ~15-20 km range, ~300-600 m resolution, typical of academic research
 
-#### 3. Educational and Research Purpose
-- **Open-source project**: Fully public codebase under MIT license
-- **Academic implementation**: Based on published research papers (cited in References section)
-- **SDR community tool**: Designed for amateur radio operators, researchers, and students
-- **No military enhancement**: Not designed, modified, or adapted for military fire control, targeting, or weapon systems
-
-#### 4. Performance Characteristics
-- **Detection range**: ~15-20 km maximum (limited by FM broadcast signal strength)
-- **Range resolution**: ~300-600 m (limited by 2.4 MHz bandwidth)
-- **Velocity resolution**: ~1-5 m/s (limited by Doppler bin size)
-- **These capabilities are typical of civilian passive radar experiments and academic research**
-
-#### 5. Commercial Components
-- **KrakenSDR**: Consumer SDR receiver ($400, publicly available)
-- **GNU Radio**: Open-source software-defined radio framework
-- **Standard libraries**: FFTW (FFT), VOLK (SIMD), all open-source
-- **No ITAR-controlled components**: All hardware and software are unrestricted
-
-### Legal Disclaimer
-
-This compliance assessment is provided for informational purposes only and does not constitute legal advice. Users are responsible for ensuring their own compliance with applicable export control laws and regulations. If you intend to:
-
-- Export this software or derived works outside the United States
-- Use this system in conjunction with ITAR-controlled equipment
-- Modify this system for military or defense applications
-- Operate in restricted frequency bands
-
-**You must consult with a qualified export control attorney or your organization's export compliance office.**
-
-The author makes no warranties regarding the export control classification of this software or its derivatives. Export control laws are subject to change, and individual use cases may have different regulatory requirements.
-
-### Educational Use Statement
-
-PassiveRadar_Kraken is intended solely for:
-- Educational purposes in signal processing and radar theory
-- Amateur radio experimentation and research
-- Civilian passive radar applications (e.g., wildlife tracking, traffic monitoring)
-- Academic research in accordance with published scientific literature
-
-This software is **not designed, intended, or authorized** for:
-- Military targeting or fire control systems
-- Weapon guidance or military surveillance
-- Any application that would classify it as a defense article under ITAR
-- Export to countries subject to US embargoes or export restrictions
+This software is intended for educational purposes, amateur radio experimentation, and civilian passive radar research. It is not designed for military targeting, fire control, or weapon guidance. Users must consult a qualified export control attorney before exporting this software or derivatives. See the full compliance section in the repository for details.
 
 ---
 
-## 🖥️ Hardware Support
+## Prerequisites
 
-PassiveRadar_Kraken leverages [OptimizedKernelsForRaspberryPi5_NvidiaCUDA](https://github.com/n4hy/OptimizedKernelsForRaspberryPi5_NvidiaCUDA) **v0.2.1+** for hardware-accelerated signal processing across multiple platforms.
+### Required
 
-### Raspberry Pi 5
+```bash
+# Ubuntu/Debian (including Raspberry Pi OS 64-bit)
+sudo apt install -y \
+    build-essential cmake pkg-config \
+    gnuradio gnuradio-dev \
+    libfftw3-dev libvolk2-dev pybind11-dev \
+    python3-dev python3-numpy python3-pytest
+```
 
-**Target Hardware**: Raspberry Pi 5 with Broadcom BCM2712 SoC (Cortex-A76)
+### Optional
 
-**Optimizations**:
-- NEON SIMD intrinsics for complex arithmetic
-- VideoCore VII Vulkan compute shaders
-- Multi-threaded FFTW3 (4 cores)
-- L1/L2 cache-optimized chunking
+```bash
+# Display system
+pip3 install matplotlib
 
-**Performance**: Processes 2.4 MSPS on all channels with <15% CPU load
-
-### x86_64 (Intel/AMD)
-
-**Target Hardware**: Intel Core i5/i7/i9, AMD Ryzen 5/7/9
-
-**Optimizations**:
-- AVX2/AVX-512 SIMD intrinsics
-- Multi-threaded FFTW3
-- CPU cache-aware tiling
-
-**Performance**: Processes 10+ MSPS with headroom for additional features
-
-### NVIDIA CUDA/RTX
-
-**Target Hardware**: RTX 2000/3000/4000/5000 series (Turing/Ampere/Ada)
-
-**Optimizations**:
-- CUDA kernels for CAF, CFAR, ECA
-- Tensor Core acceleration (where applicable)
-- Asynchronous streams for pipelining
-
-**Performance**: 50+ MSPS throughput, <5ms latency
-
-### Vulkan GPU Compute
-
-**Target Hardware**: Any Vulkan 1.2+ compatible GPU
-
-**Optimizations**:
-- Compute shaders for parallel operations
-- Subgroup operations for warp-level primitives
-- Cross-platform (works on Pi 5, Intel Arc, AMD, NVIDIA)
-
-**Performance**: 10-40x speedup over CPU on typical operations
+# OptMathKernels for NEON acceleration on Pi 5
+# See https://github.com/n4hy/OptimizedKernelsForRaspberryPi5_NvidiaCUDA
+```
 
 ---
 
-## 🔧 Installation
+## Building
 
-### Prerequisites by Platform
-
-#### Raspberry Pi 5 (64-bit)
+### 1. Build C++ kernel libraries
 
 ```bash
-# Update system
-sudo apt update && sudo apt upgrade -y
-
-# Core build tools
-sudo apt install -y cmake g++ python3-dev python3-pip git
-
-# GNU Radio 3.10
-sudo apt install -y gnuradio gnuradio-dev
-
-# Dependencies
-sudo apt install -y libfftw3-dev libfftw3-bin
-sudo apt install -y libvolk2-dev
-sudo apt install -y pybind11-dev
-
-# Python packages
-pip3 install numpy matplotlib scipy
-
-# Optional: Vulkan support
-sudo apt install -y vulkan-tools mesa-vulkan-drivers
-```
-
-#### Ubuntu/Debian (x86_64)
-
-```bash
-# Core tools
-sudo apt update
-sudo apt install -y cmake g++ python3-dev python3-pip git
-
-# GNU Radio 3.10+
-sudo apt install -y gnuradio gnuradio-dev
-
-# Dependencies
-sudo apt install -y libfftw3-dev libvolk2-dev pybind11-dev
-
-# Python packages
-pip3 install numpy matplotlib scipy
-```
-
-#### Fedora/RHEL
-
-```bash
-# Core tools
-sudo dnf install -y cmake gcc-c++ python3-devel python3-pip git
-
-# GNU Radio
-sudo dnf install -y gnuradio gnuradio-devel
-
-# Dependencies
-sudo dnf install -y fftw-devel volk-devel pybind11-devel
-
-# Python packages
-pip3 install numpy matplotlib scipy
-```
-
-### Building OptMathKernels (Optional but Recommended)
-
-For hardware acceleration (NEON/CUDA/Vulkan):
-
-```bash
-git clone https://github.com/n4hy/OptimizedKernelsForRaspberryPi5_NvidiaCUDA.git
-cd OptimizedKernelsForRaspberryPi5_NvidiaCUDA
-mkdir build && cd build
-cmake .. -DENABLE_NEON=ON -DENABLE_VULKAN=ON  # Add -DENABLE_CUDA=ON for NVIDIA
-make -j$(nproc)
-sudo make install
-```
-
-### Building PassiveRadar_Kraken
-
-#### Complete Build (Recommended)
-
-```bash
-# Clone repository
-git clone https://github.com/n4hy/PassiveRadar_Kraken.git
-cd PassiveRadar_Kraken
-
-# 1. Build C++ kernels
 cd src
 mkdir -p build && cd build
-cmake ..
+cmake .. -DCMAKE_BUILD_TYPE=Release
 make -j$(nproc)
-sudo make install
 cd ../..
+```
 
-# 2. Build both OOT modules (uses build_oot.sh helper)
+Libraries are output to `src/` (build artifacts stay in `src/build/`). Portable by default; add `-DNATIVE_OPTIMIZATION=ON` for `-march=native` when building and running on the same machine.
+
+### 2. Build and install the OOT module
+
+```bash
 ./build_oot.sh
-
-# 3. Install GRC blocks
-sudo ./install_fixed_blocks.sh
-
-# 4. Run tests to verify
-./run_tests.sh quick
 ```
 
-#### Manual Build (Advanced)
+This builds all 7 C++ blocks with pybind11 bindings, installs them into the gnuradio Python namespace, and copies Python blocks and GRC definitions.
+
+### 3. Verify installation
 
 ```bash
-# 1. Build C++ kernels
-cd src
-mkdir -p build && cd build
-cmake .. -DNATIVE_OPTIMIZATION=ON  # Add -march=native
-make -j$(nproc)
-sudo make install
-cd ../..
-
-# 2. Build primary module
-cd gr-kraken_passive_radar
-mkdir -p build && cd build
-cmake ..
-make -j$(nproc)
-sudo make install
-sudo ldconfig
-cd ../..
-
-# 3. Build v2 module
-cd gr-kraken_passive_radar_v2/gr-kraken_passive_radar
-mkdir -p build && cd build
-cmake ..
-make -j$(nproc)
-sudo make install
-sudo ldconfig
-cd ../../..
-
-# 4. Install GRC blocks
-sudo cp gr-kraken_passive_radar/grc/*.block.yml /usr/local/share/gnuradio/grc/blocks/
-sudo cp gr-kraken_passive_radar_v2/gr-kraken_passive_radar/grc/*.block.yml /usr/local/share/gnuradio/grc/blocks/
-
-# Clear GRC cache
-rm -rf ~/.cache/grc_gnuradio
-
-# 5. Verify installation
-python3 -c "import gnuradio.kraken_passive_radar as kpr; print('Primary module OK')"
-python3 -c "from kraken_passive_radar import radar_gui; print('Display system OK')"
-```
-
-### KrakenSDR Hardware Setup
-
-```bash
-# Set up USB permissions
-sudo ./setup_krakensdr_permissions.sh
-
-# Verify KrakenSDR detection
-rtl_test
-
-# Expected output: Found 5 RTL-SDR devices
+python3 -c "
+from gnuradio import kraken_passive_radar as kpr
+print('eca_canceller:', kpr.eca_canceller)
+print('doppler_processor:', kpr.doppler_processor)
+print('cfar_detector:', kpr.cfar_detector)
+print('tracker:', kpr.tracker)
+"
 ```
 
 ---
 
-## 🚀 Quick Start
+## Running
 
-### Standalone Python Script
-
-```bash
-# FM broadcast passive radar
-python3 run_passive_radar.py
-```
-
-**Default Configuration**:
-- Center frequency: 98.5 MHz (FM broadcast)
-- Sample rate: 2.4 MSPS
-- Range bins: 256
-- Doppler bins: 64
-- CFAR threshold: 15.0 dB
-
-### GNU Radio Companion Flowgraph
+### Full processing chain
 
 ```bash
-# Open pre-built flowgraph
-gnuradio-companion flowgraphs/passive_radar_fm.grc
-
-# Or generate programmatically
-python3 generate_grc_clean.py
-gnuradio-companion passive_radar_generated.grc
+python3 run_passive_radar.py --freq 103.7e6 --gain 30
 ```
 
-### Calibration-Only Mode
+Options:
+- `--freq` : Center frequency in Hz (default: 100 MHz)
+- `--gain` : Receiver gain in dB (default: 30)
+- `--geometry` : Array geometry, ULA or URA (default: ULA)
+- `--include-ref` : Include reference antenna in AoA array
+- `--no-startup-cal` : Skip startup calibration
+- `--visualize` : Show GUI display
+
+### GNU Radio Companion
 
 ```bash
-# Run calibration without radar processing
-python3 calibrate_krakensdr.py --frequency 98.5e6 --iterations 10
+gnuradio-companion kraken_passive_radar_103_7MHz.grc
 ```
 
 ---
 
-## 📊 Performance Benchmarks
+## Testing
 
-### Raspberry Pi 5 Performance
+### Run all tests
 
-| Operation | Input Size | Time (CPU) | Time (NEON) | Time (Vulkan) | Speedup |
-|-----------|------------|------------|-------------|---------------|---------|
-| **CAF Processing** | 4096×64 | 82 ms | 18 ms | 2.1 ms | **39x** |
-| **ECA Cancellation** | 4096 taps | 12 ms | 2.4 ms | N/A | **5x** |
-| **CFAR 2D** | 256×64 | 11.2 ms | 3.1 ms | 0.6 ms | **18.7x** |
-| **Doppler FFT** | 64 bins | 0.8 ms | N/A (FFTW) | N/A | - |
-| **Complex Multiply** | 8192 | 3.2 ms | 0.9 ms | 0.3 ms | **10.7x** |
-
-**System Load**: 12-15% CPU @ 2.4 MSPS (all 5 channels)
-
-### x86_64 Performance (i7-9700K)
-
-| Operation | Input Size | Time | Throughput |
-|-----------|------------|------|------------|
-| **CAF Processing** | 4096×64 | 4.2 ms | 10 MSPS |
-| **ECA Cancellation** | 4096 taps | 0.8 ms | 50 MSPS |
-| **CFAR 2D** | 256×64 | 1.1 ms | - |
-| **Full Pipeline** | 2.4 MSPS | <5% CPU | - |
-
-### NVIDIA RTX 3090 Performance
-
-| Operation | Input Size | Time (CUDA) | Speedup vs CPU |
-|-----------|------------|-------------|----------------|
-| **CAF Processing** | 4096×64 | 0.4 ms | **205x** |
-| **CFAR 2D** | 256×64 | 0.08 ms | **140x** |
-| **Batch Processing** | 16 frames | 6.2 ms | **212x** |
-
-**Sustained Throughput**: 50+ MSPS with multi-frame batching
-
-### Memory Bandwidth Optimization
-
-**Before optimization**:
-- Display update: 6.5 MB/s (deep copy of all data)
-- 10 FPS refresh: 65 KB × 10 = 650 KB/frame
-
-**After optimization** (double-buffering):
-- Display update: ~100 KB/s (reference swapping)
-- 10 FPS refresh: 10 KB × 10 = 100 KB/frame
-
-**Reduction**: **98.5% less memory bandwidth**
-
----
-
-## 📚 API Reference
-
-### C++ Libraries (ctypes interface)
-
-#### ECA-B Clutter Canceller
-
-```python
-from gnuradio.kraken_passive_radar import eca_b_clutter_canceller
-
-block = eca_b_clutter_canceller(
-    num_taps=16,           # Adaptive filter taps
-    num_surv_channels=1    # Number of surveillance channels
-)
+```bash
+python3 -m pytest tests/ -v
 ```
 
-#### CAF Processing
+### Run by category
 
-```python
-import ctypes
-lib = ctypes.cdll.LoadLibrary("libkraken_caf_processing.so")
+```bash
+# C++ pybind11 block tests (58 tests)
+python3 -m pytest tests/test_gr_cpp_blocks.py -v
 
-# Create state
-state = lib.caf_create(fft_len=1024, num_range_bins=256)
+# Kernel library tests (7 tests)
+python3 -m pytest tests/test_*_cpp.py -v
 
-# Process
-lib.caf_process(state, ref_ptr, surv_ptr, output_ptr, n_samples)
+# Unit tests (74 tests)
+python3 -m pytest tests/unit/ -v
 
-# Cleanup
-lib.caf_destroy(state)
+# Integration tests (6 tests)
+python3 -m pytest tests/integration/ -v
+
+# Benchmarks (6 tests)
+python3 -m pytest tests/benchmarks/ -v
+
+# End-to-end pipeline (1 test)
+python3 -m pytest tests/test_end_to_end.py -v
 ```
 
-### Display System
-
-#### Integrated GUI
-
-```python
-from kraken_passive_radar.radar_gui import RadarGUI, RadarGUIParams
-
-params = RadarGUIParams(
-    window_title="KrakenSDR Passive Radar",
-    update_interval_ms=100,
-    max_range_km=15.0,
-    n_range_bins=256,
-    n_doppler_bins=64
-)
-
-gui = RadarGUI(params)
-
-# Update data (thread-safe)
-gui.update_caf(caf_data)        # numpy array [doppler, range]
-gui.update_detections(dets)     # List[Detection]
-gui.update_tracks(tracks)       # List[Track]
-
-# Run GUI
-gui.run()
-```
-
-#### Range-Doppler Display
-
-```python
-from kraken_passive_radar.range_doppler_display import (
-    RangeDopplerDisplay, RDDisplayParams
-)
-
-params = RDDisplayParams(
-    max_range_km=15.0,
-    max_doppler_hz=200.0,
-    colormap='viridis',
-    vmin=-60, vmax=20
-)
-
-display = RangeDopplerDisplay(params)
-display.update_data(caf_data_db, detections, tracks)
-```
-
----
-
-## 🖼️ Display System
-
-### Integrated Radar GUI
-
-Multi-panel Tkinter application with:
-- **Range-Doppler Map** (top-left): CAF heatmap with detection overlays
-- **PPI Display** (top-right): Polar plot with track trails
-- **Calibration Panel** (bottom-left): Per-channel SNR and phase monitoring
-- **Metrics Dashboard** (bottom-right): Processing latencies and system health
-
-**Controls**:
-- Start/Stop buttons
-- Parameter adjustment sliders
-- Recording controls
-- Export capabilities
-
-**Performance**: 10 FPS refresh rate with optimized rendering
-
----
-
-## 🧪 Testing
-
-### Test Suite Structure
+### Test file inventory
 
 ```
 tests/
-├── test_caf_cpp.py           - CAF library tests
-├── test_eca_b_cpp.py         - ECA-B library tests
-├── test_doppler_cpp.py       - Doppler library tests
-├── test_backend_cpp.py       - CFAR/fusion tests
-├── test_conditioning_cpp.py  - AGC tests
-├── test_time_alignment_cpp.py - Cross-correlation tests
-├── test_krakensdr_source.py  - Source block tests
-├── test_end_to_end.py        - Full pipeline tests
-└── fixtures/
-    ├── synthetic_targets.py  - Synthetic target generator
-    ├── clutter_models.py     - Clutter simulation
-    └── noise_models.py       - Noise models
+  conftest.py                        Shared fixtures (sample_rate, complex_noise, etc.)
+  mock_gnuradio.py                   GNU Radio mock for headless testing
+
+  test_gr_cpp_blocks.py              58 tests - all 7 C++ pybind11 blocks
+  test_krakensdr_source.py            2 tests - KrakenSDR source init/setters
+  test_end_to_end.py                  1 test  - full offline pipeline
+  test_eca_b_cpp.py                   1 test  - ECA-B kernel clutter reduction
+  test_caf_cpp.py                     1 test  - CAF kernel processing
+  test_doppler_cpp.py                 1 test  - Doppler kernel processing
+  test_backend_cpp.py                 1 test  - CFAR kernel detection
+  test_conditioning_cpp.py            1 test  - AGC kernel normalization
+  test_time_alignment_cpp.py          1 test  - time alignment kernel
+  test_aoa_cpp.py                     1 test  - AoA kernel estimation
+
+  unit/
+    test_eca_kernels.py               7 tests - ECA algorithm variants
+    test_caf_kernels.py               8 tests - CAF peak location, sidelobes
+    test_doppler_kernels.py          10 tests - Doppler shift, windows
+    test_cfar_kernels.py              8 tests - CFAR Pfa calibration, variants
+    test_aoa_kernels.py               8 tests - AoA accuracy, MUSIC
+    test_clustering.py               11 tests - connected components, filtering
+    test_tracker.py                  10 tests - Kalman filter, track lifecycle
+    test_display_modules.py          17 tests - display math + import checks
+    test_fixtures.py                 28 tests - synthetic targets, clutter, noise
+
+  integration/
+    test_full_pipeline.py             5 tests - multi-block pipeline validation
+
+  benchmarks/
+    test_bench_kernels.py             6 tests - performance benchmarks
 ```
 
-### Running Tests
+### CI
 
-```bash
-# Quick smoke tests (14 tests, ~2 seconds)
-./run_tests.sh quick
-
-# All tests (50+ tests, ~30 seconds)
-./run_tests.sh all
-
-# Specific category
-./run_tests.sh unit          # Unit tests only
-./run_tests.sh integration   # Integration tests only
-./run_tests.sh cpp           # C++ library tests only
-./run_tests.sh display       # Display module tests only
-
-# Pattern matching
-./run_tests.sh -k caf        # Only tests matching "caf"
-
-# Verbose output
-./run_tests.sh all -v
-
-# Stop on first failure
-./run_tests.sh all --failfast
-```
-
-### Continuous Integration
-
-Tests are run on every commit:
-- ✅ Unit tests
-- ✅ Integration tests
-- ✅ C++ library tests
-- ✅ Display module tests
-- ✅ Code quality checks
+GitHub Actions CI runs on every push and PR to `main`:
+- **kernels**: Build C++ kernel libraries + run tests (excludes GR block tests)
+- **oot-module**: Build OOT module with GNU Radio + run pybind11 block tests
+- **lint**: flake8 static analysis
 
 ---
 
-## 💡 Examples
+## Display System
 
-### Example 1: FM Broadcast Passive Radar
+The `kraken_passive_radar/` package provides Tkinter + matplotlib visualization:
+
+| Module | Description |
+|--------|-------------|
+| `radar_gui.py` | Integrated multi-panel GUI |
+| `range_doppler_display.py` | Range-Doppler heatmap with detection overlays |
+| `radar_display.py` | PPI polar display with track trails |
+| `calibration_panel.py` | Per-channel SNR, phase offset monitoring |
+| `metrics_dashboard.py` | Processing latency and system health metrics |
+
+The display system automatically selects the `Agg` matplotlib backend when no display server is available (headless operation).
+
+---
+
+## API Reference
+
+### C++ blocks (from Python)
 
 ```python
-#!/usr/bin/env python3
-"""
-FM Broadcast Passive Radar
-Uses local FM station as illuminator
-"""
-import numpy as np
-from gnuradio import gr
-from gnuradio.kraken_passive_radar import krakensdr_source, eca_canceller
+from gnuradio.kraken_passive_radar import (
+    eca_canceller, doppler_processor, cfar_detector,
+    coherence_monitor, detection_cluster, aoa_estimator, tracker,
+)
 
-class FMPassiveRadar(gr.top_block):
-    def __init__(self):
-        gr.top_block.__init__(self)
+# ECA Clutter Canceller
+blk = eca_canceller(num_taps=128, reg_factor=0.001, num_surv=4)
+blk.set_num_taps(256)
+blk.set_reg_factor(0.01)
 
-        # Source
-        self.source = krakensdr_source(
-            frequency=98.5e6,      # FM station frequency
-            sample_rate=2.4e6,     # 2.4 MSPS
-            gain=30.0              # dB
-        )
+# Doppler Processor
+blk = doppler_processor.make(
+    num_range_bins=4096, num_doppler_bins=64,
+    window_type=1,       # 0=rect, 1=hamming, 2=hann, 3=blackman
+    output_power=True    # True=|X|^2, False=complex X
+)
+blk.set_window_type(2)
 
-        # ECA clutter canceller
-        self.eca = eca_canceller(
-            num_taps=128,          # Adaptive filter length
-            reg_factor=1e-6,       # Regularization
-            num_surv=4             # 4 surveillance channels
-        )
+# CFAR Detector
+blk = cfar_detector.make(
+    num_range_bins=4096, num_doppler_bins=64,
+    guard_cells_range=2, guard_cells_doppler=2,
+    ref_cells_range=8, ref_cells_doppler=8,
+    pfa=1e-6,            # probability of false alarm
+    cfar_type=0           # 0=CA, 1=GO, 2=SO, 3=OS
+)
+blk.set_pfa(1e-4)
+n = blk.get_num_detections()
 
-        # Connect flowgraph
-        # Reference = Ch0, Surveillance = Ch1-4
-        self.connect((self.source, 0), (self.eca, 0))  # Reference
-        for i in range(4):
-            self.connect((self.source, i+1), (self.eca, i+1))  # Surveillance
+# Coherence Monitor
+blk = coherence_monitor.make(
+    num_channels=5, sample_rate=2.4e6,
+    corr_threshold=0.95, phase_threshold_deg=5.0
+)
+needs_cal = blk.is_calibration_needed()
 
-        # Add processing blocks (CAF, CFAR, tracker...)
-        # See full example in examples/fm_passive_radar.py
+# Detection Clustering
+blk = detection_cluster.make(
+    num_range_bins=4096, num_doppler_bins=64,
+    min_cluster_size=1, max_detections=100,
+    range_resolution_m=600.0, doppler_resolution_hz=3.9
+)
+dets = blk.get_detections()   # list of detection_t
 
-if __name__ == '__main__':
-    tb = FMPassiveRadar()
-    tb.start()
-    tb.wait()
+# AoA Estimator
+blk = aoa_estimator.make(
+    num_elements=4, d_lambda=0.5, n_angles=181,
+    min_angle_deg=-90.0, max_angle_deg=90.0,
+    array_type=0          # 0=ULA, 1=UCA
+)
+spectrum = blk.get_spectrum()
+
+# Multi-Target Tracker
+blk = tracker.make(
+    dt=0.1,
+    process_noise_range=50.0, process_noise_doppler=5.0,
+    meas_noise_range=100.0, meas_noise_doppler=2.0,
+    gate_threshold=9.21,  # chi2(2) @ 99%
+    confirm_hits=3, delete_misses=5, max_tracks=50
+)
+tracks = blk.get_confirmed_tracks()  # list of track_t
+blk.reset()
 ```
 
-### Example 2: Custom Target Simulation
+### Data structures
 
 ```python
-from tests.fixtures.synthetic_targets import SyntheticTargetGenerator, Target
+from gnuradio.kraken_passive_radar import track_t, track_status_t, detection_t
 
-# Create generator
-gen = SyntheticTargetGenerator(
-    sample_rate=2.4e6,
-    carrier_freq=98.5e6
-)
+# track_t fields
+t = track_t()
+t.id, t.status, t.hits, t.misses, t.age, t.score
+t.range_m, t.doppler_hz, t.range_rate, t.doppler_rate  # convenience properties
+t.state       # [range_m, doppler_hz, range_rate, doppler_rate]
+t.covariance  # 4x4 row-major
 
-# Define targets
-targets = [
-    Target(range_m=5000, doppler_hz=50, rcs_dbsm=10),   # Aircraft
-    Target(range_m=2000, doppler_hz=-30, rcs_dbsm=0),   # Vehicle
-]
-
-# Generate signals
-ref, surv = gen.generate_scenario(
-    targets=targets,
-    duration_sec=1.0,
-    snr_db=20.0,
-    clutter_power_db=-10.0
-)
-
-# Process with radar pipeline
-# ...
-```
-
-### Example 3: Batch Processing
-
-```python
-#!/usr/bin/env python3
-"""
-Batch process recorded IQ files
-"""
-import numpy as np
-from kraken_passive_radar.processing import process_batch
-
-files = [
-    'recording_20260208_100000.cf32',
-    'recording_20260208_110000.cf32',
-    # ...
-]
-
-results = process_batch(
-    files=files,
-    num_channels=5,
-    sample_rate=2.4e6,
-    eca_taps=128,
-    range_bins=256,
-    doppler_bins=64,
-    cfar_threshold=15.0
-)
-
-# Export detections
-for i, result in enumerate(results):
-    print(f"File {i}: {len(result.detections)} detections")
-    result.save(f"detections_{i}.json")
+# track_status_t enum
+track_status_t.TENTATIVE   # 0 - new, needs confirmation
+track_status_t.CONFIRMED   # 1 - confirmed track
+track_status_t.COASTING    # 2 - predicting, no measurement
 ```
 
 ---
 
-## 🔍 Troubleshooting
+## Troubleshooting
 
-### Common Issues
+### "C++ pybind11 blocks not available"
 
-#### 1. "Could not load ECA-B library"
-
-**Problem**: C++ libraries not found
-
-**Solution**:
-```bash
-# Rebuild and install libraries
-cd src/build
-make -j$(nproc)
-sudo make install
-sudo ldconfig
-
-# Verify installation
-ls -l /usr/local/lib/python*/dist-packages/kraken_passive_radar/libkraken_*.so
-```
-
-#### 2. "Block 'kraken_passive_radar_eca_canceller' not found"
-
-**Problem**: GRC blocks not installed
-
-**Solution**:
-```bash
-# Reinstall GRC blocks
-sudo ./install_fixed_blocks.sh
-
-# Clear cache
-rm -rf ~/.cache/grc_gnuradio
-
-# Restart GNU Radio Companion
-```
-
-#### 3. "Found 0 RTL-SDR devices"
-
-**Problem**: KrakenSDR not detected
-
-**Solution**:
-```bash
-# Check USB connection
-lsusb | grep RTL
-
-# Fix permissions
-sudo ./setup_krakensdr_permissions.sh
-
-# Replug KrakenSDR
-```
-
-#### 4. "Tests failing on import"
-
-**Problem**: Python module not in path
-
-**Solution**:
-```bash
-# Add to PYTHONPATH
-export PYTHONPATH=/usr/local/lib/python3.12/dist-packages:$PYTHONPATH
-
-# Or reinstall modules
-cd gr-kraken_passive_radar/build
-sudo make install
-```
-
-#### 5. Poor Detection Performance
-
-**Problem**: Clutter not cancelled, phase drift
-
-**Solution**:
-```bash
-# Run calibration first
-python3 calibrate_krakensdr.py --frequency 98.5e6
-
-# Increase ECA taps
-# In flowgraph: num_taps=256 (default is 128)
-
-# Check coherence monitoring
-# Ensure CalibrationController is active
-```
-
-### Performance Issues
-
-#### High CPU Usage
-
-**Diagnosis**:
-```bash
-# Check if VOLK is being used
-python3 -c "import volk; print(volk.__version__)"
-
-# Profile CPU usage
-perf top -p $(pgrep -f run_passive_radar)
-```
-
-**Solutions**:
-- Install VOLK: `sudo apt install libvolk2-dev`
-- Rebuild with optimizations: `cmake .. -DNATIVE_OPTIMIZATION=ON`
-- Reduce sample rate or decimation
-
-#### Display Lag
-
-**Problem**: GUI updates slowly
-
-**Solution**:
-- Increase update interval: `update_interval_ms=200` (default 100)
-- Reduce colormap resolution
-- Check if double-buffering is active (recent optimization)
-
-### Build Errors
-
-#### "FFTW3 not found"
+The OOT module needs to be built and installed:
 
 ```bash
-sudo apt install libfftw3-dev libfftw3-bin
+./build_oot.sh
 ```
 
-#### "pybind11 not found"
+### "Could not load libkraken_*.so"
+
+Build the kernel libraries:
 
 ```bash
-sudo apt install pybind11-dev
+cd src && mkdir -p build && cd build && cmake .. && make -j$(nproc)
 ```
 
-#### "GNU Radio not found"
+### Tests fail with MagicMock errors
+
+Some test files inject GNU Radio mocks for headless testing. If running `test_gr_cpp_blocks.py` fails with MagicMock assertions, ensure you run it after the OOT module is installed, or run it in isolation:
 
 ```bash
-# Ubuntu/Debian
-sudo apt install gnuradio gnuradio-dev
-
-# From source (if needed)
-git clone https://github.com/gnuradio/gnuradio.git
-cd gnuradio && mkdir build && cd build
-cmake .. && make -j$(nproc) && sudo make install
+python3 -m pytest tests/test_gr_cpp_blocks.py -v
 ```
+
+### CFAR benchmark threshold
+
+The CFAR 2D benchmark uses platform-aware thresholds: 150ms on aarch64 (Pi 5), 50ms on x86_64.
+
+### Display tests skip
+
+The 5 display module import tests skip when no DISPLAY or WAYLAND_DISPLAY environment variable is set. This is expected on headless systems. All display algorithm tests still run.
 
 ---
 
-## 🤝 Contributing
+## License
 
-Contributions are welcome! Please follow these guidelines:
-
-### Reporting Issues
-
-1. Check existing issues first
-2. Provide system information:
-   ```bash
-   uname -a
-   python3 --version
-   gnuradio-config-info --version
-   ```
-3. Include full error messages and logs
-4. Minimal reproducible example
-
-### Pull Requests
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Make your changes
-4. Run tests: `./run_tests.sh all`
-5. Ensure code quality:
-   ```bash
-   # Python
-   flake8 kraken_passive_radar/
-
-   # C++
-   clang-format -i src/*.cpp
-   ```
-6. Commit with clear messages: `git commit -m 'Add amazing feature'`
-7. Push to branch: `git push origin feature/amazing-feature`
-8. Open Pull Request
-
-### Development Setup
-
-```bash
-# Install development dependencies
-pip3 install pytest pytest-cov flake8 black
-
-# Install pre-commit hooks
-pip3 install pre-commit
-pre-commit install
-
-# Run tests with coverage
-pytest --cov=kraken_passive_radar tests/
-```
-
-### Code Style
-
-- **Python**: Follow PEP 8, use `black` formatter
-- **C++**: Follow Google C++ Style Guide, use `clang-format`
-- **Documentation**: Use Google-style docstrings
-- **Commit messages**: Use conventional commits format
-
----
-
-## 📄 License
-
-This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
+MIT License. See [LICENSE](LICENSE).
 
 ### Third-Party Licenses
 
 - **GNU Radio**: GPL v3.0
-- **FFTW3**: GPL v2.0+ (dynamic linking allowed)
+- **FFTW3**: GPL v2.0+ (dynamic linking)
 - **VOLK**: LGPL v3.0
-- **OptMathKernels**: MIT License
+- **OptMathKernels**: MIT
 
 ---
 
-## 📖 References
+## References
 
-### Academic Papers
+### Academic
 
-1. **Passive Bistatic Radar**:
-   - M. Cherniakov (Ed.), "Bistatic Radar: Principles and Practice", Wiley, 2007
-   - H. Griffiths and C. Baker, "Passive Coherent Location Radar Systems", IEE Proceedings - Radar, Sonar and Navigation, 2005
+1. M. Cherniakov (Ed.), *Bistatic Radar: Principles and Practice*, Wiley, 2007
+2. H. Griffiths and C. Baker, "Passive Coherent Location Radar Systems", IEE Proceedings, 2005
+3. R. Tao et al., "ECA-B Clutter Cancellation Algorithm", IEEE Trans. AES, 2012
+4. M. Richards, *Fundamentals of Radar Signal Processing*, 2nd Ed., McGraw-Hill, 2014
+5. S. Blackman and R. Popoli, *Design and Analysis of Modern Tracking Systems*, Artech House, 1999
 
-2. **Clutter Cancellation**:
-   - R. Tao et al., "ECA-B Clutter Cancellation Algorithm", IEEE Transactions on Aerospace and Electronic Systems, 2012
-   - D. Poullin, "Passive Detection Using Digital Broadcasters (DAB, DVB) with COFDM Modulation", IEE Proceedings - Radar, Sonar and Navigation, 2005
+### Technical
 
-3. **Detection and Tracking**:
-   - M. Richards, "Fundamentals of Radar Signal Processing", 2nd Ed., McGraw-Hill, 2014
-   - S. Blackman and R. Popoli, "Design and Analysis of Modern Tracking Systems", Artech House, 1999
-
-### Technical Resources
-
-- **KrakenSDR**: https://www.krakenrf.com/
-- **GNU Radio**: https://www.gnuradio.org/
-- **FFTW3**: http://www.fftw.org/
-- **VOLK**: https://www.libvolk.org/
-
-### Related Projects
-
-- **gr-dab**: DAB passive radar GNU Radio module
-- **gr-dvbs2**: DVB-S2 passive radar
-- **PyArgus**: DOA estimation library
+- KrakenSDR: https://www.krakenrf.com/
+- GNU Radio: https://www.gnuradio.org/
+- FFTW3: http://www.fftw.org/
+- VOLK: https://www.libvolk.org/
 
 ---
 
-## 📞 Contact
+**Author**: Dr. Robert W McGwier, PhD, N4HY
 
-**Author**: Dr. Robert W McGwier, PhD
-**GitHub**: https://github.com/n4hy/PassiveRadar_Kraken
-**Issues**: https://github.com/n4hy/PassiveRadar_Kraken/issues
-
----
-
-## 🎯 Roadmap
-
-### Completed ✅
-- [x] ECA-B clutter cancellation
-- [x] Hardware acceleration (NEON/CUDA/Vulkan)
-- [x] Multi-target tracking
-- [x] Integrated display system
-- [x] Comprehensive test suite
-- [x] Production-ready code quality
-
-### In Progress 🚧
-- [ ] Type hints for all Python modules
-- [ ] Centralized library path resolution
-- [ ] Extended documentation examples
-
-### Planned 📋
-- [ ] Deep learning-based detection (YOLO-inspired)
-- [ ] Multi-illuminator fusion
-- [ ] Web-based dashboard (alternative to Tkinter)
-- [ ] Real-time recording and playback
-- [ ] Advanced track prediction (Interacting Multiple Model)
-- [ ] Jupyter notebook tutorials
-
----
-
-**Built with ❤️ for the SDR community**
-**It could not have been finished without Claude wrote EVERY test and all documentation.  The tests let me diagnose code which I insisted be written by me**
+Claude wrote every test and all documentation. The tests enabled diagnosis of code which was written by hand.
 
 Last updated: 2026-02-08

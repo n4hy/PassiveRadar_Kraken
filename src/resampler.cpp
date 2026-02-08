@@ -4,11 +4,7 @@
 #include <iostream>
 #include <algorithm>
 
-#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__)
-#include <xmmintrin.h>
-#include <pmmintrin.h>
-#include <immintrin.h>
-#endif
+// SSE/AVX headers removed - dot_prod uses compiler auto-vectorization
 
 #if defined(_MSC_VER)
     #define FORCE_INLINE __forceinline

@@ -11,9 +11,7 @@
 #include <immintrin.h>
 #endif
 
-#if defined(__aarch64__) || defined(__arm__)
-#include <arm_neon.h>
-#endif
+// arm_neon.h not needed - dot_prod uses compiler auto-vectorization
 
 #if defined(_MSC_VER)
     #define FORCE_INLINE __forceinline
@@ -138,10 +136,16 @@ public:
           max_delay(std::max(0, max_delay_samples)),
           history_len((taps) + std::max(0, max_delay_samples)) { // history_len >= num_taps to avoid index -1
 
-        // Enable FTZ/DAZ on x86
+        // Enable FTZ/DAZ for denormal performance
         #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__)
         _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
         _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
+        #elif defined(__aarch64__)
+        // ARM64 FTZ: set FZ bit (bit 24) in FPCR
+        uint64_t fpcr;
+        __asm__ __volatile__("mrs %0, fpcr" : "=r"(fpcr));
+        fpcr |= (1ULL << 24);
+        __asm__ __volatile__("msr fpcr, %0" : : "r"(fpcr));
         #endif
 
         // Long history = (num_taps + max_delay)
@@ -170,7 +174,7 @@ public:
     int get_delay() const { return delay_samples.load(std::memory_order_acquire); }
 
     void process(const Complex* ref_in, const Complex* surv_in, Complex* out_err, int n_samples) {
-        if (n_samples == 0) return;
+        if (n_samples <= 0) return;
 
         // Load delay_samples atomically for thread safety
         const int current_delay = delay_samples.load(std::memory_order_acquire);
@@ -182,15 +186,17 @@ public:
         const int base = history_len + current_delay;
 
         // 1. Prepare Reference Data
-        const int full_ref_len = history_len + n_samples;
+        // Must include current_delay to prevent buffer overread when base > history_len
+        const int full_ref_len = history_len + current_delay + n_samples;
 
         full_ref.resize(full_ref_len);
 
         // Copy history (long)
         std::copy(ref_history.begin(), ref_history.end(), full_ref.begin());
 
-        // Copy new input after history
-        std::copy(ref_in, ref_in + n_samples, full_ref.begin() + history_len);
+        // Copy new input after history, with space for delay offset
+        // ref_in[0] maps to full_ref[history_len], extending to history_len + current_delay + n_samples - 1
+        std::copy(ref_in, ref_in + current_delay + n_samples, full_ref.begin() + history_len);
 
         ref_re.resize(full_ref_len);
         ref_im.resize(full_ref_len);

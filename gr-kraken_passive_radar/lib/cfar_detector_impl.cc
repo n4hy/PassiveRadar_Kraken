@@ -126,10 +126,13 @@ int cfar_detector_impl::get_num_detections() const
 float cfar_detector_impl::estimate_noise_level(const float *data, int r, int d)
 {
     d_ref_samples.clear();
-    
+    // For GO/SO-CFAR, split by range dimension (leading = lower range, lagging = upper range)
+    d_leading_samples.clear();
+    d_lagging_samples.clear();
+
     int window_range = d_guard_cells_range + d_ref_cells_range;
     int window_doppler = d_guard_cells_doppler + d_ref_cells_doppler;
-    
+
     // Collect reference cell samples (outside guard region)
     for (int dr = -window_range; dr <= window_range; dr++) {
         for (int dd = -window_doppler; dd <= window_doppler; dd++) {
@@ -137,21 +140,36 @@ float cfar_detector_impl::estimate_noise_level(const float *data, int r, int d)
             if (abs(dr) <= d_guard_cells_range && abs(dd) <= d_guard_cells_doppler) {
                 continue;
             }
-            
-            // Handle boundary conditions with wraparound
-            int rr = (r + dr + d_num_range_bins) % d_num_range_bins;
-            int dd_idx = (d + dd + d_num_doppler_bins) % d_num_doppler_bins;
-            
-            d_ref_samples.push_back(data[dd_idx * d_num_range_bins + rr]);
+
+            // Clamp to valid indices (no wraparound for radar range-Doppler maps)
+            int rr = r + dr;
+            int dd_idx = d + dd;
+            if (rr < 0 || rr >= d_num_range_bins || dd_idx < 0 || dd_idx >= d_num_doppler_bins) {
+                continue;
+            }
+
+            float val = data[dd_idx * d_num_range_bins + rr];
+            d_ref_samples.push_back(val);
+
+            // Split by range for GO/SO-CFAR: leading (lower range) vs lagging (upper range)
+            if (dr < 0) {
+                d_leading_samples.push_back(val);
+            } else if (dr > 0) {
+                d_lagging_samples.push_back(val);
+            } else {
+                // dr == 0 but dd != 0: split evenly between both
+                d_leading_samples.push_back(val);
+                d_lagging_samples.push_back(val);
+            }
         }
     }
-    
+
     if (d_ref_samples.empty()) {
         return 0.0f;
     }
-    
+
     float noise_estimate = 0.0f;
-    
+
     switch (d_cfar_type) {
         case 0: // CA-CFAR: Cell Averaging
         {
@@ -159,47 +177,40 @@ float cfar_detector_impl::estimate_noise_level(const float *data, int r, int d)
             noise_estimate = sum / d_ref_samples.size();
             break;
         }
-        
-        case 1: // GO-CFAR: Greatest-Of
+
+        case 1: // GO-CFAR: Greatest-Of (range-based leading/lagging split)
         {
-            // Split into leading and lagging windows
-            size_t half = d_ref_samples.size() / 2;
-            float leading_sum = std::accumulate(d_ref_samples.begin(), 
-                                                 d_ref_samples.begin() + half, 0.0f);
-            float lagging_sum = std::accumulate(d_ref_samples.begin() + half, 
-                                                 d_ref_samples.end(), 0.0f);
-            float leading_avg = leading_sum / half;
-            float lagging_avg = lagging_sum / (d_ref_samples.size() - half);
+            float leading_avg = d_leading_samples.empty() ? 0.0f :
+                std::accumulate(d_leading_samples.begin(), d_leading_samples.end(), 0.0f) / d_leading_samples.size();
+            float lagging_avg = d_lagging_samples.empty() ? 0.0f :
+                std::accumulate(d_lagging_samples.begin(), d_lagging_samples.end(), 0.0f) / d_lagging_samples.size();
             noise_estimate = std::max(leading_avg, lagging_avg);
             break;
         }
-        
-        case 2: // SO-CFAR: Smallest-Of
+
+        case 2: // SO-CFAR: Smallest-Of (range-based leading/lagging split)
         {
-            size_t half = d_ref_samples.size() / 2;
-            float leading_sum = std::accumulate(d_ref_samples.begin(), 
-                                                 d_ref_samples.begin() + half, 0.0f);
-            float lagging_sum = std::accumulate(d_ref_samples.begin() + half, 
-                                                 d_ref_samples.end(), 0.0f);
-            float leading_avg = leading_sum / half;
-            float lagging_avg = lagging_sum / (d_ref_samples.size() - half);
+            float leading_avg = d_leading_samples.empty() ? std::numeric_limits<float>::max() :
+                std::accumulate(d_leading_samples.begin(), d_leading_samples.end(), 0.0f) / d_leading_samples.size();
+            float lagging_avg = d_lagging_samples.empty() ? std::numeric_limits<float>::max() :
+                std::accumulate(d_lagging_samples.begin(), d_lagging_samples.end(), 0.0f) / d_lagging_samples.size();
             noise_estimate = std::min(leading_avg, lagging_avg);
             break;
         }
-        
-        case 3: // OS-CFAR: Order Statistics
+
+        case 3: // OS-CFAR: Order Statistics with proper threshold
         {
             std::sort(d_ref_samples.begin(), d_ref_samples.end());
             int k = std::min(std::max(d_os_k - 1, 0), (int)d_ref_samples.size() - 1);
             noise_estimate = d_ref_samples[k];
             break;
         }
-        
+
         default:
-            noise_estimate = std::accumulate(d_ref_samples.begin(), 
+            noise_estimate = std::accumulate(d_ref_samples.begin(),
                                               d_ref_samples.end(), 0.0f) / d_ref_samples.size();
     }
-    
+
     return noise_estimate;
 }
 

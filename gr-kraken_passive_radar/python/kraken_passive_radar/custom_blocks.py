@@ -3,10 +3,7 @@ import numpy as np
 from gnuradio import gr
 import os
 import time
-
-# Existing blocks: ConditioningBlock, CafBlock, BackendBlock, TimeAlignmentBlock from previous steps...
-# We need to update DopplerProcessingBlock to support Complex Output.
-# And add AoAProcessingBlock.
+import warnings
 
 class ConditioningBlock(gr.sync_block):
     """
@@ -70,6 +67,12 @@ class CafBlock(gr.basic_block):
         self.obj = self.lib.caf_create(n_samples)
         self.set_output_multiple(1)
 
+    def forecast(self, noutput_items, ninput_items_required):
+        """Each output item requires n_samples from each input."""
+        req = noutput_items * self.n_samples
+        for i in range(len(ninput_items_required)):
+            ninput_items_required[i] = req
+
     def _load_lib(self):
         path = os.path.join(os.path.dirname(__file__), "libkraken_caf_processing.so")
         if not os.path.exists(path):
@@ -111,8 +114,20 @@ class CafBlock(gr.basic_block):
 class BackendBlock(gr.sync_block):
     """
     CFAR + Fusion.
+
+    .. deprecated::
+        Use ``gnuradio.kraken_passive_radar.cfar_detector`` and
+        ``gnuradio.kraken_passive_radar.detection_cluster`` (C++ pybind11
+        blocks) instead for better performance and flexibility.
     """
     def __init__(self, rows, cols, num_inputs=1):
+        warnings.warn(
+            "BackendBlock is deprecated. Use "
+            "gnuradio.kraken_passive_radar.cfar_detector + detection_cluster "
+            "(C++ blocks) instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.rows = rows
         self.cols = cols
         self.size = rows * cols
@@ -215,13 +230,22 @@ class TimeAlignmentBlock(gr.sync_block):
         if hasattr(self, 'lib') and hasattr(self, 'obj'):
             self.lib.align_destroy(self.obj)
 
-# NEW: AoA Processor Wrapper
 class AoAProcessingBlock:
     """
     Python wrapper for C++ AoA Processor (3D).
     This is NOT a GR block, but a helper class called by the sink/display logic.
+
+    .. deprecated::
+        Use ``gnuradio.kraken_passive_radar.aoa_estimator`` (C++ pybind11
+        block with Bartlett beamforming) instead.
     """
     def __init__(self, num_antennas=5, spacing=0.0, geometry='ULA'):
+        warnings.warn(
+            "AoAProcessingBlock is deprecated. Use "
+            "gnuradio.kraken_passive_radar.aoa_estimator (C++ block) instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.num_antennas = num_antennas
         self.geometry = 0 if geometry == 'ULA' else 1
 

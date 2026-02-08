@@ -56,7 +56,12 @@ sys.modules["gnuradio.blocks"] = MagicMock()
 # Mock osmosdr
 sys.modules["osmosdr"] = MagicMock()
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "../gr-kraken_passive_radar/python"))
+# OOT module path must come BEFORE display package to resolve namespace correctly
+oot_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../gr-kraken_passive_radar/python"))
+sys.path.insert(0, oot_path)
+# Clear any cached kraken_passive_radar from display system
+if 'kraken_passive_radar' in sys.modules:
+    del sys.modules['kraken_passive_radar']
 
 from kraken_passive_radar.eca_b_clutter_canceller import EcaBClutterCanceller
 from kraken_passive_radar.custom_blocks import ConditioningBlock, CafBlock, BackendBlock

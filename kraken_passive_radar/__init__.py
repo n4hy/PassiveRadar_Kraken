@@ -16,11 +16,12 @@ __author__ = "Dr Robert W McGwier, PhD"
 from .radar_display import PPIDisplay, PPIDetection, PPITrack, PPIDisplayParams
 from .range_doppler_display import (
     RangeDopplerDisplay,
-    RangeDopplerData,
-    RangeDopplerParams,
+    Detection,
+    Track,
+    RDDisplayParams,
 )
-from .calibration_panel import CalibrationPanel, CalibrationParams, CalibrationState
-from .radar_gui import PassiveRadarGUI
+from .calibration_panel import CalibrationPanel, CalibrationPanelParams, CalibrationStatus
+from .radar_gui import RadarGUI
 
 __all__ = [
     # Version
@@ -32,12 +33,13 @@ __all__ = [
     "PPIDisplayParams",
     # Range-Doppler Display
     "RangeDopplerDisplay",
-    "RangeDopplerData",
-    "RangeDopplerParams",
+    "Detection",
+    "Track",
+    "RDDisplayParams",
     # Calibration
     "CalibrationPanel",
-    "CalibrationParams",
-    "CalibrationState",
+    "CalibrationPanelParams",
+    "CalibrationStatus",
     # Main GUI
-    "PassiveRadarGUI",
+    "RadarGUI",
 ]

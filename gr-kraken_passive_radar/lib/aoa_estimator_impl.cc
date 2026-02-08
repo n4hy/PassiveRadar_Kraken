@@ -216,12 +216,13 @@ int aoa_estimator_impl::work(int noutput_items,
                               gr_vector_const_void_star& input_items,
                               gr_vector_void_star& output_items)
 {
-    // Input CAFs from 4 surveillance channels
-    const gr_complex* caf[4];
-    for (int ch = 0; ch < 4; ch++) {
+    // Input CAFs from surveillance channels (dynamic, not hardcoded to 4)
+    const int num_caf_inputs = static_cast<int>(input_items.size()) - 1;
+    std::vector<const gr_complex*> caf(num_caf_inputs);
+    for (int ch = 0; ch < num_caf_inputs; ch++) {
         caf[ch] = static_cast<const gr_complex*>(input_items[ch]);
     }
-    const float* detections = static_cast<const float*>(input_items[4]);
+    const float* detections = static_cast<const float*>(input_items[num_caf_inputs]);
     float* out = static_cast<float*>(output_items[0]);
 
     const int caf_size = d_num_range_bins * d_num_doppler_bins;
@@ -264,14 +265,14 @@ int aoa_estimator_impl::work(int noutput_items,
             int bin_idx = d_bin * d_num_range_bins + r_bin;
 
             // Extract array response at this bin from each CAF
-            std::complex<float> array_response[4];
-            for (int ch = 0; ch < 4; ch++) {
+            std::vector<std::complex<float>> array_response(num_caf_inputs);
+            for (int ch = 0; ch < num_caf_inputs; ch++) {
                 const gr_complex* ch_caf = caf[ch] + frame * caf_size;
                 array_response[ch] = ch_caf[bin_idx];
             }
 
             // Compute Bartlett spectrum
-            bartlett_spectrum(array_response, d_spectrum);
+            bartlett_spectrum(array_response.data(), d_spectrum);
 
             // Find peak angle
             float confidence, peak_width;

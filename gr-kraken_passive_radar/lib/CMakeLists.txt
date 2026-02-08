@@ -1,7 +1,17 @@
 # Source files
 list(APPEND kraken_passive_radar_sources
     eca_canceller_impl.cc
+    doppler_processor_impl.cc
+    cfar_detector_impl.cc
+    coherence_monitor_impl.cc
+    detection_cluster_impl.cc
+    tracker_impl.cc
+    aoa_estimator_impl.cc
 )
+
+# Find FFTW3 for Doppler processing
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(FFTW3F REQUIRED fftw3f)
 
 # Build shared library
 add_library(gnuradio-kraken_passive_radar SHARED ${kraken_passive_radar_sources})
@@ -9,6 +19,13 @@ add_library(gnuradio-kraken_passive_radar SHARED ${kraken_passive_radar_sources}
 target_link_libraries(gnuradio-kraken_passive_radar PUBLIC
     gnuradio::gnuradio-runtime
     gnuradio::gnuradio-blocks
+    gnuradio::gnuradio-fft
+    Volk::volk
+    ${FFTW3F_LIBRARIES}
+)
+
+target_include_directories(gnuradio-kraken_passive_radar PRIVATE
+    ${FFTW3F_INCLUDE_DIRS}
 )
 
 target_include_directories(gnuradio-kraken_passive_radar PUBLIC

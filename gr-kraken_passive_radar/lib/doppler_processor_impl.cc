@@ -132,9 +132,22 @@ void doppler_processor_impl::set_num_doppler_bins(int num_doppler_bins)
         
         d_fft_in = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * d_num_doppler_bins);
         d_fft_out = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * d_num_doppler_bins);
+
+        if (!d_fft_in || !d_fft_out) {
+            if (d_fft_in) { fftwf_free(d_fft_in); d_fft_in = nullptr; }
+            if (d_fft_out) { fftwf_free(d_fft_out); d_fft_out = nullptr; }
+            throw std::runtime_error("Failed to reallocate FFTW buffers");
+        }
+
         d_fft_plan = fftwf_plan_dft_1d(d_num_doppler_bins, d_fft_in, d_fft_out,
                                        FFTW_FORWARD, FFTW_MEASURE);
-        
+
+        if (!d_fft_plan) {
+            fftwf_free(d_fft_in); d_fft_in = nullptr;
+            fftwf_free(d_fft_out); d_fft_out = nullptr;
+            throw std::runtime_error("Failed to create FFTW plan on resize");
+        }
+
         generate_window();
         d_output_buffer.resize(d_num_range_bins * d_num_doppler_bins);
         d_cpi_count = 0;
