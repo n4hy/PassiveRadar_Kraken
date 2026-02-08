@@ -9,6 +9,7 @@
 #include <volk/volk.h>
 #include <cmath>
 #include <cstring>
+#include <stdexcept>
 
 namespace gr {
 namespace kraken_passive_radar {
@@ -29,7 +30,7 @@ doppler_processor_impl::doppler_processor_impl(int num_range_bins,
                                                bool output_power)
     : gr::sync_block("doppler_processor",
                      gr::io_signature::make(1, 1, sizeof(gr_complex) * num_range_bins),
-                     gr::io_signature::make(1, 1, 
+                     gr::io_signature::make(1, 1,
                          output_power ? sizeof(float) * num_range_bins * num_doppler_bins
                                       : sizeof(gr_complex) * num_range_bins * num_doppler_bins)),
       d_num_range_bins(num_range_bins),
@@ -38,20 +39,43 @@ doppler_processor_impl::doppler_processor_impl(int num_range_bins,
       d_output_power(output_power),
       d_cpi_count(0)
 {
+    // Validate input parameters
+    if (num_range_bins < 1) {
+        throw std::invalid_argument("num_range_bins must be >= 1");
+    }
+    if (num_doppler_bins < 1) {
+        throw std::invalid_argument("num_doppler_bins must be >= 1");
+    }
+
     // Allocate accumulation buffer: [doppler_bins x range_bins]
     d_accumulator.resize(d_num_doppler_bins * d_num_range_bins);
-    
+
     // Allocate FFT input/output buffers
     d_fft_in = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * d_num_doppler_bins);
     d_fft_out = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * d_num_doppler_bins);
-    
+
+    // Check for allocation failure
+    if (!d_fft_in || !d_fft_out) {
+        if (d_fft_in) fftwf_free(d_fft_in);
+        if (d_fft_out) fftwf_free(d_fft_out);
+        throw std::runtime_error("Failed to allocate FFTW buffers");
+    }
+
     // Create FFT plan for slow-time (Doppler) dimension
+    // Use FFTW_ESTIMATE for fast plan creation (FFTW_MEASURE is expensive)
+    // For production, consider using FFTW wisdom files for optimized plans
     d_fft_plan = fftwf_plan_dft_1d(d_num_doppler_bins, d_fft_in, d_fft_out,
-                                   FFTW_FORWARD, FFTW_MEASURE);
-    
+                                   FFTW_FORWARD, FFTW_ESTIMATE);
+
+    if (!d_fft_plan) {
+        fftwf_free(d_fft_in);
+        fftwf_free(d_fft_out);
+        throw std::runtime_error("Failed to create FFTW plan");
+    }
+
     // Generate window coefficients
     generate_window();
-    
+
     // Allocate output buffer
     d_output_buffer.resize(d_num_range_bins * d_num_doppler_bins);
 }
@@ -66,7 +90,13 @@ doppler_processor_impl::~doppler_processor_impl()
 void doppler_processor_impl::generate_window()
 {
     d_window.resize(d_num_doppler_bins);
-    
+
+    // Handle edge case: single bin (no windowing needed)
+    if (d_num_doppler_bins == 1) {
+        d_window[0] = 1.0f;
+        return;
+    }
+
     for (int i = 0; i < d_num_doppler_bins; i++) {
         double x = 2.0 * M_PI * i / (d_num_doppler_bins - 1);
         switch (d_window_type) {

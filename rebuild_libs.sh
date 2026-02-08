@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -eu  # Exit on error, treat unset variables as errors
 
 # Get script directory for reliable paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -15,16 +15,17 @@ cp -f libkraken_*.so "$SCRIPT_DIR/gr-kraken_passive_radar/python/kraken_passive_
     echo "Warning: Could not copy to local source tree"
 }
 
-# Dynamically detect Python version
-PYTHON_VERSION=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null)
-if [ -z "$PYTHON_VERSION" ]; then
-    echo "Warning: Could not detect Python version"
-    PYTHON_VERSION="3"
+# Dynamically detect Python installation directory
+INSTALL_DIR=$(python3 -c "import sysconfig; print(sysconfig.get_paths()['purelib'] + '/kraken_passive_radar')" 2>/dev/null || echo "")
+if [ -z "$INSTALL_DIR" ]; then
+    echo "Warning: Could not detect Python installation path"
+    # Fallback to common location
+    PYTHON_VERSION=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null || echo "3")
+    INSTALL_DIR="/usr/local/lib/python${PYTHON_VERSION}/dist-packages/kraken_passive_radar"
 fi
-echo "Detected Python version: $PYTHON_VERSION"
+echo "Python install directory: $INSTALL_DIR"
 
 # Try to copy to installed location if writable (dev helper)
-INSTALL_DIR="/usr/local/lib/python${PYTHON_VERSION}/dist-packages/kraken_passive_radar"
 if [ -d "$INSTALL_DIR" ]; then
     echo "Attempting to copy libraries to install dir: $INSTALL_DIR"
     if [ "$EUID" -eq 0 ]; then

@@ -51,8 +51,9 @@ class krakensdr_source(gr.hier_block2):
             # Ensure proper clock source (internal) and antenna selection
             try:
                 self.osmosdr.set_clock_source("internal", i)
-            except Exception:
-                pass # Some drivers might not implement this for RTL
+            except (AttributeError, RuntimeError, NotImplementedError):
+                # Some drivers (e.g., RTL-SDR) don't implement clock source control
+                pass
 
             # Connect the internal osmosdr ports to the hier block outputs
             self.connect((self.osmosdr, i), (self, i))

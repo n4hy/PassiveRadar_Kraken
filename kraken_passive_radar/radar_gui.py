@@ -91,8 +91,9 @@ class RadarGUI:
         self.running = False
         self.lock = threading.Lock()
 
-        # Data storage
-        self.caf_data = np.zeros((self.params.n_doppler_bins, self.params.n_range_bins))
+        # Data storage with double-buffering for large arrays
+        self.caf_data_write = np.zeros((self.params.n_doppler_bins, self.params.n_range_bins))
+        self.caf_data_read = np.zeros((self.params.n_doppler_bins, self.params.n_range_bins))
         self.detections: List[Detection] = []
         self.tracks: List[RDTrack] = []
         self.calibration = CalibrationStatus()
@@ -340,27 +341,17 @@ class RadarGUI:
         )
 
     def _update(self, frame):
-        """Animation update callback."""
+        """Animation update callback - optimized to reduce memory copying."""
         with self.lock:
-            caf_data = self.caf_data.copy()
+            # Use read buffer directly (already swapped in update_caf, no copy needed)
+            caf_data = self.caf_data_read
+            # Shallow copy lists (fast, only copies references)
             detections = self.detections.copy()
             tracks = self.tracks.copy()
-            cal = CalibrationStatus(
-                channel_snrs_db=self.calibration.channel_snrs_db.copy(),
-                phase_offsets_deg=self.calibration.phase_offsets_deg.copy(),
-                correlation_coeffs=self.calibration.correlation_coeffs.copy(),
-                is_valid=self.calibration.is_valid
-            )
-            metrics = ProcessingMetrics(
-                eca_latency_ms=self.metrics.eca_latency_ms,
-                caf_latency_ms=self.metrics.caf_latency_ms,
-                cfar_latency_ms=self.metrics.cfar_latency_ms,
-                tracker_latency_ms=self.metrics.tracker_latency_ms,
-                total_latency_ms=self.metrics.total_latency_ms,
-                num_detections=self.metrics.num_detections,
-                num_tracks=self.metrics.num_tracks,
-                frames_processed=self.metrics.frames_processed
-            )
+            # Reference calibration data directly (read-only in render)
+            cal = self.calibration
+            # Reference metrics directly (read-only in render)
+            metrics = self.metrics
 
         # Update Range-Doppler
         self.rd_im.set_data(caf_data)
@@ -488,10 +479,13 @@ class RadarGUI:
 
     # Public update methods (thread-safe)
     def update_caf(self, caf_data: np.ndarray):
-        """Update CAF data."""
+        """Update CAF data using double-buffering to avoid copy in render path."""
         with self.lock:
-            if caf_data.shape == self.caf_data.shape:
-                self.caf_data = caf_data.copy()
+            if caf_data.shape == self.caf_data_write.shape:
+                # Copy into write buffer
+                np.copyto(self.caf_data_write, caf_data)
+                # Swap buffers (just swap references, no data copy)
+                self.caf_data_write, self.caf_data_read = self.caf_data_read, self.caf_data_write
 
     def update_detections(self, detections: List[Detection]):
         """Update detections."""

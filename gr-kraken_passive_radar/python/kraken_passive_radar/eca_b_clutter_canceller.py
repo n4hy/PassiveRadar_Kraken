@@ -5,6 +5,10 @@ from gnuradio import gr
 import sys
 import time
 
+# Constants for ECA-B processing
+DEFAULT_CHUNK_SIZE = 4096  # Larger chunks to reduce overhead, fits in L2 cache
+LOGGING_INTERVAL_SEC = 2.0  # How often to log performance metrics
+
 class EcaBClutterCanceller(gr.sync_block):
     """
     ECA-B-based clutter canceller using an external C++ kernel loaded via ctypes.
@@ -32,7 +36,7 @@ class EcaBClutterCanceller(gr.sync_block):
         )
 
         self.num_taps = int(num_taps)
-        self.chunk_size = 4096 # Larger chunks to reduce overhead, fits in L2
+        self.chunk_size = DEFAULT_CHUNK_SIZE
 
         # Enforce minimum block size
         self.set_output_multiple(self.chunk_size)
@@ -70,7 +74,7 @@ class EcaBClutterCanceller(gr.sync_block):
         self.last_log_time = time.time()
         self.items_processed = 0
         self.total_proc_time = 0.0
-        self.log_interval = 2.0 # Seconds
+        self.log_interval = LOGGING_INTERVAL_SEC
 
     def _load_library(self, lib_path: str):
         candidates = []
@@ -98,7 +102,8 @@ class EcaBClutterCanceller(gr.sync_block):
         print(f"DEBUG: EcaBClutterCanceller failed to load library from base_dir: {base_dir}", file=sys.stderr)
         try:
             print(f"DEBUG: Files in base_dir: {os.listdir(base_dir)}", file=sys.stderr)
-        except Exception:
+        except (OSError, PermissionError):
+            # Directory may not exist or be inaccessible
             pass
         raise OSError(
             f"Could not load ECA-B library. Tried: {candidates!r}. Last error: {last_err}"
@@ -158,8 +163,9 @@ class EcaBClutterCanceller(gr.sync_block):
                 try:
                     with open("eca_stats.txt", "a") as f:
                         f.write(log_msg + "\n")
-                except Exception:
-                    pass # Don't crash on logging
+                except (OSError, IOError, PermissionError):
+                    # Don't crash if we can't write log file (disk full, permissions, etc.)
+                    pass
 
                 self.last_log_time = now
                 self.items_processed = 0
@@ -179,5 +185,6 @@ class EcaBClutterCanceller(gr.sync_block):
                     if state:
                         self._lib.eca_b_destroy(state)
                 self._states = []
-        except Exception:
+        except (AttributeError, OSError):
+            # Library may have been unloaded or state cleanup may have failed
             pass

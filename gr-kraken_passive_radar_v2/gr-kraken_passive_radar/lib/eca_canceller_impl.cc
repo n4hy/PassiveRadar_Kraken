@@ -119,19 +119,41 @@ void eca_canceller_impl::nlms_filter_complex(
     // NLMS adaptive filter for complex signals
     // Processes real and imaginary parts together for proper complex weight update
     //
+    // NOTE: ref_re and ref_im are pre-offset by (d_num_taps - 1) in the caller,
+    // allowing negative indices in range [-(d_num_taps - 1), n_samples - 1]
+    // to access the reference history buffer safely.
+    //
     // Filter model: clutter_estimate = sum(w[k] * ref[n-k])
     // Error: e[n] = surv[n] - clutter_estimate
     // Weight update: w[k] += mu * e[n] * conj(ref[n-k]) / (eps + ||ref||^2)
 
+    const int min_idx = -(d_num_taps - 1);  // Minimum valid index
+    const int max_idx = n_samples - 1;       // Maximum valid index
+
     for (int n = 0; n < n_samples; n++) {
-        // Compute reference power for normalization
+        // Compute reference power for normalization using VOLK when possible
         float ref_power = d_eps;  // Start with regularization
-        for (int k = 0; k < d_num_taps; k++) {
-            int idx = n - k;  // ref is pre-aligned
-            if (idx >= -d_num_taps + 1 && idx <= n) {
-                float rr = ref_re[idx];
-                float ri = ref_im[idx];
-                ref_power += rr * rr + ri * ri;
+
+        if (n >= d_num_taps - 1) {
+            // Steady-state: all taps access valid data, use VOLK for speed
+            // ref[n-k] for k in [0, d_num_taps) means ref[n] to ref[n - d_num_taps + 1]
+            // Since ref is pre-offset, this is &ref_re[n - d_num_taps + 1]
+            const float* ref_window_re = &ref_re[n - d_num_taps + 1];
+            const float* ref_window_im = &ref_im[n - d_num_taps + 1];
+
+            float power_re, power_im;
+            volk_32f_x2_dot_prod_32f(&power_re, ref_window_re, ref_window_re, d_num_taps);
+            volk_32f_x2_dot_prod_32f(&power_im, ref_window_im, ref_window_im, d_num_taps);
+            ref_power += power_re + power_im;
+        } else {
+            // Startup transient: manual loop with bounds checking
+            for (int k = 0; k < d_num_taps; k++) {
+                int idx = n - k;
+                if (idx >= min_idx && idx <= max_idx) {
+                    float rr = ref_re[idx];
+                    float ri = ref_im[idx];
+                    ref_power += rr * rr + ri * ri;
+                }
             }
         }
 
@@ -139,13 +161,31 @@ void eca_canceller_impl::nlms_filter_complex(
         // Complex multiply: (wr + j*wi) * (rr + j*ri) = (wr*rr - wi*ri) + j*(wr*ri + wi*rr)
         float y_re = 0.0f;
         float y_im = 0.0f;
-        for (int k = 0; k < d_num_taps; k++) {
-            int idx = n - k;
-            float rr = (idx >= -d_num_taps + 1) ? ref_re[idx] : 0.0f;
-            float ri = (idx >= -d_num_taps + 1) ? ref_im[idx] : 0.0f;
 
-            y_re += weights_re[k] * rr - weights_im[k] * ri;
-            y_im += weights_re[k] * ri + weights_im[k] * rr;
+        if (n >= d_num_taps - 1) {
+            // Steady-state: use VOLK-accelerated operations
+            // We need to reverse the reference window to match filter tap order
+            // Weights are ordered w[0] to w[d_num_taps-1]
+            // References should be ref[n], ref[n-1], ..., ref[n-d_num_taps+1]
+
+            // Since VOLK doesn't have deinterleaved complex multiply-accumulate,
+            // compute manually but could be optimized further with custom kernel
+            for (int k = 0; k < d_num_taps; k++) {
+                int idx = n - k;
+                float rr = ref_re[idx];
+                float ri = ref_im[idx];
+                y_re += weights_re[k] * rr - weights_im[k] * ri;
+                y_im += weights_re[k] * ri + weights_im[k] * rr;
+            }
+        } else {
+            // Startup transient
+            for (int k = 0; k < d_num_taps; k++) {
+                int idx = n - k;
+                float rr = (idx >= min_idx && idx <= max_idx) ? ref_re[idx] : 0.0f;
+                float ri = (idx >= min_idx && idx <= max_idx) ? ref_im[idx] : 0.0f;
+                y_re += weights_re[k] * rr - weights_im[k] * ri;
+                y_im += weights_re[k] * ri + weights_im[k] * rr;
+            }
         }
 
         // Compute error: e = surv - clutter_estimate
@@ -161,10 +201,20 @@ void eca_canceller_impl::nlms_filter_complex(
         // Complex: e * conj(ref) = (e_re + j*e_im) * (rr - j*ri)
         //                        = (e_re*rr + e_im*ri) + j*(e_im*rr - e_re*ri)
         float mu_norm = d_mu / ref_power;
+
         for (int k = 0; k < d_num_taps; k++) {
             int idx = n - k;
-            float rr = (idx >= -d_num_taps + 1) ? ref_re[idx] : 0.0f;
-            float ri = (idx >= -d_num_taps + 1) ? ref_im[idx] : 0.0f;
+            float rr, ri;
+
+            if (n >= d_num_taps - 1) {
+                // Steady-state: direct access
+                rr = ref_re[idx];
+                ri = ref_im[idx];
+            } else {
+                // Startup transient: bounds check
+                rr = (idx >= min_idx && idx <= max_idx) ? ref_re[idx] : 0.0f;
+                ri = (idx >= min_idx && idx <= max_idx) ? ref_im[idx] : 0.0f;
+            }
 
             // e * conj(ref)
             float update_re = e_re * rr + e_im * ri;

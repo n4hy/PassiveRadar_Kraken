@@ -14,12 +14,16 @@ private:
     int d_num_taps;
     float d_reg_factor;
     int d_num_surv;
-    
+
     // Adaptive filter weights: num_surv x num_taps
     std::vector<std::vector<std::complex<float>>> d_weights;
-    
+
     // History buffer for reference signal
     std::vector<std::complex<float>> d_ref_history;
+
+    // NLMS algorithm parameters
+    float d_mu;   // Step size (learning rate)
+    float d_eps;  // Regularization constant for normalization
 
 public:
     eca_canceller_impl(int num_taps, float reg_factor, int num_surv);
