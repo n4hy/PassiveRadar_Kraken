@@ -1115,5 +1115,6 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 ---
 
 **Built with ❤️ for the SDR community**
+**It could not have been finished without Claude wrote EVERY test and all documentation.  The tests let me diagnose code which I insisted be written by me**
 
 Last updated: 2026-02-08
