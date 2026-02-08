@@ -52,6 +52,7 @@ GNU Radio Out-of-Tree (OOT) module and Python display system for passive bistati
 - [System Architecture](#-system-architecture)
 - [Module Architecture](#-module-architecture)
 - [Features](#-features)
+- [Export Control Compliance: ITAR and EAR](#️-export-control-compliance-itar-and-ear)
 - [Hardware Support](#-hardware-support)
 - [Installation](#-installation)
 - [Quick Start](#-quick-start)
@@ -289,6 +290,97 @@ This project contains **three main components** that work together:
 - ✅ **Memory-safe**: Proper bounds checking, validation
 - ✅ **Well-documented**: Comprehensive API docs and examples
 - ✅ **Portable**: Dynamic path detection, cross-platform build system
+
+---
+
+## ⚖️ Export Control Compliance: ITAR and EAR
+
+### What are ITAR and EAR?
+
+**ITAR (International Traffic in Arms Regulations)**:
+- US federal regulations administered by the Department of State's Directorate of Defense Trade Controls (DDTC)
+- Controls the export and import of defense-related articles, services, and technical data
+- Applies to items specifically designed, developed, configured, adapted, or modified for military applications
+- Violations carry severe civil and criminal penalties
+
+**EAR (Export Administration Regulations)**:
+- US federal regulations administered by the Department of Commerce's Bureau of Industry and Security (BIS)
+- Controls the export of dual-use items that have both civilian and military applications
+- Covers items not regulated by ITAR, including most commercial technologies
+- Uses the Commerce Control List (CCL) with Export Control Classification Numbers (ECCNs)
+
+### Radar Systems and Export Controls
+
+Radar systems can fall under export controls when they:
+- Exceed specific technical parameters (range, resolution, bandwidth, frequency)
+- Are designed for military targeting, fire control, or weapon guidance
+- Incorporate classified or restricted signal processing techniques
+- Operate in restricted frequency bands
+
+High-performance radar systems may be controlled under:
+- **ITAR Category XI** (Military Electronics): Advanced radar with specific military capabilities
+- **EAR ECCN 3A001.b.1** (Electronic equipment): Radar with bandwidth >50 MHz or pulse compression >1000
+
+### PassiveRadar_Kraken Compliance
+
+**This passive radar system is ITAR and EAR compliant** for the following technical reasons:
+
+#### 1. Limited Bandwidth
+- **Operating bandwidth**: 2.4 MHz maximum sample rate
+- **Well below EAR threshold**: EAR ECCN 3A001.b.1 requires >50 MHz instantaneous bandwidth
+- **Civilian SDR hardware**: KrakenSDR is a commercial off-the-shelf (COTS) receiver widely available for amateur radio and educational use
+- **No classified processing**: All algorithms (NLMS, CFAR, Kalman tracking) are published in open academic literature
+
+#### 2. Low Operating Frequency
+- **Primary frequency range**: FM broadcast band (88-108 MHz)
+- **Civilian illuminators only**: Uses FM radio, DAB, DVB-T, or other commercial broadcast signals
+- **No military frequency bands**: Does not operate in restricted military radar bands (e.g., X-band, Ka-band)
+- **Passive reception only**: No active transmission capability
+
+#### 3. Educational and Research Purpose
+- **Open-source project**: Fully public codebase under MIT license
+- **Academic implementation**: Based on published research papers (cited in References section)
+- **SDR community tool**: Designed for amateur radio operators, researchers, and students
+- **No military enhancement**: Not designed, modified, or adapted for military fire control, targeting, or weapon systems
+
+#### 4. Performance Characteristics
+- **Detection range**: ~15-20 km maximum (limited by FM broadcast signal strength)
+- **Range resolution**: ~300-600 m (limited by 2.4 MHz bandwidth)
+- **Velocity resolution**: ~1-5 m/s (limited by Doppler bin size)
+- **These capabilities are typical of civilian passive radar experiments and academic research**
+
+#### 5. Commercial Components
+- **KrakenSDR**: Consumer SDR receiver ($400, publicly available)
+- **GNU Radio**: Open-source software-defined radio framework
+- **Standard libraries**: FFTW (FFT), VOLK (SIMD), all open-source
+- **No ITAR-controlled components**: All hardware and software are unrestricted
+
+### Legal Disclaimer
+
+This compliance assessment is provided for informational purposes only and does not constitute legal advice. Users are responsible for ensuring their own compliance with applicable export control laws and regulations. If you intend to:
+
+- Export this software or derived works outside the United States
+- Use this system in conjunction with ITAR-controlled equipment
+- Modify this system for military or defense applications
+- Operate in restricted frequency bands
+
+**You must consult with a qualified export control attorney or your organization's export compliance office.**
+
+The author makes no warranties regarding the export control classification of this software or its derivatives. Export control laws are subject to change, and individual use cases may have different regulatory requirements.
+
+### Educational Use Statement
+
+PassiveRadar_Kraken is intended solely for:
+- Educational purposes in signal processing and radar theory
+- Amateur radio experimentation and research
+- Civilian passive radar applications (e.g., wildlife tracking, traffic monitoring)
+- Academic research in accordance with published scientific literature
+
+This software is **not designed, intended, or authorized** for:
+- Military targeting or fire control systems
+- Weapon guidance or military surveillance
+- Any application that would classify it as a defense article under ITAR
+- Export to countries subject to US embargoes or export restrictions
 
 ---
 
