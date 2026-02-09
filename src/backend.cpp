@@ -3,8 +3,13 @@
 #include <cmath>
 #include <algorithm>
 
+#ifdef HAVE_OPTMATHKERNELS
+#include <optmath/neon_kernels.hpp>
+#else
+#define HAVE_OPTMATHKERNELS 0
+#endif
+
 // Backend processing: CFAR, Fusion
-// Simplified implementation
 
 using Complex = std::complex<float>;
 
@@ -62,6 +67,22 @@ public:
         // log(10)/10 precomputed for dB-to-linear conversion: 10^(db/10) = exp(db * ln10/10)
         constexpr float db_to_ln = 0.23025850929940458f; // ln(10)/10
 
+#if HAVE_OPTMATHKERNELS
+        std::vector<float> scaled(size);
+        std::vector<float> exp_out(size);
+        for (int k = 0; k < num_inputs; ++k) {
+            const float* in = inputs[k];
+            // Scale input: in[i] * db_to_ln
+            for (int i = 0; i < size; ++i) {
+                scaled[i] = in[i] * db_to_ln;
+            }
+            // Batch exp using NEON fast approximation
+            optmath::neon::neon_fast_exp_f32(exp_out.data(), scaled.data(), size);
+            for (int i = 0; i < size; ++i) {
+                sum_linear[i] += exp_out[i];
+            }
+        }
+#else
         for (int k = 0; k < num_inputs; ++k) {
             const float* in = inputs[k];
             for (int i = 0; i < size; ++i) {
@@ -69,6 +90,7 @@ public:
                 sum_linear[i] += expf(in[i] * db_to_ln);
             }
         }
+#endif
 
         for (int i = 0; i < size; ++i) {
             float val = 10.0f * std::log10(sum_linear[i] + 1e-12f);

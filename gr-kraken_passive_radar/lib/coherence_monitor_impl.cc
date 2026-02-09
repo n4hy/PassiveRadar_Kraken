@@ -10,6 +10,10 @@
 #include <cmath>
 #include <numeric>
 
+#ifdef HAVE_OPTMATHKERNELS
+#include <optmath/neon_kernels.hpp>
+#endif
+
 namespace gr {
 namespace kraken_passive_radar {
 
@@ -147,28 +151,64 @@ float coherence_monitor_impl::compute_correlation(const gr_complex* ref,
 {
     // Compute cross-correlation coefficient:
     // rho = |sum(ref * conj(surv))| / sqrt(sum(|ref|²) * sum(|surv|²))
-    
-    gr_complex cross_sum(0.0f, 0.0f);
-    float ref_power = 0.0f;
-    float surv_power = 0.0f;
-    
+
+#ifdef HAVE_OPTMATHKERNELS
+    // Deinterleave for NEON processing
+    thread_local std::vector<float> t_ref_re, t_ref_im, t_surv_re, t_surv_im;
+    t_ref_re.resize(length);
+    t_ref_im.resize(length);
+    t_surv_re.resize(length);
+    t_surv_im.resize(length);
+
     for (int i = 0; i < length; i++) {
-        cross_sum += ref[i] * std::conj(surv[i]);
-        ref_power += std::norm(ref[i]);
-        surv_power += std::norm(surv[i]);
+        t_ref_re[i] = ref[i].real();
+        t_ref_im[i] = ref[i].imag();
+        t_surv_re[i] = surv[i].real();
+        t_surv_im[i] = surv[i].imag();
     }
-    
+
+    // Cross-correlation: sum(ref * conj(surv))
+    float cross_re, cross_im;
+    optmath::neon::neon_complex_dot_f32(&cross_re, &cross_im,
+                                         t_ref_re.data(), t_ref_im.data(),
+                                         t_surv_re.data(), t_surv_im.data(),
+                                         length);
+
+    // Power: sum(|ref|^2) and sum(|surv|^2) using dot product
+    float ref_power = optmath::neon::neon_dot_f32(t_ref_re.data(), t_ref_re.data(), length)
+                    + optmath::neon::neon_dot_f32(t_ref_im.data(), t_ref_im.data(), length);
+    float surv_power = optmath::neon::neon_dot_f32(t_surv_re.data(), t_surv_re.data(), length)
+                     + optmath::neon::neon_dot_f32(t_surv_im.data(), t_surv_im.data(), length);
+
     float denom = std::sqrt(ref_power * surv_power);
     if (denom < 1e-10f) {
         phase_out = 0.0f;
         return 0.0f;
     }
-    
-    // Phase of cross-correlation gives relative phase offset
+
+    gr_complex cross_sum(cross_re, cross_im);
     phase_out = std::arg(cross_sum);
-    
-    // Magnitude of normalized cross-correlation is the coefficient
     return std::abs(cross_sum) / denom;
+#else
+    gr_complex cross_sum(0.0f, 0.0f);
+    float ref_power = 0.0f;
+    float surv_power = 0.0f;
+
+    for (int i = 0; i < length; i++) {
+        cross_sum += ref[i] * std::conj(surv[i]);
+        ref_power += std::norm(ref[i]);
+        surv_power += std::norm(surv[i]);
+    }
+
+    float denom = std::sqrt(ref_power * surv_power);
+    if (denom < 1e-10f) {
+        phase_out = 0.0f;
+        return 0.0f;
+    }
+
+    phase_out = std::arg(cross_sum);
+    return std::abs(cross_sum) / denom;
+#endif
 }
 
 float coherence_monitor_impl::compute_phase_variance(const std::vector<float>& phases)

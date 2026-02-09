@@ -74,6 +74,9 @@ private:
     std::vector<std::vector<float>> doppler_phasor_re;
     std::vector<std::vector<float>> doppler_phasor_im;
 
+    // Buffers for magnitude extraction after IFFT
+    std::vector<float> ifft_re, ifft_im;
+
     bool use_optmath;
 
     /**
@@ -83,6 +86,25 @@ private:
         doppler_phasor_re.resize(n_doppler_bins);
         doppler_phasor_im.resize(n_doppler_bins);
 
+#if HAVE_OPTMATHKERNELS
+        // Batch exp(j*phase) using NEON
+        std::vector<float> phases(n_samples);
+        for (int d = 0; d < n_doppler_bins; d++) {
+            float fd = doppler_start + d * doppler_step;
+            doppler_phasor_re[d].resize(n_samples);
+            doppler_phasor_im[d].resize(n_samples);
+
+            for (int t = 0; t < n_samples; t++) {
+                phases[t] = -2.0f * M_PI * fd * t / sample_rate;
+            }
+            optmath::neon::neon_complex_exp_f32(
+                doppler_phasor_re[d].data(),
+                doppler_phasor_im[d].data(),
+                phases.data(),
+                n_samples
+            );
+        }
+#else
         for (int d = 0; d < n_doppler_bins; d++) {
             float fd = doppler_start + d * doppler_step;
             doppler_phasor_re[d].resize(n_samples);
@@ -94,6 +116,7 @@ private:
                 doppler_phasor_im[d][t] = std::sin(phase);
             }
         }
+#endif
     }
 
 public:
@@ -149,6 +172,8 @@ public:
         fft_ref_im.resize(fft_len);
         prod_re.resize(fft_len);
         prod_im.resize(fft_len);
+        ifft_re.resize(fft_len);
+        ifft_im.resize(fft_len);
 
         // Precompute Doppler phasors
         precompute_doppler_phasors();
@@ -206,17 +231,17 @@ public:
         float scale = 1.0f / fft_len;
 
 #if HAVE_OPTMATHKERNELS
-        // Use NEON-optimized complex conjugate multiply
+        // Use NEON-optimized fused conjugate multiply: surv * conj(ref)
         // Deinterleave FFT outputs for NEON processing (use pre-allocated buffers)
         for (int i = 0; i < fft_len; i++) {
             fft_surv_re[i] = buf_surv[i][0];
             fft_surv_im[i] = buf_surv[i][1];
             fft_ref_re[i] = buf_ref[i][0];
-            fft_ref_im[i] = -buf_ref[i][1];  // Conjugate
+            fft_ref_im[i] = buf_ref[i][1];  // No manual conjugation needed
         }
 
-        // Complex multiply using NEON
-        optmath::neon::neon_complex_mul_f32(
+        // Conjugate multiply using NEON: out = surv * conj(ref)
+        optmath::neon::neon_complex_conj_mul_f32(
             prod_re.data(), prod_im.data(),
             fft_surv_re.data(), fft_surv_im.data(),
             fft_ref_re.data(), fft_ref_im.data(),
@@ -245,11 +270,21 @@ public:
         fftwf_execute(inv_out);
 
         // Extract magnitude for first n_range_bins
-        for (int i = 0; i < n_range_bins && i < n_samples; i++) {
+        int mag_count = std::min(n_range_bins, n_samples);
+#if HAVE_OPTMATHKERNELS
+        // Deinterleave IFFT output for NEON magnitude
+        for (int i = 0; i < mag_count; i++) {
+            ifft_re[i] = buf_prod[i][0];
+            ifft_im[i] = buf_prod[i][1];
+        }
+        optmath::neon::neon_complex_magnitude_f32(out, ifft_re.data(), ifft_im.data(), mag_count);
+#else
+        for (int i = 0; i < mag_count; i++) {
             float re = buf_prod[i][0];
             float im = buf_prod[i][1];
             out[i] = std::sqrt(re * re + im * im);
         }
+#endif
     }
 
     /**
@@ -328,8 +363,26 @@ public:
         fftwf_execute(fwd_ref);
         fftwf_execute(fwd_surv);
 
-        // Multiply
+        // Multiply: Surv * conj(Ref)
         float scale = 1.0f / fft_len;
+#if HAVE_OPTMATHKERNELS
+        for (int i = 0; i < fft_len; i++) {
+            fft_surv_re[i] = buf_surv[i][0];
+            fft_surv_im[i] = buf_surv[i][1];
+            fft_ref_re[i] = buf_ref[i][0];
+            fft_ref_im[i] = buf_ref[i][1];
+        }
+        optmath::neon::neon_complex_conj_mul_f32(
+            prod_re.data(), prod_im.data(),
+            fft_surv_re.data(), fft_surv_im.data(),
+            fft_ref_re.data(), fft_ref_im.data(),
+            fft_len
+        );
+        for (int i = 0; i < fft_len; i++) {
+            buf_prod[i][0] = prod_re[i] * scale;
+            buf_prod[i][1] = prod_im[i] * scale;
+        }
+#else
         for (int i = 0; i < fft_len; i++) {
             float sr = buf_surv[i][0];
             float si = buf_surv[i][1];
@@ -339,6 +392,7 @@ public:
             buf_prod[i][0] = (sr * rr - si * ri) * scale;
             buf_prod[i][1] = (sr * ri + si * rr) * scale;
         }
+#endif
 
         // IFFT
         fftwf_execute(inv_out);

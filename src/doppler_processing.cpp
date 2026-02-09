@@ -9,6 +9,13 @@
 // Centralized FFTW init (shared across all .so files in this project)
 #include "fftw_init.h"
 
+#ifdef HAVE_OPTMATHKERNELS
+#include <optmath/neon_kernels.hpp>
+#include <optmath/radar_kernels.hpp>
+#else
+#define HAVE_OPTMATHKERNELS 0
+#endif
+
 // Use standard M_PI (POSIX) or define it
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -36,6 +43,14 @@ public:
 
         // Pre-calculate Hamming window
         window.resize(doppler_len);
+#if HAVE_OPTMATHKERNELS
+        if (doppler_len > 1) {
+            optmath::radar::generate_window_f32(window.data(), doppler_len,
+                                                 optmath::radar::WindowType::HAMMING);
+        } else {
+            window[0] = 1.0f;
+        }
+#else
         if (doppler_len > 1) {
             for (int i = 0; i < doppler_len; ++i) {
                 window[i] = 0.54f - 0.46f * std::cos(2.0f * PI * i / (doppler_len - 1));
@@ -43,6 +58,7 @@ public:
         } else {
             window[0] = 1.0f;
         }
+#endif
 
         // Initialize FFTW
         // We will process one column at a time

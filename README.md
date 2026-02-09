@@ -348,9 +348,9 @@ The single OOT module `gr-kraken_passive_radar` provides 14 blocks: 7 C++ (pybin
 | `eca_canceller` | VOLK-accelerated NLMS clutter canceller | `num_taps`, `reg_factor`, `num_surv` |
 | `doppler_processor` | Range-Doppler map via slow-time FFT | `num_range_bins`, `num_doppler_bins`, `window_type` |
 | `cfar_detector` | CA/GO/SO/OS-CFAR detection | `pfa`, `cfar_type`, guard/ref cells |
-| `coherence_monitor` | Phase coherence monitoring + cal trigger | `corr_threshold`, `phase_threshold_deg` |
+| `coherence_monitor` | Phase coherence monitoring + cal trigger (OptMathKernels NEON) | `corr_threshold`, `phase_threshold_deg` |
 | `detection_cluster` | Connected-component target extraction | `min_cluster_size`, `range_resolution_m` |
-| `aoa_estimator` | Bartlett beamforming AoA estimation | `num_elements`, `d_lambda`, `array_type` |
+| `aoa_estimator` | Bartlett beamforming AoA estimation (OptMathKernels NEON) | `num_elements`, `d_lambda`, `array_type` |
 | `tracker` | Multi-target Kalman tracker with GNN | `dt`, process/meas noise, `gate_threshold` |
 
 ### Python Blocks
@@ -377,18 +377,33 @@ Ten shared libraries built from `src/` provide the DSP kernels used by both the 
 
 | Library | Description | Dependencies |
 |---------|-------------|--------------|
-| `libkraken_eca_b_clutter_canceller.so` | ECA-B NLMS clutter cancellation | libm |
+| `libkraken_eca_b_clutter_canceller.so` | ECA-B NLMS clutter cancellation | libm, OptMathKernels (optional) |
 | `libkraken_conditioning.so` | Signal conditioning / AGC | libm |
 | `libkraken_fftw_init.so` | Centralized FFTW thread init (pthread_once) | fftw3f, fftw3f_threads |
-| `libkraken_time_alignment.so` | Cross-correlation time alignment | fftw3f, kraken_fftw_init |
+| `libkraken_time_alignment.so` | Cross-correlation time alignment | fftw3f, kraken_fftw_init, OptMathKernels (optional) |
 | `libkraken_caf_processing.so` | Cross-ambiguity function | fftw3f, kraken_fftw_init, OptMathKernels (optional) |
-| `libkraken_doppler_processing.so` | Range-Doppler map generation | fftw3f, kraken_fftw_init |
-| `libkraken_backend.so` | CFAR detection and sensor fusion | libm |
-| `libkraken_aoa_processing.so` | Angle-of-arrival processing | libm |
-| `libkraken_resampler.so` | Sample rate conversion | libm |
+| `libkraken_doppler_processing.so` | Range-Doppler map generation | fftw3f, kraken_fftw_init, OptMathKernels (optional) |
+| `libkraken_backend.so` | CFAR detection and sensor fusion | libm, OptMathKernels (optional) |
+| `libkraken_aoa_processing.so` | Angle-of-arrival processing | libm, OptMathKernels (optional) |
+| `libkraken_resampler.so` | Sample rate conversion | libm, OptMathKernels (optional) |
 | `libkraken_nlms_clutter_canceller.so` | NLMS adaptive filter | libm |
 
-OptMathKernels (v0.2.1+) provides optional NEON acceleration for `caf_processing` via `neon_complex_mul_f32`. The build auto-detects it via CMake `find_package`.
+### OptMathKernels NEON Acceleration
+
+[OptMathKernels](https://github.com/n4hy/OptimizedKernelsForRaspberryPi5_NvidiaCUDA) provides optional NEON acceleration on aarch64 (Raspberry Pi 5). Eight functions are used across the processing chain:
+
+| Function | Used In | Replaces |
+|----------|---------|----------|
+| `neon_dot_f32` | eca_b, resampler | hand-rolled 8-way unrolled dot product |
+| `neon_complex_conj_mul_f32` | caf_processing | manual conjugation + multiply |
+| `neon_complex_conj_mul_interleaved_f32` | time_alignment | scalar conj multiply on fftwf_complex |
+| `neon_complex_exp_f32` | caf_processing, aoa_processing, aoa_estimator | per-sample sin/cos |
+| `neon_complex_magnitude_f32` | caf_processing | sqrt(re²+im²) loop |
+| `neon_complex_dot_f32` | coherence_monitor | scalar cross-correlation loop |
+| `neon_fast_exp_f32` | backend | scalar expf() in dB-to-linear |
+| `radar::generate_window_f32` | doppler_processing | manual Hamming window formula |
+
+All functions are gated by `HAVE_OPTMATHKERNELS` compile definitions with scalar fallbacks. CMake auto-detects the library via `find_package(OptMathKernels QUIET)` and enables per-target.
 
 ### GPU Libraries (Optional, CUDA Required)
 

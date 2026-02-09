@@ -67,7 +67,7 @@ if(NOT FFTW3_THREADS_FOUND)
 endif()
 
 # OptMathKernels for NEON acceleration (optional, requires >= 0.2.1)
-find_package(OptMathKernels 0.2.1 QUIET)
+find_package(OptMathKernels QUIET)
 if(OptMathKernels_FOUND)
     message(STATUS "OptMathKernels ${OptMathKernels_VERSION} found - enabling NEON optimization")
 else()
@@ -139,11 +139,15 @@ if(NOT FFTW3_FOUND)
     endif()
 endif()
 
-# 1. ECA-B clutter canceller (pure C++, no external dependencies)
+# 1. ECA-B clutter canceller (pure C++, optional OptMathKernels NEON)
 add_library(kraken_eca_b_clutter_canceller SHARED
     eca_b_clutter_canceller.cpp
 )
 target_link_libraries(kraken_eca_b_clutter_canceller m)
+if(OptMathKernels_FOUND)
+    target_compile_definitions(kraken_eca_b_clutter_canceller PRIVATE HAVE_OPTMATHKERNELS=1)
+    target_link_libraries(kraken_eca_b_clutter_canceller OptMathKernels::OptMathKernels)
+endif()
 install(TARGETS kraken_eca_b_clutter_canceller LIBRARY DESTINATION ${GR_PYTHON_DIR}/kraken_passive_radar)
 
 # 2. Conditioning
@@ -158,10 +162,14 @@ if(FFTW3_FOUND)
     target_include_directories(kraken_fftw_init PRIVATE ${FFTW3_INCLUDE_DIRS})
     install(TARGETS kraken_fftw_init LIBRARY DESTINATION ${GR_PYTHON_DIR}/kraken_passive_radar)
 
-    # 3. Time Alignment
+    # 3. Time Alignment (with optional OptMathKernels NEON optimization)
     add_library(kraken_time_alignment SHARED time_alignment.cpp)
     target_link_libraries(kraken_time_alignment kraken_fftw_init ${FFTW3_LIBRARIES} ${FFTW3_THREADS_LIBRARIES} Threads::Threads m)
     target_include_directories(kraken_time_alignment PRIVATE ${FFTW3_INCLUDE_DIRS})
+    if(OptMathKernels_FOUND)
+        target_compile_definitions(kraken_time_alignment PRIVATE HAVE_OPTMATHKERNELS=1)
+        target_link_libraries(kraken_time_alignment OptMathKernels::OptMathKernels)
+    endif()
     install(TARGETS kraken_time_alignment LIBRARY DESTINATION ${GR_PYTHON_DIR}/kraken_passive_radar)
 
     # 4. CAF Processing (with optional OptMathKernels NEON optimization)
@@ -174,28 +182,44 @@ if(FFTW3_FOUND)
     endif()
     install(TARGETS kraken_caf_processing LIBRARY DESTINATION ${GR_PYTHON_DIR}/kraken_passive_radar)
 
-    # 5. Doppler Processing
+    # 5. Doppler Processing (with optional OptMathKernels radar window functions)
     add_library(kraken_doppler_processing SHARED doppler_processing.cpp)
     target_link_libraries(kraken_doppler_processing kraken_fftw_init ${FFTW3_LIBRARIES} ${FFTW3_THREADS_LIBRARIES} Threads::Threads m)
     target_include_directories(kraken_doppler_processing PRIVATE ${FFTW3_INCLUDE_DIRS})
+    if(OptMathKernels_FOUND)
+        target_compile_definitions(kraken_doppler_processing PRIVATE HAVE_OPTMATHKERNELS=1)
+        target_link_libraries(kraken_doppler_processing OptMathKernels::OptMathKernels)
+    endif()
     install(TARGETS kraken_doppler_processing LIBRARY DESTINATION ${GR_PYTHON_DIR}/kraken_passive_radar)
 else()
     message(FATAL_ERROR "FFTW3f library not found. Install: libfftw3-dev (Debian/Ubuntu), fftw3-devel (CentOS/RHEL), fftw (Fedora/Arch)")
 endif()
 
-# 6. Backend (CFAR/Fusion)
+# 6. Backend (CFAR/Fusion, with optional OptMathKernels NEON)
 add_library(kraken_backend SHARED backend.cpp)
 target_link_libraries(kraken_backend m)
+if(OptMathKernels_FOUND)
+    target_compile_definitions(kraken_backend PRIVATE HAVE_OPTMATHKERNELS=1)
+    target_link_libraries(kraken_backend OptMathKernels::OptMathKernels)
+endif()
 install(TARGETS kraken_backend LIBRARY DESTINATION ${GR_PYTHON_DIR}/kraken_passive_radar)
 
-# 7. AoA Processing
+# 7. AoA Processing (with optional OptMathKernels NEON)
 add_library(kraken_aoa_processing SHARED aoa_processing.cpp)
 target_link_libraries(kraken_aoa_processing m)
+if(OptMathKernels_FOUND)
+    target_compile_definitions(kraken_aoa_processing PRIVATE HAVE_OPTMATHKERNELS=1)
+    target_link_libraries(kraken_aoa_processing OptMathKernels::OptMathKernels)
+endif()
 install(TARGETS kraken_aoa_processing LIBRARY DESTINATION ${GR_PYTHON_DIR}/kraken_passive_radar)
 
-# 8. Resampler
+# 8. Resampler (with optional OptMathKernels NEON)
 add_library(kraken_resampler SHARED resampler.cpp)
 target_link_libraries(kraken_resampler m)
+if(OptMathKernels_FOUND)
+    target_compile_definitions(kraken_resampler PRIVATE HAVE_OPTMATHKERNELS=1)
+    target_link_libraries(kraken_resampler OptMathKernels::OptMathKernels)
+endif()
 install(TARGETS kraken_resampler LIBRARY DESTINATION ${GR_PYTHON_DIR}/kraken_passive_radar)
 
 # 9. NLMS Clutter Canceller

@@ -13,6 +13,10 @@
 #include <algorithm>
 #include <numeric>
 
+#ifdef HAVE_OPTMATHKERNELS
+#include <optmath/neon_kernels.hpp>
+#endif
+
 namespace gr {
 namespace kraken_passive_radar {
 
@@ -88,6 +92,43 @@ void aoa_estimator_impl::compute_steering_vectors()
 {
     float angle_step = (d_max_angle_deg - d_min_angle_deg) / (d_n_angles - 1);
 
+#ifdef HAVE_OPTMATHKERNELS
+    // Batch compute all steering vectors: d_n_angles * d_num_elements phases
+    int total = d_n_angles * d_num_elements;
+    std::vector<float> phases(total);
+    std::vector<float> sv_re(total);
+    std::vector<float> sv_im(total);
+
+    for (int i = 0; i < d_n_angles; i++) {
+        d_angles_deg[i] = d_min_angle_deg + i * angle_step;
+        float angle_rad = d_angles_deg[i] * PI / 180.0f;
+        d_steering_vectors[i].resize(d_num_elements);
+
+        if (d_array_type == array_type_t::ULA) {
+            float sin_theta = std::sin(angle_rad);
+            for (int n = 0; n < d_num_elements; n++) {
+                phases[i * d_num_elements + n] = -TWO_PI * d_d_lambda * n * sin_theta;
+            }
+        } else {
+            float radius = d_d_lambda * d_num_elements / TWO_PI;
+            for (int n = 0; n < d_num_elements; n++) {
+                float phi_n = TWO_PI * n / d_num_elements;
+                phases[i * d_num_elements + n] = -TWO_PI * radius * std::cos(angle_rad - phi_n);
+            }
+        }
+    }
+
+    // Single batch complex_exp for ALL steering vectors
+    optmath::neon::neon_complex_exp_f32(sv_re.data(), sv_im.data(), phases.data(), total);
+
+    // Scatter back into per-angle vectors
+    for (int i = 0; i < d_n_angles; i++) {
+        for (int n = 0; n < d_num_elements; n++) {
+            int idx = i * d_num_elements + n;
+            d_steering_vectors[i][n] = std::complex<float>(sv_re[idx], sv_im[idx]);
+        }
+    }
+#else
     for (int i = 0; i < d_n_angles; i++) {
         d_angles_deg[i] = d_min_angle_deg + i * angle_step;
         float angle_rad = d_angles_deg[i] * PI / 180.0f;
@@ -100,6 +141,7 @@ void aoa_estimator_impl::compute_steering_vectors()
             steering_vector_uca(angle_rad, d_steering_vectors[i]);
         }
     }
+#endif
 }
 
 void aoa_estimator_impl::steering_vector_ula(float angle_rad,

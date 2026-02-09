@@ -4,6 +4,12 @@
 #include <algorithm>
 #include <iostream>
 
+#ifdef HAVE_OPTMATHKERNELS
+#include <optmath/neon_kernels.hpp>
+#else
+#define HAVE_OPTMATHKERNELS 0
+#endif
+
 using Complex = std::complex<float>;
 const float PI = 3.14159265358979323846f;
 
@@ -158,74 +164,112 @@ public:
             positions.push_back({d,    d,    0.0f}); // Ch4
         }
 
-        // Output size: n_az * n_el
-        // Scan loop
+        // Build channel-to-position mapping
+        std::vector<int> channel_map; // channel_map[i] = antenna_data index for positions[i]
+        if (type == ULA) {
+            int count = 0;
+            for (int m = start_idx; m < 5; ++m) {
+                if (m >= num_antennas) break;
+                channel_map.push_back(m);
+                count++;
+            }
+        } else {
+            // URA
+            if (use_ref) {
+                channel_map.push_back(0); // Ch0 -> positions[0]
+            }
+            for (int m = 1; m < num_antennas && m < 5; ++m) {
+                channel_map.push_back(m);
+            }
+        }
+        int n_positions = static_cast<int>(positions.size());
+        int active_ants = static_cast<int>(channel_map.size());
+        if (active_ants == 0) return;
+
+#if HAVE_OPTMATHKERNELS
+        // Batch precompute all steering vector exp(j*phase) values
+        // Layout: sv_phases[pos * n_total + angle_idx] where angle_idx = el*n_az + az
+        int n_total = n_az * n_el;
+        std::vector<float> sv_phases(n_positions * n_total);
+        std::vector<float> sv_re(n_positions * n_total);
+        std::vector<float> sv_im(n_positions * n_total);
+
         for (int el_idx = 0; el_idx < n_el; ++el_idx) {
-            float phi_deg = (n_el > 1) ? 90.0f * el_idx / (n_el - 1) : 0.0f; // 0 to 90
+            float phi_deg = (n_el > 1) ? 90.0f * el_idx / (n_el - 1) : 0.0f;
             float phi_rad = phi_deg * PI / 180.0f;
             float cos_phi = std::cos(phi_rad);
             float sin_phi = std::sin(phi_rad);
 
             for (int az_idx = 0; az_idx < n_az; ++az_idx) {
-                float theta_deg = -180.0f + 360.0f * az_idx / n_az; // -180 to 180
+                float theta_deg = -180.0f + 360.0f * az_idx / n_az;
                 float theta_rad = theta_deg * PI / 180.0f;
+                float ux = cos_phi * std::sin(theta_rad);
+                float uy = cos_phi * std::cos(theta_rad);
+                float uz = sin_phi;
 
-                // Unit vector
-                // North (Y) reference
+                int angle_idx = el_idx * n_az + az_idx;
+                for (int pi = 0; pi < n_positions; ++pi) {
+                    Pos p = positions[pi];
+                    sv_phases[pi * n_total + angle_idx] = -(k * (p.x * ux + p.y * uy + p.z * uz));
+                }
+            }
+        }
+
+        // Single batch complex_exp for ALL steering vectors per position
+        for (int pi = 0; pi < n_positions; ++pi) {
+            optmath::neon::neon_complex_exp_f32(
+                sv_re.data() + pi * n_total,
+                sv_im.data() + pi * n_total,
+                sv_phases.data() + pi * n_total,
+                n_total
+            );
+        }
+
+        // Accumulate beamformer output
+        float inv_ants_sq = 1.0f / (active_ants * active_ants);
+        for (int angle_idx = 0; angle_idx < n_total; ++angle_idx) {
+            float sum_re = 0.0f, sum_im = 0.0f;
+            for (int pi = 0; pi < n_positions; ++pi) {
+                int ch = channel_map[pi];
+                float w_re = sv_re[pi * n_total + angle_idx];
+                float w_im = sv_im[pi * n_total + angle_idx];
+                float a_re = antenna_data[ch].real();
+                float a_im = antenna_data[ch].imag();
+                sum_re += a_re * w_re - a_im * w_im;
+                sum_im += a_re * w_im + a_im * w_re;
+            }
+            float power = (sum_re * sum_re + sum_im * sum_im) * inv_ants_sq;
+            output_spectrum[angle_idx] = 10.0f * std::log10(power + 1e-12f);
+        }
+#else
+        // Scalar scan loop
+        for (int el_idx = 0; el_idx < n_el; ++el_idx) {
+            float phi_deg = (n_el > 1) ? 90.0f * el_idx / (n_el - 1) : 0.0f;
+            float phi_rad = phi_deg * PI / 180.0f;
+            float cos_phi = std::cos(phi_rad);
+            float sin_phi = std::sin(phi_rad);
+
+            for (int az_idx = 0; az_idx < n_az; ++az_idx) {
+                float theta_deg = -180.0f + 360.0f * az_idx / n_az;
+                float theta_rad = theta_deg * PI / 180.0f;
                 float ux = cos_phi * std::sin(theta_rad);
                 float uy = cos_phi * std::cos(theta_rad);
                 float uz = sin_phi;
 
                 Complex sum_val(0.0f, 0.0f);
-                int active_ants = 0;
-
-                // Iterate over *active* positions
-                // We need to map positions back to input indices.
-                // Positions list corresponds to:
-                // ULA: [Ch_start, Ch_start+1 ...]
-                // URA: [Ch0(opt), Ch1, Ch2, Ch3, Ch4]
-
-                int p_idx = 0;
-
-                // Map logical position index back to channel index
-                // This is slightly messy. Let's iterate channels.
-
-                if (type == ULA) {
-                    for (int m = start_idx; m < 5; ++m) {
-                        if (m >= num_antennas) break;
-                        Pos p = positions[p_idx++];
-                        float phase = k * (p.x * ux + p.y * uy + p.z * uz);
-                        Complex w = std::polar(1.0f, -phase);
-                        sum_val += antenna_data[m] * w;
-                        active_ants++;
-                    }
-                } else {
-                    // URA
-                    if (use_ref) {
-                        // Ch0
-                        Pos p = positions[0];
-                        float phase = k * (p.x * ux + p.y * uy + p.z * uz);
-                        sum_val += antenna_data[0] * std::polar(1.0f, -phase);
-                        active_ants++;
-                        p_idx = 1;
-                    }
-                    // Ch1..4 (bounded by actual num_antennas)
-                    for(int m=1; m < num_antennas && m < 5; ++m) {
-                        if (p_idx >= (int)positions.size()) break;
-                        Pos p = positions[p_idx++];
-                        float phase = k * (p.x * ux + p.y * uy + p.z * uz);
-                        sum_val += antenna_data[m] * std::polar(1.0f, -phase);
-                        active_ants++;
-                    }
+                for (int pi = 0; pi < n_positions; ++pi) {
+                    int ch = channel_map[pi];
+                    Pos p = positions[pi];
+                    float phase = k * (p.x * ux + p.y * uy + p.z * uz);
+                    Complex w = std::polar(1.0f, -phase);
+                    sum_val += antenna_data[ch] * w;
                 }
 
                 float p = std::norm(sum_val) / (active_ants * active_ants);
-
-                // Output grid is [El][Az] or [Az][El]?
-                // Let's do Row-Major: El * n_az + Az
                 output_spectrum[el_idx * n_az + az_idx] = 10.0f * std::log10(p + 1e-12f);
             }
         }
+#endif
     }
 };
 
@@ -251,26 +295,60 @@ extern "C" {
 
         // Assume ULA Ch1..4 (No Ref) for legacy 1D
         int start_idx = 1;
+        int n_elem = 5 - start_idx; // Ch1..4 = 4 elements
+
+#if HAVE_OPTMATHKERNELS
+        // Batch precompute steering phases for all angles x elements
+        int total_phases = n_angles * n_elem;
+        std::vector<float> phases(total_phases);
+        std::vector<float> sv_re(total_phases);
+        std::vector<float> sv_im(total_phases);
 
         for (int i = 0; i < n_angles; ++i) {
             float theta_deg = (n_angles > 1) ? -90.0f + (180.0f * i / (n_angles - 1)) : 0.0f;
             float theta_rad = theta_deg * PI / 180.0f;
             float ux = std::sin(theta_rad);
+            for (int m = 0; m < n_elem; ++m) {
+                float px = (float)m * d;
+                phases[i * n_elem + m] = -(k * px * ux);
+            }
+        }
+        optmath::neon::neon_complex_exp_f32(sv_re.data(), sv_im.data(), phases.data(), total_phases);
+
+        float inv_count_sq = 1.0f / (n_elem * n_elem);
+        for (int i = 0; i < n_angles; ++i) {
+            float sum_re = 0.0f, sum_im = 0.0f;
+            for (int m = 0; m < n_elem; ++m) {
+                int ch = start_idx + m;
+                float w_re = sv_re[i * n_elem + m];
+                float w_im = sv_im[i * n_elem + m];
+                float a_re = antenna_data[ch].real();
+                float a_im = antenna_data[ch].imag();
+                sum_re += a_re * w_re - a_im * w_im;
+                sum_im += a_re * w_im + a_im * w_re;
+            }
+            float p = (sum_re * sum_re + sum_im * sum_im) * inv_count_sq;
+            output[i] = 10.0f * std::log10(p + 1e-12f);
+        }
+#else
+        for (int i = 0; i < n_angles; ++i) {
+            float theta_deg = (n_angles > 1) ? -90.0f + (180.0f * i / (n_angles - 1)) : 0.0f;
+            float theta_rad = theta_deg * PI / 180.0f;
+            float ux = std::sin(theta_rad);
             float uy = std::cos(theta_rad);
-            // El=0 -> uz=0
 
             Complex sum_val(0.0f, 0.0f);
             int count = 0;
-            // Scan Ch1..4 as ULA
             for(int m=start_idx; m<5; ++m) {
                 float px = (float)count * d;
-                float phase = k * px * ux; // Dot product (y=0)
+                float phase = k * px * ux;
                 sum_val += antenna_data[m] * std::polar(1.0f, -phase);
                 count++;
             }
             float p = std::norm(sum_val) / (count * count);
             output[i] = 10.0f * std::log10(p + 1e-12f);
         }
+#endif
     }
 
     // 3D Process

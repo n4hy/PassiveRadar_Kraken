@@ -28,6 +28,12 @@ target_include_directories(gnuradio-kraken_passive_radar PRIVATE
     ${FFTW3F_INCLUDE_DIRS}
 )
 
+# OptMathKernels integration (optional NEON acceleration)
+if(OptMathKernels_FOUND)
+    target_compile_definitions(gnuradio-kraken_passive_radar PRIVATE HAVE_OPTMATHKERNELS=1)
+    target_link_libraries(gnuradio-kraken_passive_radar PUBLIC OptMathKernels::OptMathKernels)
+endif()
+
 target_include_directories(gnuradio-kraken_passive_radar PUBLIC
     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
     $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>

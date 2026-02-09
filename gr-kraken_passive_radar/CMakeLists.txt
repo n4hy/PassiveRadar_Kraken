@@ -29,6 +29,14 @@ message(STATUS "FFTW3 found: ${FFTW3_LIBRARIES}")
 # Find Volk (required for optimized vector operations)
 find_package(Volk REQUIRED)
 
+# OptMathKernels for NEON acceleration (optional)
+find_package(OptMathKernels QUIET)
+if(OptMathKernels_FOUND)
+    message(STATUS "OptMathKernels ${OptMathKernels_VERSION} found for OOT module")
+else()
+    message(STATUS "OptMathKernels >= 0.2.1 not found for OOT module - using scalar/VOLK")
+endif()
+
 # Set installation directories
 include(GNUInstallDirs)
 set(GR_RUNTIME_DIR ${CMAKE_INSTALL_BINDIR})

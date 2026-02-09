@@ -11,7 +11,11 @@
 #include <immintrin.h>
 #endif
 
-// arm_neon.h not needed - dot_prod uses compiler auto-vectorization
+#ifdef HAVE_OPTMATHKERNELS
+#include <optmath/neon_kernels.hpp>
+#else
+#define HAVE_OPTMATHKERNELS 0
+#endif
 
 #if defined(_MSC_VER)
     #define FORCE_INLINE __forceinline
@@ -114,8 +118,11 @@ private:
     std::vector<Complex> solver_L;
     std::vector<Complex> solver_y;
 
-    // Inline Dot Product for max compiler optimization
+    // Inline Dot Product - uses NEON when available
     static FORCE_INLINE float dot_prod(const float* a, const float* b, int n) {
+#if HAVE_OPTMATHKERNELS
+        return optmath::neon::neon_dot_f32(a, b, static_cast<std::size_t>(n));
+#else
         float sum = 0.0f;
         int i = 0;
         for (; i <= n - 8; i += 8) {
@@ -126,6 +133,7 @@ private:
             sum += a[i] * b[i];
         }
         return sum;
+#endif
     }
 
 public:

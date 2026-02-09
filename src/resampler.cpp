@@ -4,7 +4,11 @@
 #include <iostream>
 #include <algorithm>
 
-// SSE/AVX headers removed - dot_prod uses compiler auto-vectorization
+#ifdef HAVE_OPTMATHKERNELS
+#include <optmath/neon_kernels.hpp>
+#else
+#define HAVE_OPTMATHKERNELS 0
+#endif
 
 #if defined(_MSC_VER)
     #define FORCE_INLINE __forceinline
@@ -37,11 +41,12 @@ private:
     int current_phase;
     int excess_input_advance;
 
-    // Inline Dot Product for max compiler optimization
+    // Inline Dot Product - uses NEON when available
     static FORCE_INLINE float dot_prod(const float* a, const float* b, int n) {
+#if HAVE_OPTMATHKERNELS
+        return optmath::neon::neon_dot_f32(a, b, static_cast<std::size_t>(n));
+#else
         float sum = 0.0f;
-        // The compiler auto-vectorizer does a great job here with -O3 -ffast-math
-        // We unroll slightly to encourage it
         int i = 0;
         for (; i <= n - 8; i += 8) {
             sum += a[i] * b[i] + a[i+1] * b[i+1] + a[i+2] * b[i+2] + a[i+3] * b[i+3] +
@@ -51,6 +56,7 @@ private:
             sum += a[i] * b[i];
         }
         return sum;
+#endif
     }
 
 public:

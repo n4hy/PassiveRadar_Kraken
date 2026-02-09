@@ -9,6 +9,12 @@
 // Centralized FFTW init (shared across all .so files in this project)
 #include "fftw_init.h"
 
+#ifdef HAVE_OPTMATHKERNELS
+#include <optmath/neon_kernels.hpp>
+#else
+#define HAVE_OPTMATHKERNELS 0
+#endif
+
 using Complex = std::complex<float>;
 
 // Helper function to get index of max magnitude
@@ -24,6 +30,7 @@ class TimeAligner {
     int fft_len;
     fftwf_plan fwd_ref, fwd_surv, inv_out;
     fftwf_complex *buf_ref, *buf_surv, *buf_prod;
+    std::vector<float> interleaved_prod;
 
 public:
     TimeAligner(int samples) : n_samples(samples) {
@@ -40,6 +47,7 @@ public:
         fwd_ref = fftwf_plan_dft_1d(fft_len, buf_ref, buf_ref, FFTW_FORWARD, FFTW_ESTIMATE);
         fwd_surv = fftwf_plan_dft_1d(fft_len, buf_surv, buf_surv, FFTW_FORWARD, FFTW_ESTIMATE);
         inv_out = fftwf_plan_dft_1d(fft_len, buf_prod, buf_prod, FFTW_BACKWARD, FFTW_ESTIMATE);
+        interleaved_prod.resize(2 * fft_len);
     }
 
     ~TimeAligner() {
@@ -67,6 +75,21 @@ public:
         fftwf_execute(fwd_surv);
 
         float scale = 1.0f / fft_len;
+#if HAVE_OPTMATHKERNELS
+        // Interleaved conjugate multiply: surv * conj(ref)
+        // fftwf_complex is float[2], contiguous interleaved layout
+        optmath::neon::neon_complex_conj_mul_interleaved_f32(
+            interleaved_prod.data(),
+            reinterpret_cast<const float*>(buf_surv),
+            reinterpret_cast<const float*>(buf_ref),
+            fft_len
+        );
+        // Scale and copy to buf_prod
+        for (int i = 0; i < fft_len; i++) {
+            buf_prod[i][0] = interleaved_prod[2*i] * scale;
+            buf_prod[i][1] = interleaved_prod[2*i+1] * scale;
+        }
+#else
         for(int i=0; i<fft_len; ++i) {
             float sr = buf_surv[i][0];
             float si = buf_surv[i][1];
@@ -75,6 +98,7 @@ public:
             buf_prod[i][0] = (sr*rr - si*ri) * scale;
             buf_prod[i][1] = (sr*ri + si*rr) * scale;
         }
+#endif
 
         fftwf_execute(inv_out);
 
