@@ -5,12 +5,13 @@ This package provides:
 - Real-time radar displays (PPI, Range-Doppler)
 - Calibration and monitoring panels
 - Integration with GNU Radio signal processing blocks
+- GPU acceleration support (optional, runtime selectable)
 
 Copyright (c) 2026 Dr Robert W McGwier, PhD
 SPDX-License-Identifier: MIT
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __author__ = "Dr Robert W McGwier, PhD"
 
 from .radar_display import PPIDisplay, PPIDetection, PPITrack, PPIDisplayParams
@@ -22,6 +23,44 @@ from .range_doppler_display import (
 )
 from .calibration_panel import CalibrationPanel, CalibrationPanelParams, CalibrationStatus
 from .radar_gui import RadarGUI
+
+# GPU Backend (optional - only if GPU libraries installed)
+try:
+    from .gpu_backend import (
+        set_processing_backend,
+        get_active_backend,
+        is_gpu_available,
+        get_gpu_info,
+        GPUBackend,
+    )
+    GPU_AVAILABLE = True
+except ImportError:
+    # CPU-only mode (RPi5) - provide stub functions for API compatibility
+    GPU_AVAILABLE = False
+
+    def set_processing_backend(backend):
+        """Stub: GPU not available (CPU-only mode)."""
+        if backend != 'cpu':
+            import warnings
+            warnings.warn("GPU backend requested but not available. Using CPU.", RuntimeWarning)
+
+    def get_active_backend():
+        """Stub: Always returns 'cpu' in CPU-only mode."""
+        return 'cpu'
+
+    def is_gpu_available():
+        """Stub: Always returns False in CPU-only mode."""
+        return False
+
+    def get_gpu_info():
+        """Stub: Returns empty dict in CPU-only mode."""
+        return {}
+
+    class GPUBackend:
+        """Stub: Empty GPU backend class for CPU-only mode."""
+        @staticmethod
+        def is_available():
+            return False
 
 __all__ = [
     # Version
@@ -42,4 +81,11 @@ __all__ = [
     "CalibrationStatus",
     # Main GUI
     "RadarGUI",
+    # GPU Backend (available on all platforms, graceful fallback on CPU-only)
+    "GPU_AVAILABLE",
+    "set_processing_backend",
+    "get_active_backend",
+    "is_gpu_available",
+    "get_gpu_info",
+    "GPUBackend",
 ]

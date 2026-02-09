@@ -1,5 +1,6 @@
 # Build the ECA-B clutter canceller shared library for use via ctypes
-cmake_minimum_required(VERSION 3.8)
+# GPU acceleration support requires CMake 3.18+
+cmake_minimum_required(VERSION 3.18)
 project(kraken_passive_radar_kernels C CXX)
 
 # C++ Standard
@@ -72,6 +73,60 @@ if(OptMathKernels_FOUND)
 else()
     message(STATUS "OptMathKernels >= 0.2.1 not found - using scalar implementation")
 endif()
+
+#===============================================================================
+# GPU Acceleration (NVIDIA CUDA) - OPTIONAL, ADDITIVE ONLY
+#===============================================================================
+# Design Principle: GPU support is ADDITIVE, not MODIFYING
+# - RPi5 CPU-only builds work identically (zero changes to existing code)
+# - GPU libraries are additional, built only if CUDA is available
+# - Runtime backend selection (auto/gpu/cpu)
+#===============================================================================
+
+option(ENABLE_GPU "Build GPU-accelerated kernels (requires CUDA Toolkit)" ON)
+
+if(ENABLE_GPU)
+    # Check if CUDA compiler is available
+    include(CheckLanguage)
+    check_language(CUDA)
+
+    if(CMAKE_CUDA_COMPILER)
+        # CUDA found - enable GPU support
+        enable_language(CUDA)
+
+        # Find CUDA Toolkit (minimum 11.8 for C++17 support)
+        find_package(CUDAToolkit 11.8 QUIET)
+
+        if(CUDAToolkit_FOUND)
+            message(STATUS "========================================")
+            message(STATUS "GPU Acceleration: ENABLED")
+            message(STATUS "CUDA Toolkit: ${CUDAToolkit_VERSION}")
+            message(STATUS "CUDA Compiler: ${CMAKE_CUDA_COMPILER}")
+            message(STATUS "========================================")
+
+            # Add GPU subdirectory (contains all CUDA code)
+            add_subdirectory(gpu)
+
+            set(GPU_AVAILABLE TRUE)
+        else()
+            message(WARNING "CUDA compiler found but CUDA Toolkit >= 11.8 not found")
+            message(WARNING "GPU support DISABLED - install CUDA Toolkit 11.8 or newer")
+            set(GPU_AVAILABLE FALSE)
+        endif()
+    else()
+        message(STATUS "CUDA compiler not found - GPU support DISABLED")
+        message(STATUS "Building CPU-only version (RPi5 mode)")
+        set(GPU_AVAILABLE FALSE)
+    endif()
+else()
+    message(STATUS "GPU support DISABLED (ENABLE_GPU=OFF)")
+    message(STATUS "Building CPU-only version")
+    set(GPU_AVAILABLE FALSE)
+endif()
+
+#===============================================================================
+# End GPU Configuration - CPU libraries below are UNCHANGED
+#===============================================================================
 
 # Fallback if pkg-config fails (e.g. if environment isn't set up)
 if(NOT FFTW3_FOUND)
