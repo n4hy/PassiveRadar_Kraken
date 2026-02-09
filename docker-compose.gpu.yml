@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  passiveradar-gpu:
+    image: passiveradar-kraken:gpu-latest
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+    runtime: nvidia
+    environment:
+      - KRAKEN_GPU_BACKEND=auto
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    volumes:
+      - ./data:/data  # Mount data directory
+      - ./logs:/logs  # Mount logs directory
+    networks:
+      - radar-net
+    restart: unless-stopped
+
+  # Optional: CPU-only fallback
+  passiveradar-cpu:
+    image: passiveradar-kraken:cpu-latest
+    build:
+      context: .
+      dockerfile: Dockerfile.cpu  # TODO: Create CPU-only Dockerfile
+    environment:
+      - KRAKEN_GPU_BACKEND=cpu
+    volumes:
+      - ./data:/data
+      - ./logs:/logs
+    networks:
+      - radar-net
+    restart: unless-stopped
+    profiles:
+      - cpu-fallback  # Only start with --profile cpu-fallback
+
+networks:
+  radar-net:
+    driver: bridge
+
+volumes:
+  data:
+  logs:
