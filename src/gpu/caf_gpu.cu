@@ -1,7 +1,10 @@
 /**
- * GPU-Accelerated Cross-Ambiguity Function (CAF) Processing Implementation
+ * GPU-Accelerated CAF Processing - CORRECTED IMPLEMENTATION
  * Copyright (c) 2026 Dr Robert W McGwier, PhD
  * SPDX-License-Identifier: MIT
+ *
+ * Cross-Ambiguity Function (CAF) processing using NVIDIA CUDA.
+ * Matches CPU algorithm exactly: applies Doppler shift to REFERENCE signal.
  */
 
 #include "caf_gpu.h"
@@ -12,137 +15,170 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 
 /**
  * CAF Processor State (opaque to caller)
  */
 struct CAFProcessorGPU {
     // Parameters
-    int n_samples;
+    int n_samples;          // Input signal length
+    int fft_len;            // FFT length = next_power_of_2(2 * n_samples) for linear correlation
     int n_doppler;
     int n_range;
-    float doppler_start;
-    float doppler_step;
-    float sample_rate;
+    float doppler_start_hz;
+    float doppler_step_hz;
+    float sample_rate_hz;
 
     // cuFFT plans
-    cufftHandle fft_plan_ref;        // Forward FFT for reference
-    cufftHandle fft_plan_surv;       // Forward FFT for surveillance (batched)
-    cufftHandle ifft_plan;           // Inverse FFT (batched)
+    cufftHandle fft_plan_single;    // Single FFT for surveillance
+    cufftHandle fft_plan_batch;     // Batched FFT for Doppler-shifted reference
+    cufftHandle ifft_plan_batch;    // Batched IFFT for cross-correlation
 
-    // Device memory
-    cufftComplex* d_ref;             // Reference samples (complex)
-    cufftComplex* d_surv;            // Surveillance samples (complex)
-    cufftComplex* d_surv_doppler;    // Doppler-shifted surveillance (n_doppler copies)
-    cufftComplex* d_ref_fft;         // FFT of reference
-    cufftComplex* d_surv_fft;        // FFT of Doppler-shifted surveillance (batched)
-    cufftComplex* d_xcorr;           // Cross-correlation (batched)
-    float* d_output;                 // Output magnitude
+    // Device memory (CLEAR NAMES - match what they actually contain)
+    cufftComplex* d_reference;              // Reference signal (zero-padded to fft_len)
+    cufftComplex* d_surveillance;           // Surveillance signal (zero-padded to fft_len)
+    cufftComplex* d_ref_doppler_shifted;    // Doppler-shifted reference (n_doppler × fft_len)
+    cufftComplex* d_reference_fft_batch;    // FFT of Doppler-shifted reference (n_doppler × fft_len)
+    cufftComplex* d_surveillance_fft;       // FFT of surveillance (fft_len)
+    cufftComplex* d_cross_corr;             // Cross-correlation result (n_doppler × fft_len)
+    float*        d_output;                 // CAF magnitude output (n_doppler × n_range)
 
-    // Precomputed Doppler phasors (on GPU)
-    cufftComplex* d_doppler_phasors; // [n_doppler * n_samples]
+    // Precomputed Doppler phasors (n_doppler × n_samples)
+    cufftComplex* d_doppler_phasors;
 
-    // Host pinned memory for transfers
-    float* h_input_pinned;           // Pinned buffer for input
-    float* h_output_pinned;          // Pinned buffer for output
+    // Pinned host memory for fast transfers
+    float* h_input_pinned;
+    float* h_output_pinned;
 
     // CUDA stream for async operations
     cudaStream_t stream;
 };
 
 /**
- * CUDA Kernel: Interleaved float to complex conversion
+ * CUDA Kernel: Convert interleaved float (I,Q,I,Q,...) to cufftComplex with zero-padding
+ * Copies n_samples from input, zero-pads the rest to fft_len
  */
 __global__ void interleaved_to_complex_kernel(const float* __restrict__ input,
                                                cufftComplex* __restrict__ output,
-                                               int n_samples) {
+                                               int n_samples,
+                                               int fft_len) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < n_samples) {
-        output[idx].x = input[2 * idx];       // I
-        output[idx].y = input[2 * idx + 1];   // Q
+    if (idx < fft_len) {
+        if (idx < n_samples) {
+            output[idx].x = input[2 * idx];       // Real (I)
+            output[idx].y = input[2 * idx + 1];   // Imag (Q)
+        } else {
+            output[idx].x = 0.0f;  // Zero-pad
+            output[idx].y = 0.0f;
+        }
     }
 }
 
 /**
- * CUDA Kernel: Apply Doppler shift (batched across all Doppler bins)
+ * CUDA Kernel: Apply Doppler shift to REFERENCE signal (batched for all Doppler bins)
  *
- * Each thread processes one sample for one Doppler bin.
- * Grid: (n_doppler, n_samples/threads_per_block)
+ * Each Doppler bin gets: reference[t] * phasor[doppler, t] for t < n_samples, zero-padded to fft_len
+ * Grid: (n_doppler, ceil(fft_len / threads))
+ *
+ * NOTE: This applies shift to REFERENCE, not surveillance (to match CPU)
  */
-__global__ void apply_doppler_shift_kernel(const cufftComplex* __restrict__ surv,
-                                            const cufftComplex* __restrict__ phasors,
-                                            cufftComplex* __restrict__ surv_doppler,
-                                            int n_samples, int n_doppler) {
+__global__ void apply_doppler_shift_to_reference_kernel(
+    const cufftComplex* __restrict__ reference,     // Input: reference signal (zero-padded to fft_len)
+    const cufftComplex* __restrict__ phasors,       // Input: phasors (n_doppler × n_samples)
+    cufftComplex* __restrict__ ref_doppler_shifted, // Output: shifted ref (n_doppler × fft_len)
+    int n_samples,
+    int fft_len,
+    int n_doppler
+) {
     int doppler_idx = blockIdx.x;
-    int sample_idx = blockIdx.y * blockDim.x + threadIdx.x;
+    int fft_idx = blockIdx.y * blockDim.x + threadIdx.x;
 
-    if (doppler_idx < n_doppler && sample_idx < n_samples) {
-        int phasor_idx = doppler_idx * n_samples + sample_idx;
-        int output_idx = doppler_idx * n_samples + sample_idx;
+    if (doppler_idx < n_doppler && fft_idx < fft_len) {
+        int output_idx = doppler_idx * fft_len + fft_idx;
 
-        // Complex multiply: surv[sample_idx] * phasor[doppler_idx, sample_idx]
-        cufftComplex s = surv[sample_idx];
-        cufftComplex p = phasors[phasor_idx];
+        if (fft_idx < n_samples) {
+            // Apply Doppler shift: reference[fft_idx] * phasor[doppler_idx, fft_idx]
+            int phasor_idx = doppler_idx * n_samples + fft_idx;
+            cufftComplex ref = reference[fft_idx];
+            cufftComplex phasor = phasors[phasor_idx];
 
-        surv_doppler[output_idx].x = s.x * p.x - s.y * p.y;  // Real
-        surv_doppler[output_idx].y = s.x * p.y + s.y * p.x;  // Imag
+            ref_doppler_shifted[output_idx].x = ref.x * phasor.x - ref.y * phasor.y;  // Real
+            ref_doppler_shifted[output_idx].y = ref.x * phasor.y + ref.y * phasor.x;  // Imag
+        } else {
+            // Zero-pad beyond n_samples
+            ref_doppler_shifted[output_idx].x = 0.0f;
+            ref_doppler_shifted[output_idx].y = 0.0f;
+        }
     }
 }
 
 /**
- * CUDA Kernel: Complex conjugate multiply (element-wise)
- * ref_fft[i] * conj(surv_fft[doppler, i])
+ * CUDA Kernel: Complex conjugate multiply for cross-correlation
+ *
+ * Computes: surveillance_fft[i] * conj(reference_fft[doppler, i])
+ * This matches CPU: Surv_FFT * conj(Ref_FFT)
+ *
+ * Grid: (n_doppler, ceil(n_samples / threads))
  */
-__global__ void complex_conj_multiply_kernel(const cufftComplex* __restrict__ ref_fft,
-                                              const cufftComplex* __restrict__ surv_fft,
-                                              cufftComplex* __restrict__ xcorr,
-                                              int n_samples, int n_doppler) {
+__global__ void cross_correlation_multiply_kernel(
+    const cufftComplex* __restrict__ surv_fft,     // Input: surveillance FFT (fft_len)
+    const cufftComplex* __restrict__ ref_fft_batch,// Input: reference FFT batch (n_doppler × fft_len)
+    cufftComplex* __restrict__ xcorr,              // Output: cross-correlation (n_doppler × fft_len)
+    int fft_len,
+    int n_doppler
+) {
     int doppler_idx = blockIdx.x;
-    int sample_idx = blockIdx.y * blockDim.x + threadIdx.x;
+    int fft_idx = blockIdx.y * blockDim.x + threadIdx.x;
 
-    if (doppler_idx < n_doppler && sample_idx < n_samples) {
-        int idx = doppler_idx * n_samples + sample_idx;
+    if (doppler_idx < n_doppler && fft_idx < fft_len) {
+        int batch_idx = doppler_idx * fft_len + fft_idx;
 
-        cufftComplex r = ref_fft[sample_idx];
-        cufftComplex s = surv_fft[idx];
+        cufftComplex surv = surv_fft[fft_idx];                   // Surveillance (same for all Doppler)
+        cufftComplex ref = ref_fft_batch[batch_idx];            // Reference (different per Doppler)
 
-        // Conjugate multiply: r * conj(s) = (r.x + i*r.y) * (s.x - i*s.y)
-        xcorr[idx].x = r.x * s.x + r.y * s.y;  // Real
-        xcorr[idx].y = r.y * s.x - r.x * s.y;  // Imag
+        // Normalize (matches CPU: applies 1/fft_len before IFFT)
+        float scale = 1.0f / fft_len;
+
+        // Compute: surv * conj(ref) * scale = (surv.x + i*surv.y) * (ref.x - i*ref.y) * scale
+        xcorr[batch_idx].x = (surv.x * ref.x + surv.y * ref.y) * scale;  // Real
+        xcorr[batch_idx].y = (surv.y * ref.x - surv.x * ref.y) * scale;  // Imag
     }
 }
 
 /**
  * CUDA Kernel: Extract magnitude from complex IFFT result
- * NOTE: cuFFT doesn't normalize IFFT, so we must divide by n_samples
+ *
+ * NOTE: Normalization already applied before IFFT (in cross_correlation_multiply_kernel)
+ * Extracts only first n_range samples from fft_len-length IFFT output
  */
-__global__ void extract_magnitude_kernel(const cufftComplex* __restrict__ xcorr,
-                                          float* __restrict__ output,
-                                          int n_samples, int n_doppler) {
+__global__ void extract_magnitude_kernel(
+    const cufftComplex* __restrict__ xcorr,  // Input: IFFT result (n_doppler × fft_len)
+    float* __restrict__ output,              // Output: magnitude (n_doppler × n_range)
+    int fft_len,
+    int n_range,
+    int n_doppler
+) {
     int doppler_idx = blockIdx.x;
     int range_idx = blockIdx.y * blockDim.x + threadIdx.x;
 
-    if (doppler_idx < n_doppler && range_idx < n_samples) {
-        int input_idx = doppler_idx * n_samples + range_idx;
-        // Output layout: [n_doppler x n_range] row-major (matches CPU)
-        int output_idx = doppler_idx * n_samples + range_idx;
+    if (doppler_idx < n_doppler && range_idx < n_range) {
+        // Input has fft_len samples per Doppler bin
+        int input_idx = doppler_idx * fft_len + range_idx;
 
         cufftComplex c = xcorr[input_idx];
 
-        // Normalize by n_samples (cuFFT doesn't normalize IFFT)
-        float scale = 1.0f / n_samples;
-        float real_norm = c.x * scale;
-        float imag_norm = c.y * scale;
-
-        output[output_idx] = sqrtf(real_norm * real_norm + imag_norm * imag_norm);
+        // Output layout: [n_doppler × n_range] row-major (matches CPU)
+        int output_idx = doppler_idx * n_range + range_idx;
+        output[output_idx] = sqrtf(c.x * c.x + c.y * c.y);
     }
 }
 
 /**
  * Precompute Doppler phasors on GPU
+ * Phasor[doppler, t] = exp(-j * 2 * pi * fd * t / sample_rate)
  */
 static int precompute_doppler_phasors(CAFProcessorGPU* proc) {
-    // Allocate host buffer
     size_t phasor_size = proc->n_doppler * proc->n_samples * sizeof(cufftComplex);
     cufftComplex* h_phasors = (cufftComplex*)malloc(phasor_size);
     if (!h_phasors) {
@@ -150,15 +186,15 @@ static int precompute_doppler_phasors(CAFProcessorGPU* proc) {
         return -1;
     }
 
-    // Compute phasors on CPU (one-time cost)
-    const float two_pi = 2.0f * M_PI;
+    // Compute phasors on CPU
+    const float PI = 3.14159265358979323846f;
     for (int d = 0; d < proc->n_doppler; d++) {
-        float doppler_freq = proc->doppler_start + d * proc->doppler_step;
-        for (int n = 0; n < proc->n_samples; n++) {
-            float phase = two_pi * doppler_freq * n / proc->sample_rate;
-            int idx = d * proc->n_samples + n;
-            h_phasors[idx].x = cosf(-phase);  // Real (negative for Doppler shift)
-            h_phasors[idx].y = sinf(-phase);  // Imag
+        float fd = proc->doppler_start_hz + d * proc->doppler_step_hz;
+        for (int t = 0; t < proc->n_samples; t++) {
+            float phase = -2.0f * PI * fd * t / proc->sample_rate_hz;
+            int idx = d * proc->n_samples + t;
+            h_phasors[idx].x = cosf(phase);  // Real
+            h_phasors[idx].y = sinf(phase);  // Imag
         }
     }
 
@@ -183,8 +219,12 @@ static int precompute_doppler_phasors(CAFProcessorGPU* proc) {
  */
 extern "C"
 void* caf_gpu_create_full(int n_samples, int n_doppler, int n_range,
-                          float doppler_start, float doppler_step,
-                          float sample_rate) {
+                           float doppler_start_hz, float doppler_step_hz,
+                           float sample_rate_hz) {
+    if (n_samples <= 0 || n_doppler <= 0 || n_range <= 0) {
+        return nullptr;
+    }
+
     CAFProcessorGPU* proc = new CAFProcessorGPU;
     if (!proc) {
         return nullptr;
@@ -194,9 +234,16 @@ void* caf_gpu_create_full(int n_samples, int n_doppler, int n_range,
     proc->n_samples = n_samples;
     proc->n_doppler = n_doppler;
     proc->n_range = n_range;
-    proc->doppler_start = doppler_start;
-    proc->doppler_step = doppler_step;
-    proc->sample_rate = sample_rate;
+    proc->doppler_start_hz = doppler_start_hz;
+    proc->doppler_step_hz = doppler_step_hz;
+    proc->sample_rate_hz = sample_rate_hz;
+
+    // Compute FFT length: next power of 2 >= 2 * n_samples (for linear correlation)
+    proc->fft_len = 1;
+    while (proc->fft_len < 2 * n_samples) {
+        proc->fft_len <<= 1;
+    }
+    printf("CAF GPU: n_samples=%d, fft_len=%d (for linear correlation)\n", n_samples, proc->fft_len);
 
     // Create CUDA stream
     if (cudaStreamCreate(&proc->stream) != cudaSuccess) {
@@ -205,21 +252,22 @@ void* caf_gpu_create_full(int n_samples, int n_doppler, int n_range,
         return nullptr;
     }
 
-    // Allocate device memory
-    size_t sample_size = n_samples * sizeof(cufftComplex);
-    size_t doppler_batch_size = n_doppler * n_samples * sizeof(cufftComplex);
+    // Allocate device memory (using fft_len for zero-padded signals)
+    size_t fft_size = proc->fft_len * sizeof(cufftComplex);
+    size_t batch_size = n_doppler * proc->fft_len * sizeof(cufftComplex);
     size_t output_size = n_range * n_doppler * sizeof(float);
 
-    proc->d_ref = (cufftComplex*)kraken_gpu_alloc(sample_size);
-    proc->d_surv = (cufftComplex*)kraken_gpu_alloc(sample_size);
-    proc->d_surv_doppler = (cufftComplex*)kraken_gpu_alloc(doppler_batch_size);
-    proc->d_ref_fft = (cufftComplex*)kraken_gpu_alloc(sample_size);
-    proc->d_surv_fft = (cufftComplex*)kraken_gpu_alloc(doppler_batch_size);
-    proc->d_xcorr = (cufftComplex*)kraken_gpu_alloc(doppler_batch_size);
+    proc->d_reference = (cufftComplex*)kraken_gpu_alloc(fft_size);
+    proc->d_surveillance = (cufftComplex*)kraken_gpu_alloc(fft_size);
+    proc->d_ref_doppler_shifted = (cufftComplex*)kraken_gpu_alloc(batch_size);
+    proc->d_reference_fft_batch = (cufftComplex*)kraken_gpu_alloc(batch_size);
+    proc->d_surveillance_fft = (cufftComplex*)kraken_gpu_alloc(fft_size);
+    proc->d_cross_corr = (cufftComplex*)kraken_gpu_alloc(batch_size);
     proc->d_output = (float*)kraken_gpu_alloc(output_size);
 
-    if (!proc->d_ref || !proc->d_surv || !proc->d_surv_doppler ||
-        !proc->d_ref_fft || !proc->d_surv_fft || !proc->d_xcorr || !proc->d_output) {
+    if (!proc->d_reference || !proc->d_surveillance || !proc->d_ref_doppler_shifted ||
+        !proc->d_reference_fft_batch || !proc->d_surveillance_fft ||
+        !proc->d_cross_corr || !proc->d_output) {
         fprintf(stderr, "Failed to allocate GPU memory\n");
         caf_gpu_destroy(proc);
         return nullptr;
@@ -242,32 +290,32 @@ void* caf_gpu_create_full(int n_samples, int n_doppler, int n_range,
         return nullptr;
     }
 
-    // Create cuFFT plans
-    // Reference: single 1D FFT
-    if (cufftPlan1d(&proc->fft_plan_ref, n_samples, CUFFT_C2C, 1) != CUFFT_SUCCESS) {
-        fprintf(stderr, "Failed to create reference FFT plan\n");
-        caf_gpu_destroy(proc);
-        return nullptr;
-    }
-
-    // Surveillance: batched 1D FFT (n_doppler FFTs of length n_samples)
-    if (cufftPlan1d(&proc->fft_plan_surv, n_samples, CUFFT_C2C, n_doppler) != CUFFT_SUCCESS) {
+    // Create cuFFT plans (using fft_len for linear correlation)
+    // Plan 1: Single 1D FFT for surveillance (zero-padded to fft_len)
+    if (cufftPlan1d(&proc->fft_plan_single, proc->fft_len, CUFFT_C2C, 1) != CUFFT_SUCCESS) {
         fprintf(stderr, "Failed to create surveillance FFT plan\n");
         caf_gpu_destroy(proc);
         return nullptr;
     }
 
-    // IFFT: batched (n_doppler IFFTs of length n_samples)
-    if (cufftPlan1d(&proc->ifft_plan, n_samples, CUFFT_C2C, n_doppler) != CUFFT_SUCCESS) {
-        fprintf(stderr, "Failed to create IFFT plan\n");
+    // Plan 2: Batched 1D FFT for Doppler-shifted reference (n_doppler FFTs of length fft_len)
+    if (cufftPlan1d(&proc->fft_plan_batch, proc->fft_len, CUFFT_C2C, n_doppler) != CUFFT_SUCCESS) {
+        fprintf(stderr, "Failed to create batched reference FFT plan\n");
+        caf_gpu_destroy(proc);
+        return nullptr;
+    }
+
+    // Plan 3: Batched IFFT for cross-correlation (n_doppler IFFTs of length fft_len)
+    if (cufftPlan1d(&proc->ifft_plan_batch, proc->fft_len, CUFFT_C2C, n_doppler) != CUFFT_SUCCESS) {
+        fprintf(stderr, "Failed to create batched IFFT plan\n");
         caf_gpu_destroy(proc);
         return nullptr;
     }
 
     // Set cuFFT stream for async execution
-    cufftSetStream(proc->fft_plan_ref, proc->stream);
-    cufftSetStream(proc->fft_plan_surv, proc->stream);
-    cufftSetStream(proc->ifft_plan, proc->stream);
+    cufftSetStream(proc->fft_plan_single, proc->stream);
+    cufftSetStream(proc->fft_plan_batch, proc->stream);
+    cufftSetStream(proc->ifft_plan_batch, proc->stream);
 
     return (void*)proc;
 }
@@ -284,17 +332,17 @@ void caf_gpu_destroy(void* handle) {
     CAFProcessorGPU* proc = (CAFProcessorGPU*)handle;
 
     // Destroy cuFFT plans
-    if (proc->fft_plan_ref) cufftDestroy(proc->fft_plan_ref);
-    if (proc->fft_plan_surv) cufftDestroy(proc->fft_plan_surv);
-    if (proc->ifft_plan) cufftDestroy(proc->ifft_plan);
+    if (proc->fft_plan_single) cufftDestroy(proc->fft_plan_single);
+    if (proc->fft_plan_batch) cufftDestroy(proc->fft_plan_batch);
+    if (proc->ifft_plan_batch) cufftDestroy(proc->ifft_plan_batch);
 
     // Free device memory
-    kraken_gpu_free(proc->d_ref);
-    kraken_gpu_free(proc->d_surv);
-    kraken_gpu_free(proc->d_surv_doppler);
-    kraken_gpu_free(proc->d_ref_fft);
-    kraken_gpu_free(proc->d_surv_fft);
-    kraken_gpu_free(proc->d_xcorr);
+    kraken_gpu_free(proc->d_reference);
+    kraken_gpu_free(proc->d_surveillance);
+    kraken_gpu_free(proc->d_ref_doppler_shifted);
+    kraken_gpu_free(proc->d_reference_fft_batch);
+    kraken_gpu_free(proc->d_surveillance_fft);
+    kraken_gpu_free(proc->d_cross_corr);
     kraken_gpu_free(proc->d_output);
     kraken_gpu_free(proc->d_doppler_phasors);
 
@@ -312,6 +360,14 @@ void caf_gpu_destroy(void* handle) {
 
 /**
  * Process one CPI through GPU CAF pipeline
+ *
+ * Algorithm (matches CPU exactly):
+ * 1. Apply Doppler shift to REFERENCE signal (batched for all Doppler bins)
+ * 2. FFT Doppler-shifted reference (batched)
+ * 3. FFT surveillance signal (single)
+ * 4. Cross-correlation multiply: Surv_FFT * conj(Ref_FFT) (batched)
+ * 5. IFFT (batched)
+ * 6. Extract magnitude with normalization
  */
 extern "C"
 void caf_gpu_process_full(void* handle, const float* ref, const float* surv,
@@ -322,82 +378,95 @@ void caf_gpu_process_full(void* handle, const float* ref, const float* surv,
 
     CAFProcessorGPU* proc = (CAFProcessorGPU*)handle;
 
-    // ========================================================================
-    // Step 1: Convert interleaved float to complex and transfer to GPU
-    // ========================================================================
-
-    // Copy reference to pinned buffer and transfer
-    memcpy(proc->h_input_pinned, ref, 2 * proc->n_samples * sizeof(float));
-    kraken_gpu_memcpy_h2d_async(proc->d_ref, proc->h_input_pinned,
-                                2 * proc->n_samples * sizeof(float),
-                                proc->stream);
-
-    // Convert reference from interleaved float to complex
     int threads = 256;
-    int blocks = (proc->n_samples + threads - 1) / threads;
-    interleaved_to_complex_kernel<<<blocks, threads, 0, proc->stream>>>(
-        (float*)proc->d_ref, proc->d_ref, proc->n_samples
-    );
+    int blocks_fft = (proc->fft_len + threads - 1) / threads;
 
-    // Copy surveillance to pinned buffer and transfer
-    memcpy(proc->h_input_pinned, surv, 2 * proc->n_samples * sizeof(float));
-    kraken_gpu_memcpy_h2d_async(proc->d_surv, proc->h_input_pinned,
+    // ========================================================================
+    // Step 1: Transfer reference and surveillance to GPU, convert to complex with zero-padding
+    // ========================================================================
+
+    // Reference signal (copy n_samples, zero-pad to fft_len)
+    memcpy(proc->h_input_pinned, ref, 2 * proc->n_samples * sizeof(float));
+    kraken_gpu_memcpy_h2d_async(proc->d_reference, proc->h_input_pinned,
                                 2 * proc->n_samples * sizeof(float),
                                 proc->stream);
+    interleaved_to_complex_kernel<<<blocks_fft, threads, 0, proc->stream>>>(
+        (float*)proc->d_reference, proc->d_reference, proc->n_samples, proc->fft_len
+    );
 
-    // Convert surveillance from interleaved float to complex
-    interleaved_to_complex_kernel<<<blocks, threads, 0, proc->stream>>>(
-        (float*)proc->d_surv, proc->d_surv, proc->n_samples
+    // Surveillance signal (copy n_samples, zero-pad to fft_len)
+    memcpy(proc->h_input_pinned, surv, 2 * proc->n_samples * sizeof(float));
+    kraken_gpu_memcpy_h2d_async(proc->d_surveillance, proc->h_input_pinned,
+                                2 * proc->n_samples * sizeof(float),
+                                proc->stream);
+    interleaved_to_complex_kernel<<<blocks_fft, threads, 0, proc->stream>>>(
+        (float*)proc->d_surveillance, proc->d_surveillance, proc->n_samples, proc->fft_len
     );
 
     // ========================================================================
-    // Step 2: Apply Doppler shifts to REFERENCE (to match CPU implementation)
+    // Step 2: Apply Doppler shifts to REFERENCE (batched for all Doppler bins)
     // ========================================================================
 
-    dim3 doppler_blocks(proc->n_doppler, (proc->n_samples + threads - 1) / threads);
-    apply_doppler_shift_kernel<<<doppler_blocks, threads, 0, proc->stream>>>(
-        proc->d_ref, proc->d_doppler_phasors, proc->d_surv_doppler,
-        proc->n_samples, proc->n_doppler
+    dim3 doppler_grid(proc->n_doppler, (proc->fft_len + threads - 1) / threads);
+    apply_doppler_shift_to_reference_kernel<<<doppler_grid, threads, 0, proc->stream>>>(
+        proc->d_reference,
+        proc->d_doppler_phasors,
+        proc->d_ref_doppler_shifted,
+        proc->n_samples,
+        proc->fft_len,
+        proc->n_doppler
     );
 
     // ========================================================================
-    // Step 3: Batched FFT (Doppler-shifted reference + surveillance)
+    // Step 3: FFT surveillance (single, unshifted)
     // ========================================================================
 
-    // FFT surveillance (single, unshifted)
-    cufftExecC2C(proc->fft_plan_ref, proc->d_surv, proc->d_ref_fft, CUFFT_FORWARD);
-
-    // FFT reference (batched - all Doppler bins in one call)
-    cufftExecC2C(proc->fft_plan_surv, proc->d_surv_doppler, proc->d_surv_fft, CUFFT_FORWARD);
+    cufftExecC2C(proc->fft_plan_single, proc->d_surveillance,
+                 proc->d_surveillance_fft, CUFFT_FORWARD);
 
     // ========================================================================
-    // Step 4: Complex conjugate multiply (cross-correlation in frequency domain)
-    // CPU does: shifted_ref_fft * conj(surv_fft)
-    // So we pass surv_fft as first arg (gets conjugated), shifted_ref_fft as second
+    // Step 4: FFT Doppler-shifted reference (batched - all Doppler bins)
     // ========================================================================
 
-    dim3 xcorr_blocks(proc->n_doppler, (proc->n_samples + threads - 1) / threads);
-    complex_conj_multiply_kernel<<<xcorr_blocks, threads, 0, proc->stream>>>(
-        proc->d_surv_fft, proc->d_ref_fft, proc->d_xcorr,
-        proc->n_samples, proc->n_doppler
+    cufftExecC2C(proc->fft_plan_batch, proc->d_ref_doppler_shifted,
+                 proc->d_reference_fft_batch, CUFFT_FORWARD);
+
+    // ========================================================================
+    // Step 5: Cross-correlation multiply: Surv_FFT * conj(Ref_FFT)
+    // ========================================================================
+
+    cross_correlation_multiply_kernel<<<doppler_grid, threads, 0, proc->stream>>>(
+        proc->d_surveillance_fft,
+        proc->d_reference_fft_batch,
+        proc->d_cross_corr,
+        proc->fft_len,
+        proc->n_doppler
     );
 
     // ========================================================================
-    // Step 5: Batched IFFT (cross-correlation back to time domain)
+    // Step 6: IFFT (batched - all Doppler bins)
     // ========================================================================
 
-    cufftExecC2C(proc->ifft_plan, proc->d_xcorr, proc->d_xcorr, CUFFT_INVERSE);
+    cufftExecC2C(proc->ifft_plan_batch, proc->d_cross_corr,
+                 proc->d_cross_corr, CUFFT_INVERSE);
 
     // ========================================================================
-    // Step 6: Extract magnitude and transfer to host
+    // Step 7: Extract magnitude (only first n_range samples)
     // ========================================================================
 
-    dim3 mag_blocks(proc->n_doppler, (proc->n_samples + threads - 1) / threads);
-    extract_magnitude_kernel<<<mag_blocks, threads, 0, proc->stream>>>(
-        proc->d_xcorr, proc->d_output, proc->n_samples, proc->n_doppler
+    dim3 range_grid(proc->n_doppler, (proc->n_range + threads - 1) / threads);
+    extract_magnitude_kernel<<<range_grid, threads, 0, proc->stream>>>(
+        proc->d_cross_corr,
+        proc->d_output,
+        proc->fft_len,
+        proc->n_range,
+        proc->n_doppler
     );
 
-    // Transfer result to host (async to pinned buffer)
+    // ========================================================================
+    // Step 8: Transfer result to host
+    // ========================================================================
+
     size_t output_size = proc->n_range * proc->n_doppler * sizeof(float);
     kraken_gpu_memcpy_d2h_async(proc->h_output_pinned, proc->d_output,
                                 output_size, proc->stream);

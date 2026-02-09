@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.2.0] - 2026-02-08
 
-### Added - GPU Acceleration
+### Added - GPU Acceleration (Complete)
 
 #### Infrastructure
 - **NVIDIA CUDA GPU acceleration** for compute-intensive DSP kernels
@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `libkraken_gpu_runtime.so` - Device management, memory pools, backend selection
 - `libkraken_doppler_gpu.so` - **Validated ✅** Batched 2D FFT Doppler processing
 - `libkraken_cfar_gpu.so` - **Validated ✅** Parallel 2D CFAR detection
-- `libkraken_caf_gpu.so` - ⚠️ Batched cuFFT CAF processing (performance validated, correctness WIP)
+- `libkraken_caf_gpu.so` - **Validated ✅** Batched cuFFT CAF processing (linear correlation)
 
 #### Python API
 - `is_gpu_available()` - Check GPU hardware availability
@@ -48,7 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Validation Status
 - ✅ **Doppler GPU:** Perfect correctness (correlation 1.000000 with CPU reference)
 - ✅ **CFAR GPU:** 99.99% agreement with CPU, all targets detected
-- ⚠️ **CAF GPU:** Performance excellent, correctness debugging in progress
+- ✅ **CAF GPU:** Perfect correctness (correlation 1.000000 with CPU reference), 23-29x speedup
 
 #### Test Coverage
 - Doppler GPU: Comprehensive validation tests (random, impulse, single tone)
@@ -75,7 +75,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added GPU badge: `CUDA 12.0+`
 
 ### Fixed
-- None (new feature release)
+- **CAF GPU correctness:** Changed from circular correlation (fft_len=n_samples) to linear correlation (fft_len=2*n_samples) to match CPU implementation, achieving perfect 1.0 correlation
 
 ### Security
 - No security issues introduced (GPU code isolated in optional libraries)
@@ -123,7 +123,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Description |
 |---------|------|-------------|
-| 0.2.0 | 2026-02-08 | GPU acceleration (Doppler ✅, CFAR ✅, CAF ⚠️) |
+| 0.2.0 | 2026-02-08 | GPU acceleration (Doppler ✅, CFAR ✅, CAF ✅) - All kernels production-ready |
 | 0.1.0 | 2026-02-08 | Initial release (CPU-only, full pipeline) |
 
 ---

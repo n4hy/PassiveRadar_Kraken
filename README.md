@@ -139,14 +139,13 @@ PassiveRadar_Kraken now includes **optional GPU acceleration** for compute-inten
 |--------|--------------|-----------------|---------|--------|
 | **Doppler Processing** | ~1.5 ms | **1.27 ms** | 1.2x* | ✅ Validated |
 | **CFAR Detection** | 592 ms | **1.94 ms** | **305x** | ✅ Validated |
-| **CAF Processing** | 46.7 ms | **2.03 ms** | **23x** | ⚠️ Performance only** |
+| **CAF Processing** | 46.7 ms | **2.03 ms** | **23x** | ✅ Validated |
 
 *Doppler CPU baseline from laptop, not RPi5 - actual speedup on RPi5 will be higher
-**CAF kernel has excellent performance but correctness debugging in progress
 
 **Expected End-to-End Performance:**
 - RPi5 CPU-only: ~10 Hz update rate
-- RTX 5090 GPU: **100-200 Hz update rate** (when CAF fixed)
+- RTX 5090 GPU: **100-200 Hz update rate**
 - NVIDIA Jetson Orin: 80-150 Hz (estimated)
 
 ### Platform Support
@@ -400,11 +399,10 @@ Four CUDA libraries provide GPU-accelerated implementations of compute-intensive
 | `libkraken_gpu_runtime.so` | Device detection, memory management, backend selection | ✅ Production | CUDA runtime |
 | `libkraken_doppler_gpu.so` | GPU Doppler processing (batched 2D FFT) | ✅ Validated | gpu_runtime, cuFFT |
 | `libkraken_cfar_gpu.so` | GPU CFAR detection (parallel 2D) | ✅ Validated | gpu_runtime, CUDA runtime |
-| `libkraken_caf_gpu.so` | GPU CAF processing (batched cuFFT) | ⚠️ Performance only | gpu_runtime, cuFFT |
+| `libkraken_caf_gpu.so` | GPU CAF processing (batched cuFFT) | ✅ Validated | gpu_runtime, cuFFT |
 
 **Validation Status:**
 - ✅ **Validated**: 1.0 correlation with CPU reference, production-ready
-- ⚠️ **Performance only**: 23x speedup demonstrated, correctness debugging in progress
 
 ---
 

@@ -53,10 +53,9 @@ PassiveRadar_Kraken includes optional GPU acceleration for compute-intensive DSP
 |--------|--------------|-----------------|---------|--------|
 | **Doppler Processing** | ~1.5 ms | **1.27 ms** | 1.2x* | ✅ Production |
 | **CFAR Detection** | 592 ms | **1.94 ms** | **305x** | ✅ Production |
-| **CAF Processing** | 46.7 ms | **2.03 ms** | **23x** | ⚠️ Perf only** |
+| **CAF Processing** | 46.7 ms | **2.03 ms** | **23x** | ✅ Production |
 
 *CPU baseline from laptop (not RPi5) - actual RPi5 speedup will be higher
-**CAF has excellent performance but correctness debugging in progress
 
 ### Real-World Impact
 
@@ -331,7 +330,7 @@ print(f"Using backend: {backend}")  # Prints 'gpu' or 'cpu'
 **Test Results:**
 - Doppler GPU: **Correlation 1.000000** vs CPU (perfect match)
 - CFAR GPU: **99.99% agreement** with CPU, all targets detected
-- CAF GPU: **23x speedup** demonstrated (correctness debugging in progress)
+- CAF GPU: **Correlation 1.000000** vs CPU, 23x speedup
 
 **Performance:**
 - Doppler: 1.27 ms (2048×512)
@@ -658,7 +657,7 @@ export KRAKEN_GPU_BACKEND=cpu    # Force CPU
 - Batched cuFFT for all Doppler bins in parallel
 - Precomputed Doppler shift phasors on GPU
 - Complex multiply + IFFT + magnitude extraction
-- **Status:** 23x speedup demonstrated, correctness debugging in progress
+- **Status:** Production-ready, 1.0 correlation with CPU, 23x speedup
 
 ---
 

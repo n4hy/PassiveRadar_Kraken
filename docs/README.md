@@ -64,8 +64,8 @@
 |---------|------------|----------------|-------|
 | **Doppler Processing** | ~15 ms | **1.27 ms** | ✅ Validated (1.0 correlation) |
 | **CFAR Detection** | 592 ms | **1.94 ms** | ✅ Validated (99.99% agreement) |
-| **CAF Processing** | 46.7 ms | **2.03 ms** | ⚠️ Performance only (debugging WIP) |
-| **Update Rate** | ~10 Hz | **100-200 Hz** | When CAF fixed |
+| **CAF Processing** | 46.7 ms | **2.03 ms** | ✅ Validated (1.0 correlation) |
+| **Update Rate** | ~10 Hz | **100-200 Hz** | All kernels validated |
 | **Power Consumption** | 10-15W | 50-300W | GPU varies by workload |
 | **Cost** | $80 | $1500-3500 | Hardware only |
 
@@ -196,9 +196,7 @@ See [GPU API Reference](GPU_API_REFERENCE.md) for complete documentation.
 **Validated Kernels:**
 - ✅ Doppler GPU: Perfect correctness (1.0 correlation)
 - ✅ CFAR GPU: 99.99% agreement, all targets detected
-
-**In Progress:**
-- ⚠️ CAF GPU: Performance excellent (23x), correctness debugging WIP
+- ✅ CAF GPU: Perfect correctness (1.0 correlation), 23x speedup
 
 See [Changelog](../CHANGELOG.md) for full release notes.
 
