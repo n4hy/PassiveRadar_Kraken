@@ -117,7 +117,9 @@ class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
 
         # Phase calibration state (thread-safe via cal_lock)
         self.phase_history = []       # list of (elapsed_sec, phase_deg)
-        self.drift_rate = 0.0         # deg/sec from linear fit
+        self.drift_coeffs = np.zeros(3)  # [a, b, c] for a*t^2 + b*t + c (parabolic fit)
+        self.coeffs_history = []      # list of (t, a, b, c) — model snapshot at each cal point
+        self.drift_tau = 10.0             # exponential weight time constant (seconds)
         self.start_time = time.time()
         self.cal_lock = threading.Lock()
         self._cal_stop = threading.Event()
@@ -241,7 +243,10 @@ class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
                                                label='Measured')
         self.phase_trend, = self.phase_ax.plot([], [], '--', color='red',
                                                 linewidth=1.5, alpha=0.7,
-                                                label='Linear fit')
+                                                label='Piecewise prediction')
+        self.phase_extrap, = self.phase_ax.plot([], [], '--', color='orange',
+                                                 linewidth=1.2, alpha=0.8,
+                                                 label='Extrapolation')
         self.phase_ax.set_xlabel('Time (s)')
         self.phase_ax.set_ylabel('Phase Offset (deg)')
         self.phase_ax.set_title('Inter-channel Phase Drift — Waiting...')
@@ -396,15 +401,29 @@ class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
             with self.cal_lock:
                 self.phase_history.append((elapsed, phase_deg))
 
-                if len(self.phase_history) >= 2:
+                if len(self.phase_history) >= 3:
                     times = np.array([p[0] for p in self.phase_history])
                     phases_deg = np.array([p[1] for p in self.phase_history])
-                    # Unwrap to handle +-180 wrapping
                     phases_unwrapped = np.degrees(np.unwrap(np.radians(phases_deg)))
-                    # Linear fit: phase(t) = drift_rate * t + offset
-                    coeffs = np.polyfit(times, phases_unwrapped, 1)
-                    self.drift_rate = coeffs[0]  # deg/sec
-                    drift_str = f"{self.drift_rate:+.3f} deg/s"
+                    # Exponential weights: recent data weighted more heavily
+                    # w_i = exp(-(t_now - t_i) / tau)
+                    weights = np.exp(-(times[-1] - times) / self.drift_tau)
+                    # Parabolic fit: phase(t) = a*t^2 + b*t + c
+                    self.drift_coeffs = np.polyfit(times, phases_unwrapped, 2, w=weights)
+                    self.coeffs_history.append((elapsed, self.drift_coeffs[0],
+                                                self.drift_coeffs[1], self.drift_coeffs[2]))
+                    # Instantaneous drift rate = derivative at current time = 2*a*t + b
+                    inst_drift = 2.0 * self.drift_coeffs[0] * elapsed + self.drift_coeffs[1]
+                    drift_str = f"{inst_drift:+.3f} deg/s (a={self.drift_coeffs[0]:+.4f})"
+                elif len(self.phase_history) == 2:
+                    times = np.array([p[0] for p in self.phase_history])
+                    phases_deg = np.array([p[1] for p in self.phase_history])
+                    phases_unwrapped = np.degrees(np.unwrap(np.radians(phases_deg)))
+                    # Only 2 points: fall back to linear (set quadratic coeff to 0)
+                    lin = np.polyfit(times, phases_unwrapped, 1)
+                    self.drift_coeffs = np.array([0.0, lin[0], lin[1]])
+                    self.coeffs_history.append((elapsed, 0.0, lin[0], lin[1]))
+                    drift_str = f"{lin[0]:+.3f} deg/s (linear, need 3+ pts)"
                 else:
                     drift_str = "measuring..."
 
@@ -492,26 +511,49 @@ class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
                     return
                 times = [p[0] for p in self.phase_history]
                 phases_deg = [p[1] for p in self.phase_history]
-                # Unwrap for display
                 phases_unwrapped = np.degrees(np.unwrap(np.radians(phases_deg)))
                 n_pts = len(self.phase_history)
-                dr = self.drift_rate
+                coeffs = self.drift_coeffs.copy()
+                ch = list(self.coeffs_history)  # snapshot of (t, a, b, c) list
 
             # Plot measured points (unwrapped)
             self.phase_line.set_data(times, phases_unwrapped)
 
-            # Plot linear trend line
-            if n_pts >= 2:
+            # Build piecewise parabolic prediction curves
+            if len(ch) >= 1:
                 t_arr = np.array(times)
-                coeffs = np.polyfit(t_arr, phases_unwrapped, 1)
-                # Extend trend 20% into the future
-                t_extend = t_arr[-1] + (t_arr[-1] - t_arr[0]) * 0.2
-                t_fit = np.array([t_arr[0], t_extend])
-                p_fit = np.polyval(coeffs, t_fit)
-                self.phase_trend.set_data(t_fit, p_fit)
-                title = f"Inter-channel Phase Drift: {dr:+.3f} deg/s"
+                # --- Piecewise segments: each uses the coefficients current at that time ---
+                t_pw = []
+                p_pw = []
+                for i, (t_i, a_i, b_i, c_i) in enumerate(ch):
+                    seg_coeffs = [a_i, b_i, c_i]
+                    # Segment runs from this cal time to the next cal time
+                    if i + 1 < len(ch):
+                        t_end = ch[i + 1][0]
+                    else:
+                        t_end = t_arr[-1]
+                    seg_t = np.linspace(t_i, t_end, 20)
+                    seg_p = np.polyval(seg_coeffs, seg_t)
+                    t_pw.extend(seg_t.tolist())
+                    p_pw.extend(seg_p.tolist())
+                    # NaN separator so matplotlib doesn't connect segments
+                    t_pw.append(np.nan)
+                    p_pw.append(np.nan)
+
+                self.phase_trend.set_data(t_pw, p_pw)
+
+                # --- Orange extrapolation from latest coefficients ---
+                last_t = ch[-1][0]
+                span = max(t_arr[-1] - t_arr[0], 10.0)
+                t_ext = np.linspace(last_t, last_t + span * 0.25, 30)
+                p_ext = np.polyval(coeffs, t_ext)
+                self.phase_extrap.set_data(t_ext, p_ext)
+
+                inst_drift = 2.0 * coeffs[0] * t_arr[-1] + coeffs[1]
+                title = f"Phase Drift: {inst_drift:+.3f} deg/s  (curvature a={coeffs[0]:+.5f})"
             else:
                 self.phase_trend.set_data([], [])
+                self.phase_extrap.set_data([], [])
                 title = "Inter-channel Phase Drift: measuring..."
 
             self.phase_ax.set_title(title)
