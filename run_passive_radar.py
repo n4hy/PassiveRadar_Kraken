@@ -48,29 +48,37 @@ import argparse
 import json
 import threading
 
-# Ensure we can load local modules
-sys.path.append(os.path.join(os.path.dirname(__file__), "gr-kraken_passive_radar/python"))
-
-from kraken_passive_radar.krakensdr_source import krakensdr_source
-from kraken_passive_radar.custom_blocks import ConditioningBlock, CafBlock, TimeAlignmentBlock
-from kraken_passive_radar.calibration_controller import CalibrationController
-
-# Import C++ accelerated blocks
+# Import all blocks from installed gnuradio.kraken_passive_radar
 from gnuradio.kraken_passive_radar import (
+    # Python blocks
+    krakensdr_source,
+    ConditioningBlock,
+    CafBlock,
+    TimeAlignmentBlock,
+    CalibrationController,
+    # C++ blocks
     eca_canceller,
     doppler_processor,
     cfar_detector,
     detection_cluster,
     aoa_estimator,
     tracker,
+    dvbt_reconstructor,
 )
 
-# New Display
+# New Display (optional)
 try:
-    from kraken_passive_radar.radar_display import PPIDisplay
+    # Try installed version first
+    from gnuradio.kraken_passive_radar.radar_display import PPIDisplay
     HAS_DISPLAY = True
 except ImportError:
-    HAS_DISPLAY = False
+    # Fall back to local version
+    try:
+        sys.path.append(os.path.join(os.path.dirname(__file__), "gr-kraken_passive_radar/python"))
+        from kraken_passive_radar.radar_display import PPIDisplay
+        HAS_DISPLAY = True
+    except ImportError:
+        HAS_DISPLAY = False
 
 
 class PhaseCorrectorBlock(gr.sync_block):
@@ -117,7 +125,8 @@ class PhaseCorrectorBlock(gr.sync_block):
 
 
 class PassiveRadarTopBlock(gr.top_block):
-    def __init__(self, freq=100e6, gain=30, geometry='ULA', calibration_file=None, use_ref_aoa=False):
+    def __init__(self, freq=100e6, gain=30, geometry='ULA', calibration_file=None, use_ref_aoa=False,
+                 b3_signal_type='passthrough', b3_fft_size=8192, b3_guard_interval=192):
         gr.top_block.__init__(self, "Passive Radar Run")
 
         # Parameters
@@ -130,6 +139,9 @@ class PassiveRadarTopBlock(gr.top_block):
         self.num_surv = 4
         self.geometry = geometry
         self.use_ref_aoa = use_ref_aoa
+        self.b3_signal_type = b3_signal_type
+        self.b3_fft_size = b3_fft_size
+        self.b3_guard_interval = b3_guard_interval
 
         # Derived parameters
         c = 3e8
@@ -181,23 +193,64 @@ class PassiveRadarTopBlock(gr.top_block):
             self.cond_blocks.append(blk)
             self.connect((self.phase_correctors[i], 0), (blk, 0))
 
+        # 2c. Block B3: Reference Signal Reconstructor
+        # Demod-remod to create clean reference signal for improved passive radar sensitivity
+        print(f"Block B3: Initializing {self.b3_signal_type} mode reference reconstructor...")
+        if self.b3_signal_type == 'fm':
+            self.b3_recon = dvbt_reconstructor.make(
+                signal_type="fm",
+                fm_deviation=75e3,      # 75 kHz for US, 50 kHz for Europe
+                enable_stereo=True,
+                enable_pilot_regen=True,
+                audio_bw=15e3
+            )
+            print(f"  FM Radio mode: 75 kHz deviation, stereo with pilot regeneration")
+        elif self.b3_signal_type == 'atsc3':
+            self.b3_recon = dvbt_reconstructor.make(
+                signal_type="atsc3",
+                fft_size=self.b3_fft_size,
+                guard_interval=self.b3_guard_interval,
+                pilot_pattern=0,
+                enable_svd=True
+            )
+            print(f"  ATSC 3.0 mode: {self.b3_fft_size} FFT, GI={self.b3_guard_interval}, SVD enabled")
+            print(f"  Note: LDPC FEC is placeholder (works best on strong signals)")
+        elif self.b3_signal_type == 'dvbt':
+            self.b3_recon = dvbt_reconstructor.make(
+                signal_type="dvbt",
+                fft_size=self.b3_fft_size,
+                guard_interval=self.b3_guard_interval,
+                enable_svd=True
+            )
+            print(f"  DVB-T mode: {self.b3_fft_size} FFT, GI={self.b3_guard_interval}")
+            print(f"  Note: DVB-T processing is TODO (skeleton only)")
+        else:  # passthrough
+            self.b3_recon = dvbt_reconstructor.make(signal_type="passthrough")
+            print(f"  Passthrough mode: No reference reconstruction")
+
+        # Connect: Conditioning[0] (reference) -> Block B3
+        self.connect((self.cond_blocks[0], 0), (self.b3_recon, 0))
+
+        # Reference channel now comes from Block B3
+        self.reference_channel = (self.b3_recon, 0)
+
         # 2b. Time Alignment Probe (Calibration)
         self.align_blocks = []
         for i in range(self.num_surv):
             blk = TimeAlignmentBlock(n_samples=self.cpi_len, interval_sec=5.0)
             self.align_blocks.append(blk)
-            self.connect((self.cond_blocks[0], 0), (blk, 0))
+            self.connect(self.reference_channel, (blk, 0))  # Block B3 output
             self.connect((self.cond_blocks[i+1], 0), (blk, 1))
 
         # 3. ECA Clutter Canceller (C++ VOLK-accelerated)
-        # Input: port 0 = reference, ports 1..num_surv = surveillance
+        # Input: port 0 = reference (from Block B3), ports 1..num_surv = surveillance
         # Output: ports 0..num_surv-1 = clutter-cancelled surveillance
         self.eca = eca_canceller(
             num_taps=self.num_taps,
             reg_factor=0.001,
             num_surv=self.num_surv
         )
-        self.connect((self.cond_blocks[0], 0), (self.eca, 0))
+        self.connect(self.reference_channel, (self.eca, 0))  # Block B3 output
         for i in range(self.num_surv):
             self.connect((self.cond_blocks[i+1], 0), (self.eca, i+1))
 
@@ -206,8 +259,8 @@ class PassiveRadarTopBlock(gr.top_block):
         for i in range(self.num_surv):
             blk = CafBlock(n_samples=self.cpi_len)
             self.caf_blocks.append(blk)
-            self.connect((self.cond_blocks[0], 0), (blk, 0))     # reference
-            self.connect((self.eca, i), (blk, 1))                 # cleaned surv
+            self.connect(self.reference_channel, (blk, 0))  # Block B3 output
+            self.connect((self.eca, i), (blk, 1))           # cleaned surv
 
         # 5. Doppler Processor (C++ FFTW-accelerated)
         # Accumulates doppler_len range profiles, applies window + slow-time FFT
@@ -349,6 +402,12 @@ class PassiveRadarTopBlock(gr.top_block):
         """Get current calibration status."""
         return self.cal_controller.get_status()
 
+    def get_b3_snr(self) -> float:
+        """Get Block B3 reference signal SNR estimate in dB."""
+        if hasattr(self, 'b3_recon'):
+            return self.b3_recon.get_snr_estimate()
+        return 0.0
+
 
 class RadarSink(gr.sync_block):
     def __init__(self, tracker_block=None, display_callback=None):
@@ -411,6 +470,17 @@ Calibration:
                         help="Skip startup calibration (use saved calibration only)")
     parser.add_argument("--visualize", action="store_true",
                         help="Show GUI display")
+
+    # Block B3: Reference Signal Reconstructor
+    parser.add_argument("--b3-signal", choices=['passthrough', 'fm', 'atsc3', 'dvbt'],
+                        default='passthrough',
+                        help="Block B3 signal type (default: passthrough, no reconstruction)")
+    parser.add_argument("--b3-fft-size", type=int, choices=[2048, 4096, 8192, 16384, 32768],
+                        default=8192,
+                        help="OFDM FFT size for ATSC3/DVB-T (default: 8192)")
+    parser.add_argument("--b3-guard-interval", type=int, default=192,
+                        help="OFDM guard interval in samples (default: 192 for ATSC3 8K)")
+
     args = parser.parse_args()
 
     tb = PassiveRadarTopBlock(
@@ -418,7 +488,10 @@ Calibration:
         gain=args.gain,
         geometry=args.geometry,
         calibration_file="calibration.json",
-        use_ref_aoa=args.include_ref
+        use_ref_aoa=args.include_ref,
+        b3_signal_type=args.b3_signal,
+        b3_fft_size=args.b3_fft_size,
+        b3_guard_interval=args.b3_guard_interval
     )
 
     # Startup calibration
@@ -440,8 +513,13 @@ Calibration:
     else:
         print("Skipping startup calibration (using saved calibration if available)")
 
-    print("\nProcessing chain: Source -> Phase Corr -> AGC -> ECA (C++) -> CAF -> "
-          "Doppler (C++) -> CFAR (C++) -> Cluster (C++) -> AoA (C++) -> Tracker (C++)\n")
+    print(f"\nProcessing chain: Source -> Phase Corr -> AGC -> Block B3 ({args.b3_signal}) -> ECA (C++) -> CAF -> "
+          f"Doppler (C++) -> CFAR (C++) -> Cluster (C++) -> AoA (C++) -> Tracker (C++)\n")
+
+    if args.b3_signal != 'passthrough':
+        print(f"Block B3 Reference Reconstruction: {args.b3_signal.upper()}")
+        print(f"  Expected SNR improvement: 10-20 dB")
+        print(f"  Initial SNR estimate: {tb.b3_recon.get_snr_estimate():.1f} dB\n")
 
     if args.visualize and HAS_DISPLAY:
         print("Starting GUI...")

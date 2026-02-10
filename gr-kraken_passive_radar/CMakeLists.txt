@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Find GNU Radio (adjust version as needed)
-find_package(Gnuradio "3.10" REQUIRED COMPONENTS runtime blocks fft filter)
+find_package(Gnuradio "3.10" REQUIRED COMPONENTS runtime blocks fft filter dtv)
 
 # Find pybind11
 find_package(pybind11 REQUIRED)

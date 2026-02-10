@@ -7,6 +7,7 @@ list(APPEND kraken_passive_radar_sources
     detection_cluster_impl.cc
     tracker_impl.cc
     aoa_estimator_impl.cc
+    dvbt_reconstructor_impl.cc
 )
 
 # Find FFTW3 for Doppler processing
@@ -20,6 +21,8 @@ target_link_libraries(gnuradio-kraken_passive_radar PUBLIC
     gnuradio::gnuradio-runtime
     gnuradio::gnuradio-blocks
     gnuradio::gnuradio-fft
+    gnuradio::gnuradio-filter
+    gnuradio::gnuradio-dtv
     Volk::volk
     ${FFTW3F_LIBRARIES}
 )

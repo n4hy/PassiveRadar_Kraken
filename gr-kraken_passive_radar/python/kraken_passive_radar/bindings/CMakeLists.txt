@@ -8,6 +8,7 @@ pybind11_add_module(kraken_passive_radar_python
     detection_cluster_python.cc
     tracker_python.cc
     aoa_estimator_python.cc
+    dvbt_reconstructor_python.cc
 )
 
 target_link_libraries(kraken_passive_radar_python PRIVATE

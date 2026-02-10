@@ -1,0 +1,820 @@
+options:
+  parameters:
+    author: Dr Robert W McGwier, PhD
+    catch_exceptions: 'True'
+    category: '[Kraken Passive Radar]'
+    cmake_opt: ''
+    comment: ''
+    copyright: '2026'
+    description: 'Passive Radar with Block B3 Reference Signal Reconstruction'
+    gen_cmake: 'On'
+    gen_linking: dynamic
+    generate_options: qt_gui
+    hier_block_src_path: .
+    id: passive_radar_block_b3
+    max_nouts: '0'
+    output_language: python
+    placement: (0,0)
+    qt_qss_theme: ''
+    realtime_scheduling: ''
+    run: 'True'
+    run_command: '{python} -u {filename}'
+    run_options: prompt
+    sizing_mode: fixed
+    thread_safe_setters: ''
+    title: Passive Radar with Block B3
+    window_size: (1000,1000)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [8, 8]
+    rotation: 0
+    state: enabled
+
+blocks:
+- name: b3_fft_size
+  id: variable
+  parameters:
+    comment: ''
+    value: '8192'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [400, 12]
+    rotation: 0
+    state: enabled
+
+- name: b3_guard_interval
+  id: variable
+  parameters:
+    comment: ''
+    value: '192'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [520, 12]
+    rotation: 0
+    state: enabled
+
+- name: b3_signal_type
+  id: variable
+  parameters:
+    comment: 'Options: passthrough, fm, atsc3, dvbt'
+    value: '"fm"'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [272, 12]
+    rotation: 0
+    state: enabled
+
+- name: cpi_len
+  id: variable
+  parameters:
+    comment: ''
+    value: '4096'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [184, 76]
+    rotation: 0
+    state: enabled
+
+- name: doppler_len
+  id: variable
+  parameters:
+    comment: ''
+    value: '64'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [272, 76]
+    rotation: 0
+    state: enabled
+
+- name: freq
+  id: variable_qtgui_range
+  parameters:
+    comment: ''
+    gui_hint: 0,0,1,1
+    label: Center Frequency (Hz)
+    min_len: '200'
+    orient: QtCore.Qt.Horizontal
+    rangeType: float
+    start: 24e6
+    step: 1e6
+    stop: 1.8e9
+    value: 100e6
+    widget: counter_slider
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [664, 12]
+    rotation: 0
+    state: enabled
+
+- name: gain
+  id: variable_qtgui_range
+  parameters:
+    comment: ''
+    gui_hint: 0,1,1,1
+    label: Gain (dB)
+    min_len: '200'
+    orient: QtCore.Qt.Horizontal
+    rangeType: float
+    start: '0'
+    step: '1'
+    stop: '49'
+    value: '30'
+    widget: counter_slider
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [816, 12]
+    rotation: 0
+    state: enabled
+
+- name: num_surv
+  id: variable
+  parameters:
+    comment: ''
+    value: '4'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [376, 76]
+    rotation: 0
+    state: enabled
+
+- name: num_taps
+  id: variable
+  parameters:
+    comment: ''
+    value: '128'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [464, 76]
+    rotation: 0
+    state: enabled
+
+- name: samp_rate
+  id: variable
+  parameters:
+    comment: ''
+    value: 2.4e6
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [184, 12]
+    rotation: 0
+    state: enabled
+
+- name: kraken_passive_radar_dvbt_reconstructor_0
+  id: kraken_passive_radar_dvbt_reconstructor
+  parameters:
+    affinity: ''
+    alias: ''
+    audio_bw: 15e3
+    code_rate: '2'
+    comment: 'Block B3: Reference Signal Reconstructor
+
+
+      Reconstructs clean reference signal from noisy broadcast
+
+
+      Expected: 10-20 dB SNR improvement'
+    constellation: '2'
+    enable_pilot_regen: 'True'
+    enable_stereo: 'True'
+    enable_svd: 'True'
+    fft_size: b3_fft_size
+    fm_deviation: 75e3
+    guard_interval: b3_guard_interval
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    pilot_pattern: '0'
+    signal_type: b3_signal_type
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [624, 340]
+    rotation: 0
+    state: enabled
+
+- name: kraken_passive_radar_krakensdr_source_0
+  id: kraken_passive_radar_krakensdr_source
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'KrakenSDR 5-Channel Coherent Source
+
+
+      Ch 0: Reference
+
+      Ch 1-4: Surveillance'
+    frequency: freq
+    gain: gain
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    sample_rate: samp_rate
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [32, 212]
+    rotation: 0
+    state: enabled
+
+- name: kraken_passive_radar_conditioning_0
+  id: kraken_passive_radar_conditioning
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'AGC Conditioning - Reference Channel
+
+
+      Prepares signal for Block B3'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    rate: 1e-5
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [392, 228]
+    rotation: 0
+    state: enabled
+
+- name: kraken_passive_radar_conditioning_1
+  id: kraken_passive_radar_conditioning
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: AGC Conditioning - Surveillance Ch 1
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    rate: 1e-5
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [392, 308]
+    rotation: 0
+    state: enabled
+
+- name: kraken_passive_radar_conditioning_2
+  id: kraken_passive_radar_conditioning
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: AGC Conditioning - Surveillance Ch 2
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    rate: 1e-5
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [392, 388]
+    rotation: 0
+    state: enabled
+
+- name: kraken_passive_radar_conditioning_3
+  id: kraken_passive_radar_conditioning
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: AGC Conditioning - Surveillance Ch 3
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    rate: 1e-5
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [392, 468]
+    rotation: 0
+    state: enabled
+
+- name: kraken_passive_radar_conditioning_4
+  id: kraken_passive_radar_conditioning
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: AGC Conditioning - Surveillance Ch 4
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    rate: 1e-5
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [392, 548]
+    rotation: 0
+    state: enabled
+
+- name: kraken_passive_radar_eca_canceller_0
+  id: kraken_passive_radar_eca_canceller
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'ECA Clutter Canceller (VOLK-accelerated)
+
+
+      Input Port 0: Reference (from Block B3)
+
+      Input Ports 1-4: Surveillance channels
+
+      Output Ports 0-3: Clutter-cancelled surveillance'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_surv: num_surv
+    num_taps: num_taps
+    reg_factor: '0.001'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [928, 332]
+    rotation: 0
+    state: enabled
+
+- name: kraken_passive_radar_caf_0
+  id: kraken_passive_radar_caf
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Cross-Ambiguity Function - Ch 1
+
+
+      Port 0: Reference (from Block B3)
+
+      Port 1: Cleaned surveillance'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    n_samples: cpi_len
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1184, 276]
+    rotation: 0
+    state: enabled
+
+- name: kraken_passive_radar_caf_1
+  id: kraken_passive_radar_caf
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: Cross-Ambiguity Function - Ch 2
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    n_samples: cpi_len
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1184, 340]
+    rotation: 0
+    state: enabled
+
+- name: kraken_passive_radar_caf_2
+  id: kraken_passive_radar_caf
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: Cross-Ambiguity Function - Ch 3
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    n_samples: cpi_len
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1184, 404]
+    rotation: 0
+    state: enabled
+
+- name: kraken_passive_radar_caf_3
+  id: kraken_passive_radar_caf
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: Cross-Ambiguity Function - Ch 4
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    n_samples: cpi_len
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1184, 468]
+    rotation: 0
+    state: enabled
+
+- name: kraken_passive_radar_doppler_processor_0
+  id: kraken_passive_radar_doppler_processor
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Doppler Processor (FFTW-accelerated)
+
+
+      Slow-time FFT for Range-Doppler map'
+    enable_coherent_integration: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_doppler_bins: doppler_len
+    num_range_bins: cpi_len
+    window_type: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1392, 268]
+    rotation: 0
+    state: enabled
+
+- name: kraken_passive_radar_cfar_detector_0
+  id: kraken_passive_radar_cfar_detector
+  parameters:
+    affinity: ''
+    alias: ''
+    cfar_type: '0'
+    comment: 'CFAR Detector
+
+
+      Constant False Alarm Rate detection'
+    guard_cells: '4'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_doppler_bins: doppler_len
+    num_range_bins: cpi_len
+    pfa: '1e-6'
+    training_cells: '16'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1624, 244]
+    rotation: 0
+    state: enabled
+
+- name: kraken_passive_radar_detection_cluster_0
+  id: kraken_passive_radar_detection_cluster
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Detection Clustering
+
+
+      Groups detections into targets'
+    max_detections: '1000'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    min_cluster_size: '3'
+    neighbor_threshold: '2'
+    num_doppler_bins: doppler_len
+    num_range_bins: cpi_len
+    sample_rate: samp_rate
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1856, 228]
+    rotation: 0
+    state: enabled
+
+- name: kraken_passive_radar_aoa_estimator_0
+  id: kraken_passive_radar_aoa_estimator
+  parameters:
+    affinity: ''
+    alias: ''
+    algorithm: '0'
+    array_type: '0'
+    comment: 'AoA Estimator
+
+
+      Bartlett beamforming for angle-of-arrival'
+    frequency: freq
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_elements: '4'
+    num_snapshots: '10'
+    spacing: '0.5'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1624, 388]
+    rotation: 0
+    state: enabled
+
+- name: kraken_passive_radar_tracker_0
+  id: kraken_passive_radar_tracker
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Multi-Target Tracker
+
+
+      Kalman filter with GNN data association'
+    max_coast_time: '5.0'
+    max_tracks: '100'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    min_detections: '3'
+    process_noise: '1.0'
+    sample_rate: samp_rate
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2096, 212]
+    rotation: 0
+    state: enabled
+
+- name: qtgui_waterfall_sink_0
+  id: qtgui_waterfall_sink_x
+  parameters:
+    affinity: ''
+    alias: ''
+    alpha1: '1.0'
+    alpha10: '1.0'
+    alpha2: '1.0'
+    alpha3: '1.0'
+    alpha4: '1.0'
+    alpha5: '1.0'
+    alpha6: '1.0'
+    alpha7: '1.0'
+    alpha8: '1.0'
+    alpha9: '1.0'
+    axislabels: 'True'
+    bw: samp_rate
+    color1: '0'
+    color10: '0'
+    color2: '0'
+    color3: '0'
+    color4: '0'
+    color5: '0'
+    color6: '0'
+    color7: '0'
+    color8: '0'
+    color9: '0'
+    comment: Reference Signal Spectrum (After Block B3)
+    fc: freq
+    fftsize: '1024'
+    freqhalf: 'True'
+    grid: 'False'
+    gui_hint: 1,0,2,2
+    int_max: '10'
+    int_min: '-140'
+    label1: ''
+    label10: ''
+    label2: ''
+    label3: ''
+    label4: ''
+    label5: ''
+    label6: ''
+    label7: ''
+    label8: ''
+    label9: ''
+    legend: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    name: '"Reference (Block B3 Output)"'
+    nconnections: '1'
+    showports: 'False'
+    type: complex
+    update_time: '0.10'
+    wintype: window.WIN_BLACKMAN_hARRIS
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [928, 484]
+    rotation: 0
+    state: enabled
+
+- name: qtgui_time_sink_0
+  id: qtgui_time_sink_x
+  parameters:
+    affinity: ''
+    alias: ''
+    alpha1: '1.0'
+    alpha10: '1.0'
+    alpha2: '1.0'
+    alpha3: '1.0'
+    alpha4: '1.0'
+    alpha5: '1.0'
+    alpha6: '1.0'
+    alpha7: '1.0'
+    alpha8: '1.0'
+    alpha9: '1.0'
+    autoscale: 'False'
+    axislabels: 'True'
+    color1: blue
+    color10: dark blue
+    color2: red
+    color3: green
+    color4: black
+    color5: cyan
+    color6: magenta
+    color7: yellow
+    color8: dark red
+    color9: dark green
+    comment: CAF Output Magnitude (Ch 1)
+    ctrlpanel: 'False'
+    entags: 'True'
+    grid: 'False'
+    gui_hint: 3,0,2,1
+    label1: CAF Ch 1
+    label10: Signal 10
+    label2: Signal 2
+    label3: Signal 3
+    label4: Signal 4
+    label5: Signal 5
+    label6: Signal 6
+    label7: Signal 7
+    label8: Signal 8
+    label9: Signal 9
+    legend: 'True'
+    marker1: '-1'
+    marker10: '-1'
+    marker2: '-1'
+    marker3: '-1'
+    marker4: '-1'
+    marker5: '-1'
+    marker6: '-1'
+    marker7: '-1'
+    marker8: '-1'
+    marker9: '-1'
+    name: '"CAF Magnitude"'
+    nconnections: '1'
+    size: cpi_len
+    srate: samp_rate
+    stemplot: 'False'
+    style1: '1'
+    style10: '1'
+    style2: '1'
+    style3: '1'
+    style4: '1'
+    style5: '1'
+    style6: '1'
+    style7: '1'
+    style8: '1'
+    style9: '1'
+    tr_chan: '0'
+    tr_delay: '0'
+    tr_level: '0.0'
+    tr_mode: qtgui.TRIG_MODE_FREE
+    tr_slope: qtgui.TRIG_SLOPE_POS
+    tr_tag: '""'
+    type: float
+    update_time: '0.10'
+    width1: '1'
+    width10: '1'
+    width2: '1'
+    width3: '1'
+    width4: '1'
+    width5: '1'
+    width6: '1'
+    width7: '1'
+    width8: '1'
+    width9: '1'
+    ylabel: Amplitude
+    ymax: '1'
+    ymin: '0'
+    yunit: '""'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1392, 388]
+    rotation: 0
+    state: enabled
+
+- name: blocks_null_sink_0
+  id: blocks_null_sink
+  parameters:
+    affinity: ''
+    alias: ''
+    bus_structure_sink: '[[0,],]'
+    comment: ''
+    num_inputs: '4'
+    type: float
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2328, 208]
+    rotation: 0
+    state: enabled
+
+- name: note_0
+  id: note
+  parameters:
+    alias: ''
+    comment: 'Block B3: Reference Signal Reconstructor
+
+
+      Demodulates and remodulates the reference signal to create a clean "perfect"
+      reference.
+
+
+      Signal Types:
+
+      - fm: FM Radio (88-108 MHz) - 10-15 dB improvement
+
+      - atsc3: ATSC 3.0 (470-698 MHz) - 15-20 dB improvement
+
+      - dvbt: DVB-T (Europe/Australia)
+
+      - passthrough: No processing (baseline)
+
+
+      Expected Result:
+
+      Sharper CAF peaks, better detection, fewer false alarms'
+    note: BLOCK B3 SETTINGS
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [624, 180]
+    rotation: 0
+    state: enabled
+
+- name: note_1
+  id: note
+  parameters:
+    alias: ''
+    comment: 'Signal Flow:
+
+
+      KrakenSDR (5ch) → AGC → Block B3 (ref only) → ECA → CAF → Doppler → CFAR →
+      Cluster → AoA → Tracker
+
+
+      Block B3 reconstructs the reference channel for 10-20 dB SNR improvement!'
+    note: PASSIVE RADAR SIGNAL FLOW
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [32, 612]
+    rotation: 0
+    state: enabled
+
+connections:
+- [kraken_passive_radar_krakensdr_source_0, '0', kraken_passive_radar_conditioning_0, '0']
+- [kraken_passive_radar_krakensdr_source_0, '1', kraken_passive_radar_conditioning_1, '0']
+- [kraken_passive_radar_krakensdr_source_0, '2', kraken_passive_radar_conditioning_2, '0']
+- [kraken_passive_radar_krakensdr_source_0, '3', kraken_passive_radar_conditioning_3, '0']
+- [kraken_passive_radar_krakensdr_source_0, '4', kraken_passive_radar_conditioning_4, '0']
+- [kraken_passive_radar_conditioning_0, '0', kraken_passive_radar_dvbt_reconstructor_0, '0']
+- [kraken_passive_radar_dvbt_reconstructor_0, '0', kraken_passive_radar_eca_canceller_0, '0']
+- [kraken_passive_radar_dvbt_reconstructor_0, '0', kraken_passive_radar_caf_0, '0']
+- [kraken_passive_radar_dvbt_reconstructor_0, '0', kraken_passive_radar_caf_1, '0']
+- [kraken_passive_radar_dvbt_reconstructor_0, '0', kraken_passive_radar_caf_2, '0']
+- [kraken_passive_radar_dvbt_reconstructor_0, '0', kraken_passive_radar_caf_3, '0']
+- [kraken_passive_radar_dvbt_reconstructor_0, '0', qtgui_waterfall_sink_0, '0']
+- [kraken_passive_radar_conditioning_1, '0', kraken_passive_radar_eca_canceller_0, '1']
+- [kraken_passive_radar_conditioning_2, '0', kraken_passive_radar_eca_canceller_0, '2']
+- [kraken_passive_radar_conditioning_3, '0', kraken_passive_radar_eca_canceller_0, '3']
+- [kraken_passive_radar_conditioning_4, '0', kraken_passive_radar_eca_canceller_0, '4']
+- [kraken_passive_radar_eca_canceller_0, '0', kraken_passive_radar_caf_0, '1']
+- [kraken_passive_radar_eca_canceller_0, '1', kraken_passive_radar_caf_1, '1']
+- [kraken_passive_radar_eca_canceller_0, '2', kraken_passive_radar_caf_2, '1']
+- [kraken_passive_radar_eca_canceller_0, '3', kraken_passive_radar_caf_3, '1']
+- [kraken_passive_radar_caf_0, '0', kraken_passive_radar_doppler_processor_0, '0']
+- [kraken_passive_radar_caf_0, '0', qtgui_time_sink_0, '0']
+- [kraken_passive_radar_caf_1, '0', kraken_passive_radar_aoa_estimator_0, '0']
+- [kraken_passive_radar_caf_2, '0', kraken_passive_radar_aoa_estimator_0, '1']
+- [kraken_passive_radar_caf_3, '0', kraken_passive_radar_aoa_estimator_0, '2']
+- [kraken_passive_radar_doppler_processor_0, '0', kraken_passive_radar_cfar_detector_0, '0']
+- [kraken_passive_radar_cfar_detector_0, '0', kraken_passive_radar_detection_cluster_0, '0']
+- [kraken_passive_radar_detection_cluster_0, '0', kraken_passive_radar_tracker_0, '0']
+- [kraken_passive_radar_aoa_estimator_0, '0', kraken_passive_radar_tracker_0, '1']
+- [kraken_passive_radar_tracker_0, '0', blocks_null_sink_0, '0']
+- [kraken_passive_radar_tracker_0, '1', blocks_null_sink_0, '1']
+- [kraken_passive_radar_tracker_0, '2', blocks_null_sink_0, '2']
+- [kraken_passive_radar_tracker_0, '3', blocks_null_sink_0, '3']
+
+metadata:
+  file_format: 1
+  grc_version: 3.10.9.2

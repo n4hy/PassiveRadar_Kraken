@@ -12,6 +12,7 @@ void bind_coherence_monitor(py::module& m);
 void bind_detection_cluster(py::module& m);
 void bind_tracker(py::module& m);
 void bind_aoa_estimator(py::module& m);
+void bind_dvbt_reconstructor(py::module& m);
 
 PYBIND11_MODULE(kraken_passive_radar_python, m)
 {
@@ -25,4 +26,5 @@ PYBIND11_MODULE(kraken_passive_radar_python, m)
     bind_detection_cluster(m);
     bind_tracker(m);
     bind_aoa_estimator(m);
+    bind_dvbt_reconstructor(m);
 }
