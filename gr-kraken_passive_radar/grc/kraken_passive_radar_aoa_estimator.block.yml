@@ -5,14 +5,18 @@ category: '[Kraken Passive Radar]'
 templates:
   imports: from gnuradio import kraken_passive_radar
   make: >-
-    kraken_passive_radar.aoa_estimator(
+    kraken_passive_radar.aoa_estimator.make(
         ${num_elements}, ${d_lambda}, ${n_angles},
         ${min_angle_deg}, ${max_angle_deg}, ${array_type},
-        ${num_range_bins}, ${num_doppler_bins}, ${max_detections})
+        ${num_range_bins}, ${num_doppler_bins}, ${max_detections},
+        ${algorithm}, ${n_sources}, ${n_snapshots})
   callbacks:
     - set_d_lambda(${d_lambda})
     - set_scan_range(${min_angle_deg}, ${max_angle_deg})
     - set_array_type(${array_type})
+    - set_algorithm(${algorithm})
+    - set_n_sources(${n_sources})
+    - set_n_snapshots(${n_snapshots})
 
 parameters:
   - id: num_elements
@@ -62,6 +66,25 @@ parameters:
     dtype: int
     default: 100
 
+  - id: algorithm
+    label: Algorithm
+    dtype: int
+    default: 0
+    options: [0, 1]
+    option_labels: [Bartlett, MUSIC]
+
+  - id: n_sources
+    label: Num Sources (MUSIC)
+    dtype: int
+    default: 1
+    hide: ${ 'all' if algorithm == 0 else 'none' }
+
+  - id: n_snapshots
+    label: Snapshot Depth (MUSIC)
+    dtype: int
+    default: 16
+    hide: ${ 'all' if algorithm == 0 else 'none' }
+
 inputs:
   - label: caf0
     domain: stream
@@ -102,17 +125,23 @@ asserts:
   - num_range_bins > 0
   - num_doppler_bins > 0
   - max_detections >= 1
+  - n_sources >= 1
+  - n_sources < num_elements
+  - n_snapshots >= 2
 
 documentation: |-
   Angle-of-Arrival Estimator for Passive Radar
 
-  Computes AoA for each detection using Bartlett beamforming on
-  the 4 surveillance channels of KrakenSDR.
+  Computes AoA for each detection using Bartlett beamforming or MUSIC
+  on the surveillance channels of KrakenSDR.
 
-  Algorithm:
-    Bartlett spectrum: P(theta) = |a(theta)^H * x|^2
-    where a(theta) is the steering vector and x is the array response
-    at the detection range/Doppler bin.
+  Algorithms:
+    Bartlett: Conventional beamformer. P(theta) = |a(theta)^H * x|^2
+    MUSIC: High-resolution subspace method using eigendecomposition
+      of the spatial covariance matrix. Requires multiple snapshots
+      for covariance estimation. Falls back to Bartlett until enough
+      snapshots are accumulated, or uses forward-backward spatial
+      smoothing on ULA arrays for single-snapshot operation.
 
   Array Types:
     ULA: Uniform Linear Array (default for KrakenSDR)
@@ -132,10 +161,14 @@ documentation: |-
     Angular Resolution: Number of angles in scan (affects precision)
     Min/Max Angle: Scan range in degrees from broadside
     Array Type: ULA (linear) or UCA (circular)
+    Algorithm: Bartlett (conventional) or MUSIC (high-resolution)
+    Num Sources: Number of assumed sources for MUSIC (1..N-1)
+    Snapshot Depth: Buffer depth for MUSIC covariance estimation
 
   Notes:
     - AoA is relative to array broadside (perpendicular to ULA)
     - Confidence based on peak sharpness and SNR
     - Typical KrakenSDR setup: ULA, d=0.5*lambda, 4 elements
+    - MUSIC with 4 elements can resolve up to 3 sources
 
 file_format: 1

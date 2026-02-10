@@ -294,6 +294,58 @@ class TestAoaEstimator(unittest.TestCase):
 
 
 @unittest.skipUnless(HAS_CPP_BLOCKS, "C++ pybind11 blocks not installed (run build_oot.sh)")
+class TestAoaAlgorithmEnum(unittest.TestCase):
+    def test_bartlett_value(self):
+        self.assertEqual(kpr.aoa_algorithm_t.BARTLETT.value, 0)
+
+    def test_music_value(self):
+        self.assertEqual(kpr.aoa_algorithm_t.MUSIC.value, 1)
+
+
+@unittest.skipUnless(HAS_CPP_BLOCKS, "C++ pybind11 blocks not installed (run build_oot.sh)")
+class TestAoaEstimatorMusic(unittest.TestCase):
+    def test_make_music(self):
+        blk = kpr.aoa_estimator.make(
+            num_elements=4,
+            algorithm=1,  # MUSIC
+            n_sources=1,
+            n_snapshots=16
+        )
+        self.assertIsNotNone(blk)
+
+    def test_make_music_custom(self):
+        blk = kpr.aoa_estimator.make(
+            num_elements=4,
+            d_lambda=0.5,
+            n_angles=361,
+            algorithm=1,
+            n_sources=2,
+            n_snapshots=32
+        )
+        self.assertIsNotNone(blk)
+
+    def test_set_algorithm(self):
+        blk = kpr.aoa_estimator.make()
+        blk.set_algorithm(1)  # Switch to MUSIC
+        blk.set_algorithm(0)  # Switch back to Bartlett
+
+    def test_set_n_sources(self):
+        blk = kpr.aoa_estimator.make(num_elements=4)
+        blk.set_n_sources(2)
+
+    def test_set_n_snapshots(self):
+        blk = kpr.aoa_estimator.make()
+        blk.set_n_snapshots(32)
+
+    def test_make_default_backward_compatible(self):
+        """Ensure make() without new params still works (Bartlett default)."""
+        blk = kpr.aoa_estimator.make(num_elements=4, d_lambda=0.5)
+        self.assertIsNotNone(blk)
+        spectrum = blk.get_spectrum()
+        self.assertEqual(len(spectrum), 181)
+
+
+@unittest.skipUnless(HAS_CPP_BLOCKS, "C++ pybind11 blocks not installed (run build_oot.sh)")
 class TestTracker(unittest.TestCase):
     def test_make_default(self):
         blk = kpr.tracker.make()

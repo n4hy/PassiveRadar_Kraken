@@ -4,6 +4,9 @@
 #include <algorithm>
 #include <iostream>
 
+#include <Eigen/Dense>
+#include <Eigen/Eigenvalues>
+
 #ifdef HAVE_OPTMATHKERNELS
 #include <optmath/neon_kernels.hpp>
 #else
@@ -359,5 +362,126 @@ extern "C" {
         AoAProcessor* obj = static_cast<AoAProcessor*>(ptr);
         const Complex* c_inputs = reinterpret_cast<const Complex*>(inputs);
         obj->compute_bartlett_3d(c_inputs, lambda, output, n_az, n_el, use_ref);
+    }
+
+    // MUSIC 1D AoA estimation
+    // snapshots: n_ant * n_snapshots interleaved complex floats (row-major: snapshot_i at offset i*n_ant)
+    // n_ant: number of antenna elements
+    // n_snapshots: number of snapshots
+    // n_sources: number of assumed sources (must be < n_ant)
+    // d_spacing: element spacing in meters (0 = lambda/2)
+    // lambda: wavelength in meters
+    // output: n_angles floats (MUSIC pseudo-spectrum in dB)
+    // n_angles: number of scan angles (-90 to +90)
+    void aoa_process_music(const float* snapshots, int n_ant, int n_snapshots,
+                           int n_sources, float d_spacing, float lambda,
+                           float* output, int n_angles) {
+        if (!snapshots || !output || n_ant <= 1 || n_snapshots < 1 ||
+            n_sources < 1 || n_sources >= n_ant || n_angles <= 0 || lambda <= 0.0f) return;
+
+        float d = d_spacing;
+        if (d <= 1e-9f) d = 0.5f * lambda;
+        float k = 2.0f * PI / lambda;
+
+        const Complex* snap_data = reinterpret_cast<const Complex*>(snapshots);
+
+        // Build covariance matrix R = (1/K) * sum(x * x^H) + eps*I
+        Eigen::MatrixXcf R = Eigen::MatrixXcf::Zero(n_ant, n_ant);
+        for (int s = 0; s < n_snapshots; s++) {
+            Eigen::VectorXcf x(n_ant);
+            for (int m = 0; m < n_ant; m++) {
+                x(m) = snap_data[s * n_ant + m];
+            }
+            R += x * x.adjoint();
+        }
+        R /= static_cast<float>(n_snapshots);
+
+        // Diagonal loading
+        float trace_val = R.trace().real();
+        float eps = trace_val * 1e-6f;
+        R += eps * Eigen::MatrixXcf::Identity(n_ant, n_ant);
+
+        // Eigendecomposition
+        Eigen::SelfAdjointEigenSolver<Eigen::MatrixXcf> solver(R);
+        int noise_dim = n_ant - n_sources;
+        Eigen::MatrixXcf En = solver.eigenvectors().leftCols(noise_dim);
+        Eigen::MatrixXcf noise_proj = En * En.adjoint();
+
+        // MUSIC scan -90 to +90
+        for (int i = 0; i < n_angles; i++) {
+            float theta_deg = (n_angles > 1) ? -90.0f + (180.0f * i / (n_angles - 1)) : 0.0f;
+            float theta_rad = theta_deg * PI / 180.0f;
+            float sin_theta = std::sin(theta_rad);
+
+            Eigen::VectorXcf a(n_ant);
+            for (int m = 0; m < n_ant; m++) {
+                float phase = -k * d * m * sin_theta;
+                a(m) = Complex(std::cos(phase), std::sin(phase));
+            }
+
+            std::complex<float> denom = a.adjoint() * noise_proj * a;
+            float power = 1.0f / (denom.real() + 1e-10f);
+            output[i] = 10.0f * std::log10(power + 1e-12f);
+        }
+    }
+
+    // MUSIC 3D (azimuth + elevation) AoA estimation
+    // Same snapshot format as aoa_process_music but scans az x el grid
+    // output size: n_az * n_el
+    void aoa_process_3d_music(const float* snapshots, int n_ant, int n_snapshots,
+                              int n_sources, float d_spacing, float lambda,
+                              float* output, int n_az, int n_el) {
+        if (!snapshots || !output || n_ant <= 1 || n_snapshots < 1 ||
+            n_sources < 1 || n_sources >= n_ant || n_az <= 0 || n_el <= 0 || lambda <= 0.0f) return;
+
+        float d = d_spacing;
+        if (d <= 1e-9f) d = 0.5f * lambda;
+        float k = 2.0f * PI / lambda;
+
+        const Complex* snap_data = reinterpret_cast<const Complex*>(snapshots);
+
+        // Build covariance
+        Eigen::MatrixXcf R = Eigen::MatrixXcf::Zero(n_ant, n_ant);
+        for (int s = 0; s < n_snapshots; s++) {
+            Eigen::VectorXcf x(n_ant);
+            for (int m = 0; m < n_ant; m++) {
+                x(m) = snap_data[s * n_ant + m];
+            }
+            R += x * x.adjoint();
+        }
+        R /= static_cast<float>(n_snapshots);
+
+        float trace_val = R.trace().real();
+        float eps = trace_val * 1e-6f;
+        R += eps * Eigen::MatrixXcf::Identity(n_ant, n_ant);
+
+        Eigen::SelfAdjointEigenSolver<Eigen::MatrixXcf> solver(R);
+        int noise_dim = n_ant - n_sources;
+        Eigen::MatrixXcf En = solver.eigenvectors().leftCols(noise_dim);
+        Eigen::MatrixXcf noise_proj = En * En.adjoint();
+
+        // Scan azimuth x elevation
+        // Assumes ULA along X axis for simplicity
+        for (int el_idx = 0; el_idx < n_el; el_idx++) {
+            float phi_deg = (n_el > 1) ? 90.0f * el_idx / (n_el - 1) : 0.0f;
+            float phi_rad = phi_deg * PI / 180.0f;
+            float cos_phi = std::cos(phi_rad);
+
+            for (int az_idx = 0; az_idx < n_az; az_idx++) {
+                float theta_deg = -180.0f + 360.0f * az_idx / n_az;
+                float theta_rad = theta_deg * PI / 180.0f;
+                float ux = cos_phi * std::sin(theta_rad);
+
+                Eigen::VectorXcf a(n_ant);
+                for (int m = 0; m < n_ant; m++) {
+                    float phase = -k * d * m * ux;
+                    a(m) = Complex(std::cos(phase), std::sin(phase));
+                }
+
+                std::complex<float> denom = a.adjoint() * noise_proj * a;
+                float power = 1.0f / (denom.real() + 1e-10f);
+                output[el_idx * n_az + az_idx] = 10.0f * std::log10(power + 1e-12f);
+            }
+        }
     }
 }

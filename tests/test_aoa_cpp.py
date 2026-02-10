@@ -121,5 +121,75 @@ class TestAoACpp(unittest.TestCase):
             self.doppler_lib.doppler_destroy(p)
         self.aoa_lib.aoa_destroy(aoa_obj)
 
+class TestAoAMusicCpp(unittest.TestCase):
+    def setUp(self):
+        lib_aoa_path = os.path.abspath("src/libkraken_aoa_processing.so")
+
+        if not os.path.exists(lib_aoa_path):
+            self.skipTest("C++ AoA library not found")
+
+        try:
+            self.aoa_lib = ctypes.CDLL(lib_aoa_path)
+        except OSError:
+            self.skipTest("Could not load C++ AoA library")
+
+        # aoa_process_music signature
+        self.aoa_lib.aoa_process_music.argtypes = [
+            ctypes.POINTER(ctypes.c_float),  # snapshots (interleaved complex)
+            ctypes.c_int,                     # n_ant
+            ctypes.c_int,                     # n_snapshots
+            ctypes.c_int,                     # n_sources
+            ctypes.c_float,                   # d_spacing
+            ctypes.c_float,                   # lambda
+            ctypes.POINTER(ctypes.c_float),   # output
+            ctypes.c_int                      # n_angles
+        ]
+        self.aoa_lib.aoa_process_music.restype = None
+
+    def test_aoa_music_estimation(self):
+        """Test MUSIC AoA estimation via ctypes with known angle + noise."""
+        np.random.seed(42)
+        n_ant = 4
+        n_snapshots = 50
+        n_sources = 1
+        freq_hz = 1e9
+        lambda_val = 299792458.0 / freq_hz
+        d_spacing = 0.5 * lambda_val
+        target_angle_deg = 25.0
+        target_angle_rad = np.radians(target_angle_deg)
+
+        k = 2 * np.pi / lambda_val
+
+        # Generate multi-snapshot data: n_snapshots x n_ant complex
+        # Each snapshot: steering vector * random phase + noise
+        snapshots = np.zeros((n_snapshots, n_ant), dtype=np.complex64)
+        sv = np.exp(-1j * k * d_spacing * np.arange(n_ant) * np.sin(target_angle_rad))
+
+        for i in range(n_snapshots):
+            phase = np.random.uniform(0, 2 * np.pi)
+            snapshots[i, :] = sv * np.exp(1j * phase)
+            snapshots[i, :] += 0.1 * (np.random.randn(n_ant) + 1j * np.random.randn(n_ant))
+
+        n_angles = 181
+        output = np.zeros(n_angles, dtype=np.float32)
+
+        p_snap = snapshots.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+        p_out = output.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+
+        self.aoa_lib.aoa_process_music(
+            p_snap, n_ant, n_snapshots, n_sources,
+            ctypes.c_float(d_spacing), ctypes.c_float(lambda_val),
+            p_out, n_angles
+        )
+
+        # Find peak
+        peak_idx = np.argmax(output)
+        est_angle = -90.0 + peak_idx * (180.0 / (n_angles - 1))
+
+        print(f"MUSIC Target Angle: {target_angle_deg}, Estimated: {est_angle:.1f}")
+        self.assertTrue(abs(est_angle - target_angle_deg) <= 3.0,
+                        f"MUSIC AoA estimate {est_angle:.1f} too far from {target_angle_deg}")
+
+
 if __name__ == "__main__":
     unittest.main()

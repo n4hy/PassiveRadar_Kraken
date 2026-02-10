@@ -36,12 +36,12 @@ GNU Radio Out-of-Tree (OOT) module for passive bistatic radar using the KrakenSD
 
 **Platform**: Raspberry Pi 5 (aarch64), Python 3.13.5, GNU Radio 3.10.12
 
-**Date**: 2026-02-08
+**Date**: 2026-02-09
 
 ```
 ========================= test session starts =========================
 platform linux -- Python 3.13.5, pytest-8.3.5
-collected 196 items
+collected 205 items
 
 tests/benchmarks/test_bench_kernels.py
   TestKernelBenchmarks::test_bench_caf_4096                        PASSED
@@ -60,6 +60,7 @@ tests/integration/test_full_pipeline.py
 
 tests/test_aoa_cpp.py
   TestAoACpp::test_aoa_estimation                                  PASSED
+  TestAoAMusicCpp::test_aoa_music_estimation                       PASSED
 
 tests/test_backend_cpp.py
   TestBackendCpp::test_cfar_detects_target                         PASSED
@@ -86,6 +87,8 @@ tests/test_gr_cpp_blocks.py
   TestCoherenceMonitor  (7 tests)                                  PASSED
   TestDetectionCluster  (8 tests)                                  PASSED
   TestAoaEstimator      (8 tests)                                  PASSED
+  TestAoaAlgorithmEnum  (2 tests)                                  PASSED
+  TestAoaEstimatorMusic (6 tests)                                  PASSED
   TestTracker          (12 tests)                                  PASSED
   TestTrackStatusEnum   (3 tests)                                  PASSED
   TestTrackStruct       (3 tests)                                  PASSED
@@ -107,15 +110,15 @@ tests/unit/test_eca_kernels.py        (7 tests)                   PASSED
 tests/unit/test_fixtures.py          (28 tests)                   PASSED
 tests/unit/test_tracker.py           (10 tests)                   PASSED
 
-=============== 191 passed, 5 skipped in 17.16s ======================
+=============== 200 passed, 5 skipped in 17.90s ======================
 ```
 
 ### Summary
 
 | Category | Tests | Status |
 |----------|------:|--------|
-| C++ kernel libraries | 7 | 7 passed |
-| GNU Radio C++ blocks (pybind11) | 58 | 58 passed |
+| C++ kernel libraries | 8 | 8 passed |
+| GNU Radio C++ blocks (pybind11) | 66 | 66 passed |
 | GNU Radio Python blocks | 2 | 2 passed |
 | Unit tests (algorithms) | 74 | 74 passed |
 | Integration / end-to-end | 6 | 6 passed |
@@ -123,7 +126,7 @@ tests/unit/test_tracker.py           (10 tests)                   PASSED
 | Test fixtures | 28 | 28 passed |
 | Display module math | 10 | 10 passed |
 | Display module imports | 5 | 5 skipped (headless) |
-| **Total** | **196** | **191 passed, 5 skipped** |
+| **Total** | **205** | **200 passed, 5 skipped** |
 
 The 5 skipped tests are display module import checks that require a GUI environment (DISPLAY or WAYLAND_DISPLAY). All algorithmic tests for those modules still pass.
 
@@ -227,7 +230,8 @@ KrakenSDR 5-Channel Coherent SDR
                                                             v
 +-------------------+     +-------------------+     +-------------------+
 | Tracker           | <-- | AoA Estimator     | <-- | CFAR Detector     |
-| (C++ Kalman+GNN)  |     | (C++ Bartlett)    |     | (C++ CA/GO/SO/OS) |
+| (C++ Kalman+GNN)  |     | (C++ Bartlett/    |     | (C++ CA/GO/SO/OS) |
+|                   |     |      MUSIC)       |     |                   |
 | multi-target      |     | ULA/UCA arrays    |     +-------------------+
 +-------------------+     +-------------------+             ^
         |                                                   |
@@ -292,10 +296,10 @@ PassiveRadar_Kraken/
 |   |-- metrics_dashboard.py
 |   +-- gpu_backend.py              GPU runtime API (optional, graceful fallback)
 |
-|-- tests/                           Test suite (196 tests)
+|-- tests/                           Test suite (205 tests)
 |   |-- conftest.py                  Shared pytest fixtures
 |   |-- mock_gnuradio.py            GNU Radio mock for headless testing
-|   |-- test_gr_cpp_blocks.py       58 pybind11 block tests
+|   |-- test_gr_cpp_blocks.py       66 pybind11 block tests
 |   |-- test_end_to_end.py          Full pipeline test
 |   |-- test_krakensdr_source.py    Source block tests
 |   |-- test_*_cpp.py               Per-kernel C++ tests (7 files)
@@ -332,7 +336,7 @@ Source -> PhaseCorr -> AGC -> ECA(C++) -> CAF -> Doppler(C++) ->
 | 6 | `doppler_processor` | C++ (FFTW) | Slow-time FFT for range-Doppler map |
 | 7 | `cfar_detector` | C++ | CA/GO/SO/OS-CFAR detection |
 | 8 | `detection_cluster` | C++ | 8-connected component target extraction |
-| 9 | `aoa_estimator` | C++ | Bartlett beamforming AoA (ULA/UCA) |
+| 9 | `aoa_estimator` | C++ (Eigen3) | Bartlett/MUSIC AoA (ULA/UCA) |
 | 10 | `tracker` | C++ | Kalman filter + GNN association |
 
 ---
@@ -350,7 +354,7 @@ The single OOT module `gr-kraken_passive_radar` provides 14 blocks: 7 C++ (pybin
 | `cfar_detector` | CA/GO/SO/OS-CFAR detection | `pfa`, `cfar_type`, guard/ref cells |
 | `coherence_monitor` | Phase coherence monitoring + cal trigger (OptMathKernels NEON) | `corr_threshold`, `phase_threshold_deg` |
 | `detection_cluster` | Connected-component target extraction | `min_cluster_size`, `range_resolution_m` |
-| `aoa_estimator` | Bartlett beamforming AoA estimation (OptMathKernels NEON) | `num_elements`, `d_lambda`, `array_type` |
+| `aoa_estimator` | Bartlett/MUSIC AoA estimation (Eigen3, OptMathKernels NEON) | `num_elements`, `d_lambda`, `array_type`, `algorithm`, `n_sources`, `n_snapshots` |
 | `tracker` | Multi-target Kalman tracker with GNN | `dt`, process/meas noise, `gate_threshold` |
 
 ### Python Blocks
@@ -384,7 +388,7 @@ Ten shared libraries built from `src/` provide the DSP kernels used by both the 
 | `libkraken_caf_processing.so` | Cross-ambiguity function | fftw3f, kraken_fftw_init, OptMathKernels (optional) |
 | `libkraken_doppler_processing.so` | Range-Doppler map generation | fftw3f, kraken_fftw_init, OptMathKernels (optional) |
 | `libkraken_backend.so` | CFAR detection and sensor fusion | libm, OptMathKernels (optional) |
-| `libkraken_aoa_processing.so` | Angle-of-arrival processing | libm, OptMathKernels (optional) |
+| `libkraken_aoa_processing.so` | Angle-of-arrival processing (Bartlett + MUSIC) | libm, Eigen3, OptMathKernels (optional) |
 | `libkraken_resampler.so` | Sample rate conversion | libm, OptMathKernels (optional) |
 | `libkraken_nlms_clutter_canceller.so` | NLMS adaptive filter | libm |
 
@@ -446,6 +450,7 @@ sudo apt install -y \
     build-essential cmake pkg-config \
     gnuradio gnuradio-dev \
     libfftw3-dev libvolk2-dev pybind11-dev \
+    libeigen3-dev \
     python3-dev python3-numpy python3-pytest
 ```
 
@@ -637,10 +642,10 @@ python3 -m pytest tests/ -v
 ### Run by category
 
 ```bash
-# C++ pybind11 block tests (58 tests)
+# C++ pybind11 block tests (66 tests)
 python3 -m pytest tests/test_gr_cpp_blocks.py -v
 
-# Kernel library tests (7 tests)
+# Kernel library tests (8 tests)
 python3 -m pytest tests/test_*_cpp.py -v
 
 # Unit tests (74 tests)
@@ -663,7 +668,7 @@ tests/
   conftest.py                        Shared fixtures (sample_rate, complex_noise, etc.)
   mock_gnuradio.py                   GNU Radio mock for headless testing
 
-  test_gr_cpp_blocks.py              58 tests - all 7 C++ pybind11 blocks
+  test_gr_cpp_blocks.py              66 tests - all 7 C++ pybind11 blocks
   test_krakensdr_source.py            2 tests - KrakenSDR source init/setters
   test_end_to_end.py                  1 test  - full offline pipeline
   test_eca_b_cpp.py                   1 test  - ECA-B kernel clutter reduction
@@ -672,7 +677,7 @@ tests/
   test_backend_cpp.py                 1 test  - CFAR kernel detection
   test_conditioning_cpp.py            1 test  - AGC kernel normalization
   test_time_alignment_cpp.py          1 test  - time alignment kernel
-  test_aoa_cpp.py                     1 test  - AoA kernel estimation
+  test_aoa_cpp.py                     2 tests - AoA kernel (Bartlett + MUSIC)
 
   unit/
     test_eca_kernels.py               7 tests - ECA algorithm variants
@@ -825,13 +830,26 @@ blk = detection_cluster.make(
 )
 dets = blk.get_detections()   # list of detection_t
 
-# AoA Estimator
+# AoA Estimator (Bartlett - default)
 blk = aoa_estimator.make(
     num_elements=4, d_lambda=0.5, n_angles=181,
     min_angle_deg=-90.0, max_angle_deg=90.0,
     array_type=0          # 0=ULA, 1=UCA
 )
 spectrum = blk.get_spectrum()
+
+# AoA Estimator (MUSIC - high resolution)
+blk = aoa_estimator.make(
+    num_elements=4, d_lambda=0.5, n_angles=181,
+    min_angle_deg=-90.0, max_angle_deg=90.0,
+    array_type=0,         # 0=ULA, 1=UCA
+    algorithm=1,          # 0=Bartlett, 1=MUSIC
+    n_sources=1,          # number of assumed sources (1..N-1)
+    n_snapshots=16        # snapshot buffer depth for covariance estimation
+)
+blk.set_algorithm(1)     # switch to MUSIC at runtime
+blk.set_n_sources(2)     # resolve 2 sources
+blk.set_n_snapshots(32)  # deeper snapshot buffer
 
 # Multi-Target Tracker
 blk = tracker.make(
@@ -848,7 +866,18 @@ blk.reset()
 ### Data structures
 
 ```python
-from gnuradio.kraken_passive_radar import track_t, track_status_t, detection_t
+from gnuradio.kraken_passive_radar import (
+    track_t, track_status_t, detection_t,
+    aoa_algorithm_t, array_type_t,
+)
+
+# aoa_algorithm_t enum
+aoa_algorithm_t.BARTLETT   # 0 - conventional beamformer
+aoa_algorithm_t.MUSIC      # 1 - MUSIC high-resolution subspace method
+
+# array_type_t enum
+array_type_t.ULA           # 0 - Uniform Linear Array
+array_type_t.UCA           # 1 - Uniform Circular Array
 
 # track_t fields
 t = track_t()
@@ -976,6 +1005,7 @@ MIT License. See [LICENSE](LICENSE).
 - **GNU Radio**: GPL v3.0
 - **FFTW3**: GPL v2.0+ (dynamic linking)
 - **VOLK**: LGPL v3.0
+- **Eigen3**: MPL 2.0
 - **OptMathKernels**: MIT
 
 ---
@@ -989,6 +1019,7 @@ MIT License. See [LICENSE](LICENSE).
 3. R. Tao et al., "ECA-B Clutter Cancellation Algorithm", IEEE Trans. AES, 2012
 4. M. Richards, *Fundamentals of Radar Signal Processing*, 2nd Ed., McGraw-Hill, 2014
 5. S. Blackman and R. Popoli, *Design and Analysis of Modern Tracking Systems*, Artech House, 1999
+6. R. Schmidt, "Multiple Emitter Location and Signal Parameter Estimation", IEEE Trans. AP, 1986 (MUSIC algorithm)
 
 ### Technical
 
@@ -996,6 +1027,7 @@ MIT License. See [LICENSE](LICENSE).
 - GNU Radio: https://www.gnuradio.org/
 - FFTW3: http://www.fftw.org/
 - VOLK: https://www.libvolk.org/
+- Eigen3: https://eigen.tuxfamily.org/
 
 ---
 
@@ -1005,4 +1037,4 @@ MIT License. See [LICENSE](LICENSE).
 
 **Acknowledgments**: Claude (Anthropic) wrote every test, all documentation, and the complete GPU acceleration implementation. The comprehensive test suite enabled diagnosis and validation of both hand-written code and AI-generated GPU kernels.
 
-Last updated: 2026-02-08
+Last updated: 2026-02-09

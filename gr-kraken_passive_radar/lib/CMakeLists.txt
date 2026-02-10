@@ -26,6 +26,7 @@ target_link_libraries(gnuradio-kraken_passive_radar PUBLIC
 
 target_include_directories(gnuradio-kraken_passive_radar PRIVATE
     ${FFTW3F_INCLUDE_DIRS}
+    ${EIGEN3_INCLUDE_DIR}
 )
 
 # OptMathKernels integration (optional NEON acceleration)

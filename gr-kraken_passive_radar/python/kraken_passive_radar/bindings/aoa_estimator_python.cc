@@ -15,11 +15,17 @@ void bind_aoa_estimator(py::module& m)
     using aoa_estimator = gr::kraken_passive_radar::aoa_estimator;
     using aoa_result_t = gr::kraken_passive_radar::aoa_result_t;
     using array_type_t = gr::kraken_passive_radar::array_type_t;
+    using aoa_algorithm_t = gr::kraken_passive_radar::aoa_algorithm_t;
 
     // Bind array type enum
     py::enum_<array_type_t>(m, "array_type_t")
         .value("ULA", array_type_t::ULA)
         .value("UCA", array_type_t::UCA);
+
+    // Bind AoA algorithm enum
+    py::enum_<aoa_algorithm_t>(m, "aoa_algorithm_t")
+        .value("BARTLETT", aoa_algorithm_t::BARTLETT)
+        .value("MUSIC", aoa_algorithm_t::MUSIC);
 
     // Bind AoA result struct
     py::class_<aoa_result_t>(m, "aoa_result_t")
@@ -44,6 +50,9 @@ void bind_aoa_estimator(py::module& m)
             py::arg("num_range_bins") = 256,
             py::arg("num_doppler_bins") = 64,
             py::arg("max_detections") = 100,
+            py::arg("algorithm") = 0,
+            py::arg("n_sources") = 1,
+            py::arg("n_snapshots") = 16,
             R"doc(
 Create AoA estimator block.
 
@@ -57,6 +66,9 @@ Parameters:
     num_range_bins: Range bins in CAF
     num_doppler_bins: Doppler bins in CAF
     max_detections: Maximum detections per frame
+    algorithm: BARTLETT (0) or MUSIC (1)
+    n_sources: Number of sources for MUSIC (1..num_elements-1)
+    n_snapshots: Snapshot buffer depth for MUSIC covariance estimation
 )doc")
 
         .def("set_d_lambda",
@@ -74,6 +86,21 @@ Parameters:
             &aoa_estimator::set_array_type,
             py::arg("type"),
             "Set array type (0=ULA, 1=UCA)")
+
+        .def("set_algorithm",
+            &aoa_estimator::set_algorithm,
+            py::arg("algorithm"),
+            "Set AoA algorithm (0=Bartlett, 1=MUSIC)")
+
+        .def("set_n_sources",
+            &aoa_estimator::set_n_sources,
+            py::arg("n_sources"),
+            "Set number of sources for MUSIC (1..num_elements-1)")
+
+        .def("set_n_snapshots",
+            &aoa_estimator::set_n_snapshots,
+            py::arg("n_snapshots"),
+            "Set snapshot buffer depth for MUSIC covariance estimation")
 
         .def("get_aoa_results",
             &aoa_estimator::get_aoa_results,

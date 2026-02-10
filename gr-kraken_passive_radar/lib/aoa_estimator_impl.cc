@@ -3,7 +3,7 @@
  * Copyright (c) 2026 Dr Robert W McGwier, PhD
  * SPDX-License-Identifier: MIT
  *
- * Bartlett beamformer for Angle-of-Arrival estimation.
+ * Bartlett beamformer and MUSIC for Angle-of-Arrival estimation.
  * Supports ULA and UCA array configurations.
  */
 
@@ -31,11 +31,15 @@ aoa_estimator::sptr aoa_estimator::make(int num_elements,
                                          int array_type,
                                          int num_range_bins,
                                          int num_doppler_bins,
-                                         int max_detections)
+                                         int max_detections,
+                                         int algorithm,
+                                         int n_sources,
+                                         int n_snapshots)
 {
     return gnuradio::make_block_sptr<aoa_estimator_impl>(
         num_elements, d_lambda, n_angles, min_angle_deg, max_angle_deg,
-        array_type, num_range_bins, num_doppler_bins, max_detections);
+        array_type, num_range_bins, num_doppler_bins, max_detections,
+        algorithm, n_sources, n_snapshots);
 }
 
 aoa_estimator_impl::aoa_estimator_impl(int num_elements,
@@ -46,7 +50,10 @@ aoa_estimator_impl::aoa_estimator_impl(int num_elements,
                                        int array_type,
                                        int num_range_bins,
                                        int num_doppler_bins,
-                                       int max_detections)
+                                       int max_detections,
+                                       int algorithm,
+                                       int n_sources,
+                                       int n_snapshots)
     : gr::sync_block("aoa_estimator",
                      // Inputs: 4 CAF maps + detection list
                      gr::io_signature::make(5, 5,
@@ -63,7 +70,10 @@ aoa_estimator_impl::aoa_estimator_impl(int num_elements,
       d_array_type(static_cast<array_type_t>(array_type)),
       d_num_range_bins(num_range_bins),
       d_num_doppler_bins(num_doppler_bins),
-      d_max_detections(max_detections)
+      d_max_detections(max_detections),
+      d_algorithm(static_cast<aoa_algorithm_t>(algorithm)),
+      d_n_sources(std::max(1, std::min(n_sources, num_elements - 1))),
+      d_n_snapshots(std::max(2, n_snapshots))
 {
     // Set input signature with correct vlens
     const int caf_size = num_range_bins * num_doppler_bins;
@@ -79,6 +89,7 @@ aoa_estimator_impl::aoa_estimator_impl(int num_elements,
          det_size * (int)sizeof(float)}));    // Detections
 
     d_steering_vectors.resize(n_angles);
+    d_steering_vectors_eigen.resize(n_angles);
     d_angles_deg.resize(n_angles);
     d_spectrum.resize(n_angles);
     d_aoa_results.reserve(max_detections);
@@ -123,9 +134,11 @@ void aoa_estimator_impl::compute_steering_vectors()
 
     // Scatter back into per-angle vectors
     for (int i = 0; i < d_n_angles; i++) {
+        d_steering_vectors_eigen[i].resize(d_num_elements);
         for (int n = 0; n < d_num_elements; n++) {
             int idx = i * d_num_elements + n;
             d_steering_vectors[i][n] = std::complex<float>(sv_re[idx], sv_im[idx]);
+            d_steering_vectors_eigen[i](n) = std::complex<float>(sv_re[idx], sv_im[idx]);
         }
     }
 #else
@@ -139,6 +152,12 @@ void aoa_estimator_impl::compute_steering_vectors()
             steering_vector_ula(angle_rad, d_steering_vectors[i]);
         } else {
             steering_vector_uca(angle_rad, d_steering_vectors[i]);
+        }
+
+        // Copy to Eigen vectors
+        d_steering_vectors_eigen[i].resize(d_num_elements);
+        for (int n = 0; n < d_num_elements; n++) {
+            d_steering_vectors_eigen[i](n) = d_steering_vectors[i][n];
         }
     }
 #endif
@@ -201,6 +220,129 @@ void aoa_estimator_impl::bartlett_spectrum(const std::complex<float>* array_resp
         // |a^H * x|^2 normalized
         // |a|^2 = num_elements for normalized steering vectors
         spectrum[i] = std::norm(dot) / (d_num_elements * x_power);
+    }
+}
+
+void aoa_estimator_impl::music_spectrum(const Eigen::MatrixXcf& covariance,
+                                         std::vector<float>& spectrum)
+{
+    // Eigendecomposition of Hermitian covariance matrix
+    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXcf> solver(covariance);
+
+    // Eigenvalues are sorted ascending by SelfAdjointEigenSolver
+    const Eigen::MatrixXcf& eigenvectors = solver.eigenvectors();
+
+    // Noise subspace: columns corresponding to smallest eigenvalues
+    // For d_n_sources sources, noise subspace has (N - d_n_sources) columns
+    int noise_dim = d_num_elements - d_n_sources;
+    Eigen::MatrixXcf En = eigenvectors.leftCols(noise_dim);
+
+    // Precompute En * En^H (noise projection matrix)
+    Eigen::MatrixXcf noise_proj = En * En.adjoint();
+
+    // MUSIC pseudo-spectrum: P(theta) = 1 / (a^H * En * En^H * a)
+    for (int i = 0; i < d_n_angles; i++) {
+        const Eigen::VectorXcf& a = d_steering_vectors_eigen[i];
+        std::complex<float> denom = a.adjoint() * noise_proj * a;
+        float denom_real = denom.real();
+        spectrum[i] = 1.0f / (denom_real + 1e-10f);
+    }
+}
+
+Eigen::MatrixXcf aoa_estimator_impl::build_covariance(const SnapshotBuffer& buf)
+{
+    int N = d_num_elements;
+    Eigen::MatrixXcf R = Eigen::MatrixXcf::Zero(N, N);
+
+    int K = static_cast<int>(buf.snapshots.size());
+    if (K == 0) return R;
+
+    for (const auto& x : buf.snapshots) {
+        R += x * x.adjoint();
+    }
+    R /= static_cast<float>(K);
+
+    // Diagonal loading for numerical stability: eps = trace(R) * 1e-6
+    float trace_val = R.trace().real();
+    float eps = trace_val * 1e-6f;
+    R += eps * Eigen::MatrixXcf::Identity(N, N);
+
+    return R;
+}
+
+void aoa_estimator_impl::add_snapshot(int64_t bin_key, const Eigen::VectorXcf& snapshot)
+{
+    auto it = d_snapshot_buffers.find(bin_key);
+    if (it == d_snapshot_buffers.end()) {
+        SnapshotBuffer buf;
+        buf.max_size = d_n_snapshots;
+        buf.snapshots.push_back(snapshot);
+        d_snapshot_buffers[bin_key] = std::move(buf);
+    } else {
+        auto& buf = it->second;
+        buf.max_size = d_n_snapshots;
+        buf.snapshots.push_back(snapshot);
+        while (static_cast<int>(buf.snapshots.size()) > buf.max_size) {
+            buf.snapshots.pop_front();
+        }
+    }
+
+    // Prune if total entries exceed limit
+    if (static_cast<int>(d_snapshot_buffers.size()) > MAX_SNAPSHOT_ENTRIES) {
+        prune_snapshot_buffers();
+    }
+}
+
+Eigen::MatrixXcf aoa_estimator_impl::spatial_smooth_fb(const Eigen::VectorXcf& snapshot)
+{
+    // Forward-backward spatial smoothing for single-snapshot MUSIC on ULA
+    // Sub-array size: L = N - d_n_sources (must have L > d_n_sources)
+    int N = d_num_elements;
+    int L = N - d_n_sources;
+    if (L <= d_n_sources || L < 2) {
+        // Can't smooth, return rank-1 covariance
+        return snapshot * snapshot.adjoint();
+    }
+
+    int n_subarrays = N - L + 1;
+    Eigen::MatrixXcf R = Eigen::MatrixXcf::Zero(L, L);
+
+    // Forward averaging
+    for (int i = 0; i < n_subarrays; i++) {
+        Eigen::VectorXcf sub = snapshot.segment(i, L);
+        R += sub * sub.adjoint();
+    }
+
+    // Exchange matrix J (anti-diagonal identity)
+    Eigen::MatrixXcf J = Eigen::MatrixXcf::Zero(L, L);
+    for (int i = 0; i < L; i++) {
+        J(i, L - 1 - i) = 1.0f;
+    }
+
+    // Backward averaging: R_fb = (R + J * R^* * J) / (2 * n_subarrays)
+    Eigen::MatrixXcf R_fb = (R + J * R.conjugate() * J) / (2.0f * n_subarrays);
+
+    // Diagonal loading
+    float trace_val = R_fb.trace().real();
+    float eps = trace_val * 1e-6f;
+    R_fb += eps * Eigen::MatrixXcf::Identity(L, L);
+
+    return R_fb;
+}
+
+void aoa_estimator_impl::prune_snapshot_buffers()
+{
+    // Simple strategy: remove entries with fewest snapshots
+    while (static_cast<int>(d_snapshot_buffers.size()) > MAX_SNAPSHOT_ENTRIES) {
+        auto min_it = d_snapshot_buffers.begin();
+        size_t min_size = min_it->second.snapshots.size();
+        for (auto it = d_snapshot_buffers.begin(); it != d_snapshot_buffers.end(); ++it) {
+            if (it->second.snapshots.size() < min_size) {
+                min_size = it->second.snapshots.size();
+                min_it = it;
+            }
+        }
+        d_snapshot_buffers.erase(min_it);
     }
 }
 
@@ -313,8 +455,58 @@ int aoa_estimator_impl::work(int noutput_items,
                 array_response[ch] = ch_caf[bin_idx];
             }
 
-            // Compute Bartlett spectrum
-            bartlett_spectrum(array_response.data(), d_spectrum);
+            // Algorithm dispatch
+            if (d_algorithm == aoa_algorithm_t::MUSIC) {
+                // Build Eigen snapshot vector
+                Eigen::VectorXcf snapshot(d_num_elements);
+                for (int n = 0; n < d_num_elements && n < num_caf_inputs; n++) {
+                    snapshot(n) = array_response[n];
+                }
+
+                // Key for this detection bin
+                int64_t bin_key = (static_cast<int64_t>(r_bin) << 16) | d_bin;
+
+                // Add snapshot to ring buffer
+                add_snapshot(bin_key, snapshot);
+
+                auto it = d_snapshot_buffers.find(bin_key);
+                int n_accumulated = (it != d_snapshot_buffers.end())
+                    ? static_cast<int>(it->second.snapshots.size()) : 0;
+
+                // Need at least d_n_sources + 1 snapshots for MUSIC
+                if (n_accumulated >= d_n_sources + 1) {
+                    // Build covariance from accumulated snapshots
+                    Eigen::MatrixXcf R = build_covariance(it->second);
+                    music_spectrum(R, d_spectrum);
+                } else if (d_array_type == array_type_t::ULA && d_num_elements > 2 * d_n_sources) {
+                    // Fall back to forward-backward spatial smoothing for single snapshot
+                    Eigen::MatrixXcf R_fb = spatial_smooth_fb(snapshot);
+                    // spatial_smooth_fb returns a smaller matrix; compute MUSIC on sub-array
+                    int L = R_fb.rows();
+                    int noise_dim = L - d_n_sources;
+                    if (noise_dim > 0) {
+                        Eigen::SelfAdjointEigenSolver<Eigen::MatrixXcf> solver(R_fb);
+                        Eigen::MatrixXcf En = solver.eigenvectors().leftCols(noise_dim);
+                        Eigen::MatrixXcf noise_proj = En * En.adjoint();
+
+                        // Scan with sub-array steering vectors (length L)
+                        for (int i = 0; i < d_n_angles; i++) {
+                            Eigen::VectorXcf a_sub = d_steering_vectors_eigen[i].head(L);
+                            std::complex<float> denom_c = a_sub.adjoint() * noise_proj * a_sub;
+                            d_spectrum[i] = 1.0f / (denom_c.real() + 1e-10f);
+                        }
+                    } else {
+                        // Can't do MUSIC, fall back to Bartlett
+                        bartlett_spectrum(array_response.data(), d_spectrum);
+                    }
+                } else {
+                    // Fall back to Bartlett until enough snapshots
+                    bartlett_spectrum(array_response.data(), d_spectrum);
+                }
+            } else {
+                // Bartlett (default)
+                bartlett_spectrum(array_response.data(), d_spectrum);
+            }
 
             // Find peak angle
             float confidence, peak_width;
@@ -370,6 +562,27 @@ void aoa_estimator_impl::set_array_type(int type)
     gr::thread::scoped_lock lock(d_mutex);
     d_array_type = static_cast<array_type_t>(type);
     compute_steering_vectors();
+}
+
+void aoa_estimator_impl::set_algorithm(int algorithm)
+{
+    gr::thread::scoped_lock lock(d_mutex);
+    d_algorithm = static_cast<aoa_algorithm_t>(algorithm);
+    d_snapshot_buffers.clear();
+}
+
+void aoa_estimator_impl::set_n_sources(int n_sources)
+{
+    gr::thread::scoped_lock lock(d_mutex);
+    d_n_sources = std::max(1, std::min(n_sources, d_num_elements - 1));
+    d_snapshot_buffers.clear();
+}
+
+void aoa_estimator_impl::set_n_snapshots(int n_snapshots)
+{
+    gr::thread::scoped_lock lock(d_mutex);
+    d_n_snapshots = std::max(2, n_snapshots);
+    d_snapshot_buffers.clear();
 }
 
 std::vector<aoa_result_t> aoa_estimator_impl::get_aoa_results() const

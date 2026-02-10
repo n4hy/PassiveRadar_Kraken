@@ -27,6 +27,14 @@ enum class array_type_t {
 };
 
 /*!
+ * \brief AoA algorithm enumeration
+ */
+enum class aoa_algorithm_t {
+    BARTLETT = 0,   // Conventional beamformer
+    MUSIC = 1       // MUSIC (MUltiple SIgnal Classification)
+};
+
+/*!
  * \brief AoA estimation result
  */
 struct aoa_result_t {
@@ -73,6 +81,9 @@ public:
      * \param num_range_bins Range bins in CAF
      * \param num_doppler_bins Doppler bins in CAF
      * \param max_detections Maximum detections per frame
+     * \param algorithm BARTLETT (0) or MUSIC (1)
+     * \param n_sources Number of sources for MUSIC (1..num_elements-1)
+     * \param n_snapshots Snapshot buffer depth for MUSIC covariance estimation
      */
     static sptr make(int num_elements = 4,
                      float d_lambda = 0.5f,
@@ -82,11 +93,17 @@ public:
                      int array_type = 0,
                      int num_range_bins = 256,
                      int num_doppler_bins = 64,
-                     int max_detections = 100);
+                     int max_detections = 100,
+                     int algorithm = 0,
+                     int n_sources = 1,
+                     int n_snapshots = 16);
 
     virtual void set_d_lambda(float d_lambda) = 0;
     virtual void set_scan_range(float min_deg, float max_deg) = 0;
     virtual void set_array_type(int type) = 0;
+    virtual void set_algorithm(int algorithm) = 0;
+    virtual void set_n_sources(int n_sources) = 0;
+    virtual void set_n_snapshots(int n_snapshots) = 0;
 
     // Get AoA results from last frame
     virtual std::vector<aoa_result_t> get_aoa_results() const = 0;

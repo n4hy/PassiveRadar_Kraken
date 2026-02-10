@@ -29,6 +29,9 @@ message(STATUS "FFTW3 found: ${FFTW3_LIBRARIES}")
 # Find Volk (required for optimized vector operations)
 find_package(Volk REQUIRED)
 
+# Find Eigen3 (required for MUSIC AoA estimation)
+find_package(Eigen3 3.3 REQUIRED NO_MODULE)
+
 # OptMathKernels for NEON acceleration (optional)
 find_package(OptMathKernels QUIET)
 if(OptMathKernels_FOUND)
