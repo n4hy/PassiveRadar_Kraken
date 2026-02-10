@@ -10,6 +10,79 @@
 # Description: Passive Bistatic Radar with periodic phase calibration and drift tracking
 # GNU Radio version: 3.10.12.0
 
+import os
+import sys
+import glob as _glob
+
+# --- Auto-detect display environment before importing Qt/matplotlib ---
+# When running over SSH, DISPLAY and WAYLAND_DISPLAY are typically unset even
+# though a desktop session is active on the host.  Probe for available display
+# sockets and configure the environment so Qt5 and matplotlib can start.
+def _autodetect_display():
+    """Set DISPLAY / WAYLAND_DISPLAY / QT_QPA_PLATFORM if not already present."""
+    have_x = bool(os.environ.get('DISPLAY'))
+    have_wl = bool(os.environ.get('WAYLAND_DISPLAY'))
+    if have_x or have_wl:
+        return  # already configured (includes ssh -X/-Y which sets DISPLAY)
+
+    # If we are in an SSH session, look for X11 forwarding ports (6010+)
+    # before falling back to the host's local display.
+    if os.environ.get('SSH_CONNECTION') or os.environ.get('SSH_CLIENT'):
+        import socket
+        for offset in range(10, 70):
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.settimeout(0.05)
+                s.connect(('127.0.0.1', 6000 + offset))
+                s.close()
+                os.environ['DISPLAY'] = f'localhost:{offset}.0'
+                return
+            except OSError:
+                pass
+        print("NOTE: SSH session detected but no X11 forwarding port found.\n"
+              "  Run with 'ssh -Y' to forward the display, or set DISPLAY=:0\n"
+              "  to render on the Pi's local screen.", file=sys.stderr)
+        return
+
+    uid = os.getuid()
+    xdg = os.environ.get('XDG_RUNTIME_DIR', f'/run/user/{uid}')
+    if not os.environ.get('XDG_RUNTIME_DIR'):
+        os.environ['XDG_RUNTIME_DIR'] = xdg
+
+    # Prefer Wayland if a compositor socket exists
+    wl_socks = sorted(_glob.glob(os.path.join(xdg, 'wayland-[0-9]*')))
+    wl_socks = [s for s in wl_socks if not s.endswith('.lock')]
+    if wl_socks:
+        os.environ.setdefault('WAYLAND_DISPLAY', os.path.basename(wl_socks[0]))
+        os.environ.setdefault('QT_QPA_PLATFORM', 'wayland')
+        # XWayland usually provides :0 alongside Wayland — set DISPLAY too
+        # so that matplotlib Qt5Agg (which may use X11 internally) works.
+        x_socks = sorted(_glob.glob('/tmp/.X11-unix/X*'))
+        if x_socks:
+            display_num = os.path.basename(x_socks[0]).lstrip('X')
+            os.environ.setdefault('DISPLAY', f':{display_num}')
+        return
+
+    # Fall back to X11
+    x_socks = sorted(_glob.glob('/tmp/.X11-unix/X*'))
+    if x_socks:
+        display_num = os.path.basename(x_socks[0]).lstrip('X')
+        os.environ.setdefault('DISPLAY', f':{display_num}')
+        # Look for Xauthority — common locations
+        for candidate in [
+            os.path.expanduser('~/.Xauthority'),
+            *sorted(_glob.glob(f'{xdg}/.mutter-Xwaylandauth.*')),
+        ]:
+            if os.path.isfile(candidate):
+                os.environ.setdefault('XAUTHORITY', candidate)
+                break
+        return
+
+    print("WARNING: No X11 or Wayland display found. GUI will likely fail.",
+          file=sys.stderr)
+
+_autodetect_display()
+
 from PyQt5 import Qt
 from gnuradio import qtgui
 from gnuradio import analog
@@ -20,9 +93,7 @@ from gnuradio import filter
 from gnuradio.filter import firdes
 from gnuradio import gr
 import numpy as np
-import sys
 import signal
-from PyQt5 import Qt
 from argparse import ArgumentParser
 from gnuradio.eng_arg import eng_float, intx
 from gnuradio import eng_notation
@@ -127,6 +198,9 @@ class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
         self._cal_status = "Waiting for startup..."
         self._cal_status_color = "orange"
         self._phase_plot_dirty = False  # flag for timer to redraw phase plot
+        self._frozen_trend_t = []  # accumulated frozen red curve t-values (NaN-separated)
+        self._frozen_trend_p = []  # accumulated frozen red curve phase-values
+        self._n_frozen_segs = 0    # number of coeffs_history entries already frozen
         self.recal_interval = 10.0  # seconds between recalibrations
 
         ##################################################
@@ -519,40 +593,38 @@ class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
             # Plot measured points (unwrapped)
             self.phase_line.set_data(times, phases_unwrapped)
 
-            # Build piecewise parabolic prediction curves
-            if len(ch) >= 1:
-                t_arr = np.array(times)
-                # --- Piecewise segments: each uses the coefficients current at that time ---
-                t_pw = []
-                p_pw = []
-                for i, (t_i, a_i, b_i, c_i) in enumerate(ch):
-                    seg_coeffs = [a_i, b_i, c_i]
-                    # Segment runs from this cal time to the next cal time
-                    if i + 1 < len(ch):
-                        t_end = ch[i + 1][0]
-                    else:
-                        t_end = t_arr[-1]
-                    seg_t = np.linspace(t_i, t_end, 20)
-                    seg_p = np.polyval(seg_coeffs, seg_t)
-                    t_pw.extend(seg_t.tolist())
-                    p_pw.extend(seg_p.tolist())
+            # Freeze new red segments: each cal produces a segment from
+            # previous cal time to this cal time, using that cal's coefficients.
+            # Once frozen, these segments never change.
+            while self._n_frozen_segs < len(ch):
+                i = self._n_frozen_segs
+                _, a_i, b_i, c_i = ch[i]
+                t_start = ch[i - 1][0] if i > 0 else 0.0
+                t_end = ch[i][0]
+                if t_end > t_start:
+                    seg_t = np.linspace(t_start, t_end, 40)
+                    seg_p = np.polyval([a_i, b_i, c_i], seg_t)
+                    self._frozen_trend_t.extend(seg_t.tolist())
+                    self._frozen_trend_p.extend(seg_p.tolist())
                     # NaN separator so matplotlib doesn't connect segments
-                    t_pw.append(np.nan)
-                    p_pw.append(np.nan)
+                    self._frozen_trend_t.append(np.nan)
+                    self._frozen_trend_p.append(np.nan)
+                self._n_frozen_segs += 1
 
-                self.phase_trend.set_data(t_pw, p_pw)
+            # Red dashed: all frozen past segments (immutable)
+            self.phase_trend.set_data(self._frozen_trend_t, self._frozen_trend_p)
 
-                # --- Orange extrapolation from latest coefficients ---
-                last_t = ch[-1][0]
-                span = max(t_arr[-1] - t_arr[0], 10.0)
-                t_ext = np.linspace(last_t, last_t + span * 0.25, 30)
+            # Orange dashed: forward extrapolation from latest coefficients
+            if n_pts >= 2:
+                t_now = times[-1]
+                span = max(t_now - times[0], 10.0)
+                t_ext = np.linspace(t_now, t_now + span * 0.25, 30)
                 p_ext = np.polyval(coeffs, t_ext)
                 self.phase_extrap.set_data(t_ext, p_ext)
 
-                inst_drift = 2.0 * coeffs[0] * t_arr[-1] + coeffs[1]
+                inst_drift = 2.0 * coeffs[0] * t_now + coeffs[1]
                 title = f"Phase Drift: {inst_drift:+.3f} deg/s  (curvature a={coeffs[0]:+.5f})"
             else:
-                self.phase_trend.set_data([], [])
                 self.phase_extrap.set_data([], [])
                 title = "Inter-channel Phase Drift: measuring..."
 
