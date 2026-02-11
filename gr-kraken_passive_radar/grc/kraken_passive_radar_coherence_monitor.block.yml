@@ -61,11 +61,11 @@ outputs:
     optional: true
 
 asserts:
-  - num_channels >= 2
-  - sample_rate > 0
-  - measure_interval_ms > measure_duration_ms
-  - corr_threshold > 0 and corr_threshold <= 1
-  - phase_threshold_deg > 0
+  - ${ num_channels >= 2 }
+  - ${ sample_rate > 0 }
+  - ${ measure_interval_ms > measure_duration_ms }
+  - ${ corr_threshold > 0 and corr_threshold <= 1 }
+  - ${ phase_threshold_deg > 0 }
 
 documentation: |-
   Coherence Monitor for KrakenSDR Phase Calibration

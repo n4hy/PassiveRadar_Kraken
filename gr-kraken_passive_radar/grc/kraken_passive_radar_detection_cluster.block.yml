@@ -70,13 +70,13 @@ outputs:
     vlen: ${max_detections * 10}
 
 asserts:
-  - num_range_bins > 0
-  - num_doppler_bins > 0
-  - min_cluster_size >= 1
-  - max_cluster_extent >= 1
-  - range_resolution_m > 0
-  - doppler_resolution_hz > 0
-  - max_detections >= 1
+  - ${ num_range_bins > 0 }
+  - ${ num_doppler_bins > 0 }
+  - ${ min_cluster_size >= 1 }
+  - ${ max_cluster_extent >= 1 }
+  - ${ range_resolution_m > 0 }
+  - ${ doppler_resolution_hz > 0 }
+  - ${ max_detections >= 1 }
 
 documentation: |-
   Detection Clustering for Passive Radar

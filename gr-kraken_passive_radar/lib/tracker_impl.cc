@@ -16,6 +16,11 @@
 namespace gr {
 namespace kraken_passive_radar {
 
+// Detection stride: 12 floats per AoA-augmented detection
+// [id, range_bin, doppler_bin, range_m, doppler_hz, snr_db,
+//  power_sum, cluster_size, peak_range, peak_doppler, aoa_deg, aoa_confidence]
+static constexpr int DET_STRIDE = 12;
+
 tracker::sptr tracker::make(float dt,
                             float process_noise_range,
                             float process_noise_doppler,
@@ -45,8 +50,8 @@ tracker_impl::tracker_impl(float dt,
                            int max_tracks,
                            int max_detections)
     : gr::sync_block("tracker",
-                     // Input: detection list (10 floats per detection)
-                     gr::io_signature::make(1, 1, max_detections * 10 * sizeof(float)),
+                     // Input: AoA-augmented detection list (12 floats per detection)
+                     gr::io_signature::make(1, 1, max_detections * DET_STRIDE * sizeof(float)),
                      // Output: track list (20 floats per track)
                      gr::io_signature::make(1, 1, max_tracks * 20 * sizeof(float))),
       d_dt(dt),
@@ -337,8 +342,8 @@ void tracker_impl::associate_detections(const float* detections, int num_dets)
             if (d_det_used[d]) continue;
 
             // Detection format: [id, range_bin, doppler_bin, range_m, doppler_hz, ...]
-            float range_m = detections[d * 10 + 3];
-            float doppler_hz = detections[d * 10 + 4];
+            float range_m = detections[d * DET_STRIDE + 3];
+            float doppler_hz = detections[d * DET_STRIDE + 4];
 
             // Skip invalid detections (id < 0 means empty slot)
             if (range_m == 0.0f && doppler_hz == 0.0f) continue;
@@ -425,7 +430,7 @@ int tracker_impl::work(int noutput_items,
     const float* detections = static_cast<const float*>(input_items[0]);
     float* tracks_out = static_cast<float*>(output_items[0]);
 
-    const int det_size = d_max_detections * 10;
+    const int det_size = d_max_detections * DET_STRIDE;
     const int track_size = d_max_tracks * 20;
 
     for (int frame = 0; frame < noutput_items; frame++) {
@@ -439,7 +444,7 @@ int tracker_impl::work(int noutput_items,
         int num_dets = 0;
         for (int d = 0; d < d_max_detections; d++) {
             // Check if detection is valid (range_m > 0)
-            if (frame_dets[d * 10 + 3] > 0.0f) {
+            if (frame_dets[d * DET_STRIDE + 3] > 0.0f) {
                 num_dets = d + 1;
             }
         }
@@ -461,8 +466,8 @@ int tracker_impl::work(int noutput_items,
                 int t_idx = assoc.first;
                 int d_idx = assoc.second;
 
-                float range_m = frame_dets[d_idx * 10 + 3];
-                float doppler_hz = frame_dets[d_idx * 10 + 4];
+                float range_m = frame_dets[d_idx * DET_STRIDE + 3];
+                float doppler_hz = frame_dets[d_idx * DET_STRIDE + 4];
 
                 update_track(d_tracks[t_idx], range_m, doppler_hz);
                 track_updated[t_idx] = true;
@@ -476,8 +481,8 @@ int tracker_impl::work(int noutput_items,
             // 5. Create new tracks for unassociated detections
             for (int d = 0; d < num_dets; d++) {
                 if (!d_det_used[d]) {
-                    float range_m = frame_dets[d * 10 + 3];
-                    float doppler_hz = frame_dets[d * 10 + 4];
+                    float range_m = frame_dets[d * DET_STRIDE + 3];
+                    float doppler_hz = frame_dets[d * DET_STRIDE + 4];
                     if (range_m > 0.0f) {
                         create_track(range_m, doppler_hz);
                     }

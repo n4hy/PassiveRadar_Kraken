@@ -71,7 +71,7 @@ struct track_t {
  *   CONFIRMED -> COASTING after one miss
  *   COASTING -> deleted after delete_misses consecutive misses
  *
- * Input: Detection list from clustering block
+ * Input: AoA-augmented detection list (12 floats/detection) from AoA estimator
  * Output: Track list as packed float vector
  */
 class KRAKEN_PASSIVE_RADAR_API tracker : virtual public gr::sync_block

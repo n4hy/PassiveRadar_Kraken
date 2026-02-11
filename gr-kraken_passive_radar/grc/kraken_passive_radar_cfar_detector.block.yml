@@ -78,13 +78,13 @@ outputs:
     vlen: ${num_range_bins * num_doppler_bins}
 
 asserts:
-  - num_range_bins > 0
-  - num_doppler_bins > 0
-  - guard_cells_range >= 0
-  - guard_cells_doppler >= 0
-  - ref_cells_range > 0
-  - ref_cells_doppler > 0
-  - pfa > 0 and pfa < 1
+  - ${ num_range_bins > 0 }
+  - ${ num_doppler_bins > 0 }
+  - ${ guard_cells_range >= 0 }
+  - ${ guard_cells_doppler >= 0 }
+  - ${ ref_cells_range > 0 }
+  - ${ ref_cells_doppler > 0 }
+  - ${ pfa > 0 and pfa < 1 }
 
 documentation: |-
   CFAR Detector for Range-Doppler Maps

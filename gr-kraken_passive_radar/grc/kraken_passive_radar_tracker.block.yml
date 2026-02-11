@@ -69,10 +69,10 @@ parameters:
     default: 100
 
 inputs:
-  - label: detections
+  - label: det_aoa
     domain: stream
     dtype: float
-    vlen: ${max_detections * 10}
+    vlen: ${max_detections * 12}
 
 outputs:
   - label: tracks
@@ -81,16 +81,16 @@ outputs:
     vlen: ${max_tracks * 20}
 
 asserts:
-  - dt > 0
-  - process_noise_range > 0
-  - process_noise_doppler > 0
-  - meas_noise_range > 0
-  - meas_noise_doppler > 0
-  - gate_threshold > 0
-  - confirm_hits >= 1
-  - delete_misses >= 1
-  - max_tracks >= 1
-  - max_detections >= 1
+  - ${ dt > 0 }
+  - ${ process_noise_range > 0 }
+  - ${ process_noise_doppler > 0 }
+  - ${ meas_noise_range > 0 }
+  - ${ meas_noise_doppler > 0 }
+  - ${ gate_threshold > 0 }
+  - ${ confirm_hits >= 1 }
+  - ${ delete_misses >= 1 }
+  - ${ max_tracks >= 1 }
+  - ${ max_detections >= 1 }
 
 documentation: |-
   Multi-Target Kalman Tracker for Passive Radar
@@ -108,8 +108,9 @@ documentation: |-
     COASTING (2): No recent measurement, predicting forward
 
   Input:
-    Detection list from clustering block (10 floats per detection):
-    [id, range_bin, doppler_bin, range_m, doppler_hz, snr_db, ...]
+    AoA-augmented detection list (12 floats per detection):
+    [id, range_bin, doppler_bin, range_m, doppler_hz, snr_db,
+     power_sum, cluster_size, peak_range, peak_doppler, aoa_deg, aoa_confidence]
 
   Output:
     Track list (20 floats per track):

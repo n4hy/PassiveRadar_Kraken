@@ -1,0 +1,55 @@
+id: kraken_passive_radar_caf
+label: Cross-Ambiguity Function (CAF)
+category: '[Kraken Passive Radar]'
+flags: [python]
+
+documentation: |-
+  Cross-Ambiguity Function (CAF) Block
+
+  Computes the range profile by cross-correlating the reference and
+  surveillance channels using the C++ CAF kernel (libkraken_caf_processing.so).
+
+  This is a decimating block: it consumes n_samples input samples per
+  input port and produces one output vector of n_samples complex values.
+
+  Inputs:
+    - Port 0: Reference channel (complex stream)
+    - Port 1: Surveillance channel (complex stream)
+
+  Output:
+    - Port 0: Range profile vector (complex, length n_samples)
+
+  Parameters:
+    n_samples: Number of samples per CPI (coherent processing interval).
+               Determines range resolution and output vector length.
+
+templates:
+  imports: from gnuradio.kraken_passive_radar.custom_blocks import CafBlock
+  make: CafBlock(n_samples=${n_samples})
+
+parameters:
+  - id: n_samples
+    label: CPI Length (samples)
+    dtype: int
+    default: '4096'
+    hide: none
+
+inputs:
+  - domain: stream
+    dtype: complex
+    label: Ref
+
+  - domain: stream
+    dtype: complex
+    label: Surv
+
+outputs:
+  - domain: stream
+    dtype: complex
+    vlen: ${n_samples}
+    label: out
+
+asserts:
+  - ${ n_samples > 0 }
+
+file_format: 1

@@ -434,11 +434,11 @@ blocks:
 
 
       Slow-time FFT for Range-Doppler map'
-    enable_coherent_integration: 'True'
     maxoutbuf: '0'
     minoutbuf: '0'
     num_doppler_bins: doppler_len
     num_range_bins: cpi_len
+    output_power: 'True'
     window_type: '1'
   states:
     bus_sink: false
@@ -458,13 +458,16 @@ blocks:
 
 
       Constant False Alarm Rate detection'
-    guard_cells: '4'
+    guard_cells_range: '4'
+    guard_cells_doppler: '4'
     maxoutbuf: '0'
     minoutbuf: '0'
     num_doppler_bins: doppler_len
     num_range_bins: cpi_len
+    os_k: '0'
     pfa: '1e-6'
-    training_cells: '16'
+    ref_cells_range: '16'
+    ref_cells_doppler: '16'
   states:
     bus_sink: false
     bus_source: false
@@ -482,14 +485,15 @@ blocks:
 
 
       Groups detections into targets'
+    doppler_resolution_hz: samp_rate / (cpi_len * doppler_len)
+    max_cluster_extent: '50'
     max_detections: '1000'
     maxoutbuf: '0'
     minoutbuf: '0'
     min_cluster_size: '3'
-    neighbor_threshold: '2'
     num_doppler_bins: doppler_len
     num_range_bins: cpi_len
-    sample_rate: samp_rate
+    range_resolution_m: 3e8 / (2 * samp_rate)
   states:
     bus_sink: false
     bus_source: false
@@ -508,13 +512,23 @@ blocks:
     comment: 'AoA Estimator
 
 
-      Bartlett beamforming for angle-of-arrival'
-    frequency: freq
+      Bartlett beamforming for angle-of-arrival
+
+      Inputs: 4 CAF channels + detections from clustering
+
+      Output: AoA-augmented detections (12 floats/det)'
+    d_lambda: '0.5'
+    max_detections: '1000'
     maxoutbuf: '0'
+    min_angle_deg: '-90.0'
+    max_angle_deg: '90.0'
     minoutbuf: '0'
+    n_angles: '181'
+    n_snapshots: '16'
+    n_sources: '1'
+    num_doppler_bins: doppler_len
     num_elements: '4'
-    num_snapshots: '10'
-    spacing: '0.5'
+    num_range_bins: cpi_len
   states:
     bus_sink: false
     bus_source: false
@@ -531,14 +545,21 @@ blocks:
     comment: 'Multi-Target Tracker
 
 
-      Kalman filter with GNN data association'
-    max_coast_time: '5.0'
-    max_tracks: '100'
+      Kalman filter with GNN data association
+
+      Input: AoA-augmented detections (12 floats/det) from AoA Estimator'
+    confirm_hits: '3'
+    delete_misses: '5'
+    dt: '0.1'
+    gate_threshold: '9.21'
+    max_detections: '1000'
+    max_tracks: '50'
     maxoutbuf: '0'
+    meas_noise_doppler: '2.0'
+    meas_noise_range: '100.0'
     minoutbuf: '0'
-    min_detections: '3'
-    process_noise: '1.0'
-    sample_rate: samp_rate
+    process_noise_doppler: '5.0'
+    process_noise_range: '50.0'
   states:
     bus_sink: false
     bus_source: false
@@ -609,101 +630,83 @@ blocks:
     rotation: 0
     state: enabled
 
-- name: qtgui_time_sink_0
-  id: qtgui_time_sink_x
+- name: kraken_passive_radar_doppler_processor_1
+  id: kraken_passive_radar_doppler_processor
   parameters:
     affinity: ''
     alias: ''
-    alpha1: '1.0'
-    alpha10: '1.0'
-    alpha2: '1.0'
-    alpha3: '1.0'
-    alpha4: '1.0'
-    alpha5: '1.0'
-    alpha6: '1.0'
-    alpha7: '1.0'
-    alpha8: '1.0'
-    alpha9: '1.0'
-    autoscale: 'False'
-    axislabels: 'True'
-    color1: blue
-    color10: dark blue
-    color2: red
-    color3: green
-    color4: black
-    color5: cyan
-    color6: magenta
-    color7: yellow
-    color8: dark red
-    color9: dark green
-    comment: CAF Output Magnitude (Ch 1)
-    ctrlpanel: 'False'
-    entags: 'True'
-    grid: 'False'
-    gui_hint: 3,0,2,1
-    label1: CAF Ch 1
-    label10: Signal 10
-    label2: Signal 2
-    label3: Signal 3
-    label4: Signal 4
-    label5: Signal 5
-    label6: Signal 6
-    label7: Signal 7
-    label8: Signal 8
-    label9: Signal 9
-    legend: 'True'
-    marker1: '-1'
-    marker10: '-1'
-    marker2: '-1'
-    marker3: '-1'
-    marker4: '-1'
-    marker5: '-1'
-    marker6: '-1'
-    marker7: '-1'
-    marker8: '-1'
-    marker9: '-1'
-    name: '"CAF Magnitude"'
-    nconnections: '1'
-    size: cpi_len
-    srate: samp_rate
-    stemplot: 'False'
-    style1: '1'
-    style10: '1'
-    style2: '1'
-    style3: '1'
-    style4: '1'
-    style5: '1'
-    style6: '1'
-    style7: '1'
-    style8: '1'
-    style9: '1'
-    tr_chan: '0'
-    tr_delay: '0'
-    tr_level: '0.0'
-    tr_mode: qtgui.TRIG_MODE_FREE
-    tr_slope: qtgui.TRIG_SLOPE_POS
-    tr_tag: '""'
-    type: float
-    update_time: '0.10'
-    width1: '1'
-    width10: '1'
-    width2: '1'
-    width3: '1'
-    width4: '1'
-    width5: '1'
-    width6: '1'
-    width7: '1'
-    width8: '1'
-    width9: '1'
-    ylabel: Amplitude
-    ymax: '1'
-    ymin: '0'
-    yunit: '""'
+    comment: 'Doppler Processor - AoA Ch 1 (complex output)'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_doppler_bins: doppler_len
+    num_range_bins: cpi_len
+    output_power: 'False'
+    window_type: '1'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1392, 388]
+    coordinate: [1392, 500]
+    rotation: 0
+    state: enabled
+
+- name: kraken_passive_radar_doppler_processor_2
+  id: kraken_passive_radar_doppler_processor
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Doppler Processor - AoA Ch 2 (complex output)'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_doppler_bins: doppler_len
+    num_range_bins: cpi_len
+    output_power: 'False'
+    window_type: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1392, 580]
+    rotation: 0
+    state: enabled
+
+- name: kraken_passive_radar_doppler_processor_3
+  id: kraken_passive_radar_doppler_processor
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Doppler Processor - AoA Ch 3 (complex output)'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_doppler_bins: doppler_len
+    num_range_bins: cpi_len
+    output_power: 'False'
+    window_type: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1392, 660]
+    rotation: 0
+    state: enabled
+
+- name: kraken_passive_radar_doppler_processor_4
+  id: kraken_passive_radar_doppler_processor
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Doppler Processor - AoA Ch 4 (complex output)'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_doppler_bins: doppler_len
+    num_range_bins: cpi_len
+    output_power: 'False'
+    window_type: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1392, 740]
     rotation: 0
     state: enabled
 
@@ -714,9 +717,9 @@ blocks:
     alias: ''
     bus_structure_sink: '[[0,],]'
     comment: ''
-    num_inputs: '4'
+    num_inputs: '1'
     type: float
-    vlen: '1'
+    vlen: '1000'
   states:
     bus_sink: false
     bus_source: false
@@ -802,18 +805,20 @@ connections:
 - [kraken_passive_radar_eca_canceller_0, '2', kraken_passive_radar_caf_2, '1']
 - [kraken_passive_radar_eca_canceller_0, '3', kraken_passive_radar_caf_3, '1']
 - [kraken_passive_radar_caf_0, '0', kraken_passive_radar_doppler_processor_0, '0']
-- [kraken_passive_radar_caf_0, '0', qtgui_time_sink_0, '0']
-- [kraken_passive_radar_caf_1, '0', kraken_passive_radar_aoa_estimator_0, '0']
-- [kraken_passive_radar_caf_2, '0', kraken_passive_radar_aoa_estimator_0, '1']
-- [kraken_passive_radar_caf_3, '0', kraken_passive_radar_aoa_estimator_0, '2']
+- [kraken_passive_radar_caf_0, '0', kraken_passive_radar_doppler_processor_1, '0']
+- [kraken_passive_radar_caf_1, '0', kraken_passive_radar_doppler_processor_2, '0']
+- [kraken_passive_radar_caf_2, '0', kraken_passive_radar_doppler_processor_3, '0']
+- [kraken_passive_radar_caf_3, '0', kraken_passive_radar_doppler_processor_4, '0']
 - [kraken_passive_radar_doppler_processor_0, '0', kraken_passive_radar_cfar_detector_0, '0']
+- [kraken_passive_radar_doppler_processor_0, '0', kraken_passive_radar_detection_cluster_0, '1']
+- [kraken_passive_radar_doppler_processor_1, '0', kraken_passive_radar_aoa_estimator_0, '0']
+- [kraken_passive_radar_doppler_processor_2, '0', kraken_passive_radar_aoa_estimator_0, '1']
+- [kraken_passive_radar_doppler_processor_3, '0', kraken_passive_radar_aoa_estimator_0, '2']
+- [kraken_passive_radar_doppler_processor_4, '0', kraken_passive_radar_aoa_estimator_0, '3']
 - [kraken_passive_radar_cfar_detector_0, '0', kraken_passive_radar_detection_cluster_0, '0']
-- [kraken_passive_radar_detection_cluster_0, '0', kraken_passive_radar_tracker_0, '0']
-- [kraken_passive_radar_aoa_estimator_0, '0', kraken_passive_radar_tracker_0, '1']
+- [kraken_passive_radar_detection_cluster_0, '0', kraken_passive_radar_aoa_estimator_0, '4']
+- [kraken_passive_radar_aoa_estimator_0, '0', kraken_passive_radar_tracker_0, '0']
 - [kraken_passive_radar_tracker_0, '0', blocks_null_sink_0, '0']
-- [kraken_passive_radar_tracker_0, '1', blocks_null_sink_0, '1']
-- [kraken_passive_radar_tracker_0, '2', blocks_null_sink_0, '2']
-- [kraken_passive_radar_tracker_0, '3', blocks_null_sink_0, '3']
 
 metadata:
   file_format: 1

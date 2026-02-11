@@ -118,16 +118,16 @@ outputs:
     vlen: ${max_detections * 12}
 
 asserts:
-  - num_elements >= 2
-  - d_lambda > 0
-  - n_angles >= 3
-  - min_angle_deg < max_angle_deg
-  - num_range_bins > 0
-  - num_doppler_bins > 0
-  - max_detections >= 1
-  - n_sources >= 1
-  - n_sources < num_elements
-  - n_snapshots >= 2
+  - ${ num_elements >= 2 }
+  - ${ d_lambda > 0 }
+  - ${ n_angles >= 3 }
+  - ${ min_angle_deg < max_angle_deg }
+  - ${ num_range_bins > 0 }
+  - ${ num_doppler_bins > 0 }
+  - ${ max_detections >= 1 }
+  - ${ n_sources >= 1 }
+  - ${ n_sources < num_elements }
+  - ${ n_snapshots >= 2 }
 
 documentation: |-
   Angle-of-Arrival Estimator for Passive Radar

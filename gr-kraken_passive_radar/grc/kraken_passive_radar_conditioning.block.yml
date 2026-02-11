@@ -1,0 +1,40 @@
+id: kraken_passive_radar_conditioning
+label: Conditioning (AGC)
+category: '[Kraken Passive Radar]'
+flags: [python]
+
+documentation: |-
+  AGC / Signal Conditioning Block
+
+  Applies automatic gain control to a complex input stream using
+  the C++ conditioning kernel (libkraken_conditioning.so).
+
+  Parameters:
+    rate: AGC adaptation rate. Smaller values give slower, more stable AGC.
+          Typical value: 1e-5
+
+templates:
+  imports: from gnuradio.kraken_passive_radar.custom_blocks import ConditioningBlock
+  make: ConditioningBlock(rate=${rate})
+
+parameters:
+  - id: rate
+    label: AGC Rate
+    dtype: float
+    default: '1e-5'
+    hide: none
+
+inputs:
+  - domain: stream
+    dtype: complex
+    label: in
+
+outputs:
+  - domain: stream
+    dtype: complex
+    label: out
+
+asserts:
+  - ${ rate > 0 }
+
+file_format: 1
