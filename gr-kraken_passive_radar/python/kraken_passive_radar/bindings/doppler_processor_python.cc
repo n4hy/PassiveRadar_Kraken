@@ -16,8 +16,7 @@ void bind_doppler_processor(py::module& m)
     py::class_<doppler_processor, gr::sync_block, std::shared_ptr<doppler_processor>>(
         m, "doppler_processor")
         
-        .def_static("make",
-            &doppler_processor::make,
+        .def(py::init(&doppler_processor::make),
             py::arg("num_range_bins"),
             py::arg("num_doppler_bins"),
             py::arg("window_type") = 1,

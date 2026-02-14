@@ -32,8 +32,7 @@ void bind_detection_cluster(py::module& m)
     py::class_<detection_cluster, gr::sync_block, std::shared_ptr<detection_cluster>>(
         m, "detection_cluster")
 
-        .def_static("make",
-            &detection_cluster::make,
+        .def(py::init(&detection_cluster::make),
             py::arg("num_range_bins"),
             py::arg("num_doppler_bins"),
             py::arg("min_cluster_size") = 1,

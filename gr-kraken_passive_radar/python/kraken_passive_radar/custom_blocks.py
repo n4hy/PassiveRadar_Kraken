@@ -67,11 +67,10 @@ class CafBlock(gr.basic_block):
         self.obj = self.lib.caf_create(n_samples)
         self.set_output_multiple(1)
 
-    def forecast(self, noutput_items, ninput_items_required):
+    def forecast(self, noutput_items, ninputs):
         """Each output item requires n_samples from each input."""
         req = noutput_items * self.n_samples
-        for i in range(len(ninput_items_required)):
-            ninput_items_required[i] = req
+        return [req] * ninputs
 
     def _load_lib(self):
         path = os.path.join(os.path.dirname(__file__), "libkraken_caf_processing.so")

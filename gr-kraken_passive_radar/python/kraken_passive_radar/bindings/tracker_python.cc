@@ -42,8 +42,7 @@ void bind_tracker(py::module& m)
     py::class_<tracker, gr::sync_block, std::shared_ptr<tracker>>(
         m, "tracker")
 
-        .def_static("make",
-            &tracker::make,
+        .def(py::init(&tracker::make),
             py::arg("dt") = 0.1f,
             py::arg("process_noise_range") = 50.0f,
             py::arg("process_noise_doppler") = 5.0f,

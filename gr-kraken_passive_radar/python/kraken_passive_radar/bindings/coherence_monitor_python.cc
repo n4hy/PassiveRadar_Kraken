@@ -16,8 +16,7 @@ void bind_coherence_monitor(py::module& m)
     py::class_<coherence_monitor, gr::sync_block, std::shared_ptr<coherence_monitor>>(
         m, "coherence_monitor")
         
-        .def_static("make",
-            &coherence_monitor::make,
+        .def(py::init(&coherence_monitor::make),
             py::arg("num_channels") = 5,
             py::arg("sample_rate") = 2.4e6f,
             py::arg("measure_interval_ms") = 1000.0f,

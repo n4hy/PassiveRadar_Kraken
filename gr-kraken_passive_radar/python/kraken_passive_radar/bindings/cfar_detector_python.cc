@@ -16,8 +16,7 @@ void bind_cfar_detector(py::module& m)
     py::class_<cfar_detector, gr::sync_block, std::shared_ptr<cfar_detector>>(
         m, "cfar_detector")
         
-        .def_static("make",
-            &cfar_detector::make,
+        .def(py::init(&cfar_detector::make),
             py::arg("num_range_bins"),
             py::arg("num_doppler_bins"),
             py::arg("guard_cells_range") = 2,
