@@ -99,6 +99,7 @@ from gnuradio.eng_arg import eng_float, intx
 from gnuradio import eng_notation
 from gnuradio import kraken_passive_radar
 from gnuradio.kraken_passive_radar import krakensdr_source
+from gnuradio.kraken_passive_radar import rspdx_source
 import sip
 import threading
 import time
@@ -132,10 +133,15 @@ class phase_corrector(gr.sync_block):
 
 class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
 
-    def __init__(self):
-        gr.top_block.__init__(self, "KrakenSDR Passive Radar — Range-Doppler", catch_exceptions=True)
+    def __init__(self, source_type='kraken',
+                 rspdx_if_gain=40.0, rspdx_rf_gain=0.0,
+                 rspdx_antenna='Antenna A'):
+        source_label = "RSPdx" if source_type == 'rspdx' else "KrakenSDR"
+        title = f"{source_label} Passive Radar — Range-Doppler"
+        gr.top_block.__init__(self, title, catch_exceptions=True)
+        self.source_type = source_type
         Qt.QWidget.__init__(self)
-        self.setWindowTitle("KrakenSDR Passive Radar — Range-Doppler")
+        self.setWindowTitle(title)
         qtgui.util.check_set_qss()
         try:
             self.setWindowIcon(Qt.QIcon.fromTheme('gnuradio-grc'))
@@ -333,8 +339,13 @@ class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
         self.top_grid_layout.addWidget(self.phase_canvas, 2, 0, 1, 2)
 
         # ---- Row 3: Calibration status label ----
-        self.cal_label = Qt.QLabel("Phase Cal: Waiting for startup...")
-        self.cal_label.setStyleSheet("font-weight: bold; font-size: 14px; color: orange;")
+        if self.source_type == 'rspdx':
+            self.phase_ax.set_title('Phase Drift — N/A (single-channel RSPdx)')
+            self.cal_label = Qt.QLabel("Phase Cal: N/A (single-channel RSPdx)")
+            self.cal_label.setStyleSheet("font-weight: bold; font-size: 14px; color: gray;")
+        else:
+            self.cal_label = Qt.QLabel("Phase Cal: Waiting for startup...")
+            self.cal_label.setStyleSheet("font-weight: bold; font-size: 14px; color: orange;")
         self.top_grid_layout.addWidget(self.cal_label, 3, 0, 1, 2)
 
         # ---- Row 4: Recalibration interval control ----
@@ -368,7 +379,19 @@ class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
         self._rd_timer.start(400)
 
         # Signal chain blocks
-        self.kraken_src = krakensdr_source(frequency=center_freq, sample_rate=samp_rate, gain=rf_gain)
+        if self.source_type == 'rspdx':
+            self.sdr_src = rspdx_source(
+                frequency=center_freq, sample_rate=samp_rate,
+                if_gain=rspdx_if_gain, rf_gain=rspdx_rf_gain,
+                antenna=rspdx_antenna
+            )
+        else:
+            self.sdr_src = krakensdr_source(
+                frequency=center_freq, sample_rate=samp_rate, gain=rf_gain
+            )
+            # Keep legacy alias for calibration code
+            self.kraken_src = self.sdr_src
+
         self.dc_blocker_ref = filter.dc_blocker_cc(32, True)
         self.dc_blocker_surv0 = filter.dc_blocker_cc(32, True)
         self.freq_xlating_fir_ref = filter.freq_xlating_fir_filter_ccc(decimation, lpf_taps, 0, samp_rate)
@@ -377,22 +400,27 @@ class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
         self.agc_surv0 = analog.agc2_cc(0.01, 0.001, 1.0, 1.0, 65536)
         self.eca_canceller = kraken_passive_radar.eca_canceller(eca_taps, eca_reg, 1)
 
-        # Null sinks for unused channels 2-4
-        self.null_sink_ch2 = blocks.null_sink(gr.sizeof_gr_complex*1)
-        self.null_sink_ch3 = blocks.null_sink(gr.sizeof_gr_complex*1)
-        self.null_sink_ch4 = blocks.null_sink(gr.sizeof_gr_complex*1)
-
         ##################################################
         # Connections
         ##################################################
-        # KrakenSDR source -> DC blockers (ch0 ref, ch1 surv; ch2-4 to null)
-        self.connect((self.kraken_src, 0), (self.dc_blocker_ref, 0))
-        self.connect((self.kraken_src, 0), (self.qtgui_freq_sink_ref, 0))
-        self.connect((self.kraken_src, 1), (self.dc_blocker_surv0, 0))
-        self.connect((self.kraken_src, 1), (self.qtgui_freq_sink_surv, 0))
-        self.connect((self.kraken_src, 2), (self.null_sink_ch2, 0))
-        self.connect((self.kraken_src, 3), (self.null_sink_ch3, 0))
-        self.connect((self.kraken_src, 4), (self.null_sink_ch4, 0))
+        if self.source_type == 'rspdx':
+            # RSPdx: single channel splits to both ref and surv paths
+            self.connect((self.sdr_src, 0), (self.dc_blocker_ref, 0))
+            self.connect((self.sdr_src, 0), (self.qtgui_freq_sink_ref, 0))
+            self.connect((self.sdr_src, 0), (self.dc_blocker_surv0, 0))
+            self.connect((self.sdr_src, 0), (self.qtgui_freq_sink_surv, 0))
+        else:
+            # KrakenSDR: ch0=ref, ch1=surv, ch2-4 to null
+            self.null_sink_ch2 = blocks.null_sink(gr.sizeof_gr_complex*1)
+            self.null_sink_ch3 = blocks.null_sink(gr.sizeof_gr_complex*1)
+            self.null_sink_ch4 = blocks.null_sink(gr.sizeof_gr_complex*1)
+            self.connect((self.sdr_src, 0), (self.dc_blocker_ref, 0))
+            self.connect((self.sdr_src, 0), (self.qtgui_freq_sink_ref, 0))
+            self.connect((self.sdr_src, 1), (self.dc_blocker_surv0, 0))
+            self.connect((self.sdr_src, 1), (self.qtgui_freq_sink_surv, 0))
+            self.connect((self.sdr_src, 2), (self.null_sink_ch2, 0))
+            self.connect((self.sdr_src, 3), (self.null_sink_ch3, 0))
+            self.connect((self.sdr_src, 4), (self.null_sink_ch4, 0))
 
         # Conditioning: DC block -> LPF/decimate -> Phase correction (surv only) -> AGC
         self.connect((self.dc_blocker_ref, 0), (self.freq_xlating_fir_ref, 0))
@@ -432,6 +460,8 @@ class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
         Thread-safe: only updates shared data under cal_lock.
         UI updates happen in the timer callback.
         """
+        if self.source_type == 'rspdx':
+            return  # No calibration for single-channel RSPdx
         print("=== Phase Calibration Starting ===")
         with self.cal_lock:
             self._cal_status = "Noise source ON -- calibrating..."
@@ -661,7 +691,7 @@ class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
         self.set_decimated_rate(int(self.samp_rate / self.decimation))
         self.set_decimation(int(self.samp_rate / self.signal_bw))
         self.set_lpf_taps(firdes.low_pass(1.0, self.samp_rate, self.signal_bw/2, self.signal_bw/10, window.WIN_HAMMING))
-        self.kraken_src.set_sample_rate(self.samp_rate)
+        self.sdr_src.set_sample_rate(self.samp_rate)
         self.qtgui_freq_sink_ref.set_frequency_range(0, self.samp_rate)
         self.qtgui_freq_sink_surv.set_frequency_range(0, self.samp_rate)
 
@@ -677,7 +707,10 @@ class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
 
     def set_rf_gain(self, rf_gain):
         self.rf_gain = rf_gain
-        self.kraken_src.set_gain(self.rf_gain)
+        if self.source_type == 'rspdx':
+            self.sdr_src.set_if_gain(self.rf_gain)
+        else:
+            self.sdr_src.set_gain(self.rf_gain)
 
     def get_lpf_taps(self):
         return self.lpf_taps
@@ -724,23 +757,42 @@ class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
 
     def set_center_freq(self, center_freq):
         self.center_freq = center_freq
-        self.kraken_src.set_frequency(self.center_freq)
+        self.sdr_src.set_frequency(self.center_freq)
 
 
 def main(top_block_cls=kraken_pbr_flowgraph, options=None):
+    parser = ArgumentParser(description="KrakenSDR/RSPdx Passive Radar GUI")
+    parser.add_argument("--source", choices=['kraken', 'rspdx'], default='kraken',
+                        help="SDR source: kraken (5-ch KrakenSDR) or rspdx (1-ch SDRplay RSPdx)")
+    parser.add_argument("--if-gain", type=float, default=40.0,
+                        help="RSPdx IF gain IFGR in dB (default: 40, range: 20-59)")
+    parser.add_argument("--rf-gain", type=float, default=0.0,
+                        help="RSPdx RF gain reduction RFGR in dB (default: 0, range: 0-27)")
+    parser.add_argument("--antenna", default='Antenna A',
+                        choices=['Antenna A', 'Antenna B', 'Antenna C'],
+                        help="RSPdx antenna port (default: Antenna A)")
+    args, remaining = parser.parse_known_args()
 
-    qapp = Qt.QApplication(sys.argv)
+    qapp = Qt.QApplication([''] + remaining)
 
-    tb = top_block_cls()
+    tb = top_block_cls(
+        source_type=args.source,
+        rspdx_if_gain=args.if_gain,
+        rspdx_rf_gain=args.rf_gain,
+        rspdx_antenna=args.antenna
+    )
 
     tb.start()
     tb.flowgraph_started.set()
 
     tb.show()
 
-    # Start periodic phase calibration in background thread
-    cal_thread = threading.Thread(target=tb._periodic_calibration, daemon=True)
-    cal_thread.start()
+    # Start periodic phase calibration in background thread (KrakenSDR only)
+    if tb.source_type != 'rspdx':
+        cal_thread = threading.Thread(target=tb._periodic_calibration, daemon=True)
+        cal_thread.start()
+    else:
+        print("RSPdx mode: Phase calibration skipped (single channel)")
 
     def sig_handler(sig=None, frame=None):
         tb._cal_stop.set()

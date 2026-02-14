@@ -52,6 +52,7 @@ import threading
 from gnuradio.kraken_passive_radar import (
     # Python blocks
     krakensdr_source,
+    rspdx_source,
     ConditioningBlock,
     CafBlock,
     TimeAlignmentBlock,
@@ -126,22 +127,34 @@ class PhaseCorrectorBlock(gr.sync_block):
 
 class PassiveRadarTopBlock(gr.top_block):
     def __init__(self, freq=100e6, gain=30, geometry='ULA', calibration_file=None, use_ref_aoa=False,
-                 b3_signal_type='passthrough', b3_fft_size=8192, b3_guard_interval=192):
+                 b3_signal_type='passthrough', b3_fft_size=8192, b3_guard_interval=192,
+                 source_type='kraken', if_gain=40.0, rf_gain=0.0,
+                 antenna='Antenna A', bandwidth=0, sample_rate=2.4e6):
         gr.top_block.__init__(self, "Passive Radar Run")
 
         # Parameters
         self.freq = freq
         self.gain = gain
-        self.sample_rate = 2.4e6
+        self.source_type = source_type
+        self.sample_rate = sample_rate
         self.cpi_len = 4096
         self.doppler_len = 64
         self.num_taps = 128
-        self.num_surv = 4
         self.geometry = geometry
         self.use_ref_aoa = use_ref_aoa
         self.b3_signal_type = b3_signal_type
         self.b3_fft_size = b3_fft_size
         self.b3_guard_interval = b3_guard_interval
+
+        # Source-dependent parameters
+        if source_type == 'rspdx':
+            self.num_surv = 1   # Self-referencing: single channel
+            self.skip_aoa = True
+            self.skip_calibration = True
+        else:
+            self.num_surv = 4
+            self.skip_aoa = False
+            self.skip_calibration = False
 
         # Derived parameters
         c = 3e8
@@ -162,36 +175,54 @@ class PassiveRadarTopBlock(gr.top_block):
             print("No calibration loaded. Using default (0).")
 
         # 1. Source
-        self.source = krakensdr_source(
-            frequency=freq, gain=gain,
-            sample_rate=self.sample_rate
-        )
-
-        # 1b. Calibration Controller
-        self.cal_controller = CalibrationController(
-            source=self.source,
-            num_channels=5,
-            cal_samples=24000,  # 10ms at 2.4 MHz
-            settle_time_ms=50.0,
-            on_calibration_complete=self._on_calibration_complete
-        )
-
-        # 1c. Phase Corrector Blocks (one per channel)
-        self.phase_correctors = []
-        for i in range(5):
-            blk = PhaseCorrectorBlock(
-                cal_controller=self.cal_controller,
-                channel=i
+        if self.source_type == 'rspdx':
+            self.source = rspdx_source(
+                frequency=freq, sample_rate=self.sample_rate,
+                if_gain=if_gain, rf_gain=rf_gain,
+                antenna=antenna, bandwidth=bandwidth
             )
-            self.phase_correctors.append(blk)
-            self.connect((self.source, i), (blk, 0))
+        else:
+            self.source = krakensdr_source(
+                frequency=freq, gain=gain,
+                sample_rate=self.sample_rate
+            )
 
-        # 2. Conditioning (5 channels)
+        # 1b. Calibration Controller (KrakenSDR only)
+        if not self.skip_calibration:
+            self.cal_controller = CalibrationController(
+                source=self.source,
+                num_channels=5,
+                cal_samples=24000,  # 10ms at 2.4 MHz
+                settle_time_ms=50.0,
+                on_calibration_complete=self._on_calibration_complete
+            )
+
+            # 1c. Phase Corrector Blocks (one per channel)
+            self.phase_correctors = []
+            for i in range(5):
+                blk = PhaseCorrectorBlock(
+                    cal_controller=self.cal_controller,
+                    channel=i
+                )
+                self.phase_correctors.append(blk)
+                self.connect((self.source, i), (blk, 0))
+        else:
+            self.cal_controller = None
+            self.phase_correctors = None
+
+        # 2. Conditioning
         self.cond_blocks = []
-        for i in range(5):
+        if self.source_type == 'rspdx':
+            # RSPdx: 1 channel, conditioned once
             blk = ConditioningBlock(rate=1e-5)
             self.cond_blocks.append(blk)
-            self.connect((self.phase_correctors[i], 0), (blk, 0))
+            self.connect((self.source, 0), (blk, 0))
+        else:
+            # KrakenSDR: 5 channels through phase correctors
+            for i in range(5):
+                blk = ConditioningBlock(rate=1e-5)
+                self.cond_blocks.append(blk)
+                self.connect((self.phase_correctors[i], 0), (blk, 0))
 
         # 2c. Block B3: Reference Signal Reconstructor
         # Demod-remod to create clean reference signal for improved passive radar sensitivity
@@ -236,11 +267,15 @@ class PassiveRadarTopBlock(gr.top_block):
 
         # 2b. Time Alignment Probe (Calibration)
         self.align_blocks = []
-        for i in range(self.num_surv):
-            blk = TimeAlignmentBlock(n_samples=self.cpi_len, interval_sec=5.0)
-            self.align_blocks.append(blk)
-            self.connect(self.reference_channel, (blk, 0))  # Block B3 output
-            self.connect((self.cond_blocks[i+1], 0), (blk, 1))
+        if self.source_type == 'rspdx':
+            # RSPdx: single channel, no time alignment needed (self-referencing)
+            pass
+        else:
+            for i in range(self.num_surv):
+                blk = TimeAlignmentBlock(n_samples=self.cpi_len, interval_sec=5.0)
+                self.align_blocks.append(blk)
+                self.connect(self.reference_channel, (blk, 0))  # Block B3 output
+                self.connect((self.cond_blocks[i+1], 0), (blk, 1))
 
         # 3. ECA Clutter Canceller (C++ VOLK-accelerated)
         # Input: port 0 = reference (from Block B3), ports 1..num_surv = surveillance
@@ -251,8 +286,12 @@ class PassiveRadarTopBlock(gr.top_block):
             num_surv=self.num_surv
         )
         self.connect(self.reference_channel, (self.eca, 0))  # Block B3 output
-        for i in range(self.num_surv):
-            self.connect((self.cond_blocks[i+1], 0), (self.eca, i+1))
+        if self.source_type == 'rspdx':
+            # Self-referencing: same conditioned signal feeds surveillance input
+            self.connect((self.cond_blocks[0], 0), (self.eca, 1))
+        else:
+            for i in range(self.num_surv):
+                self.connect((self.cond_blocks[i+1], 0), (self.eca, i+1))
 
         # 4. CAF (cross-ambiguity function) per surveillance channel
         self.caf_blocks = []
@@ -308,44 +347,57 @@ class PassiveRadarTopBlock(gr.top_block):
             self.connect((self.cfar_blocks[i], 0), (blk, 0))
             self.connect((self.doppler_blocks[i], 0), (blk, 1))
 
-        # 8. AoA Estimator (C++ Bartlett beamformer)
-        array_type_val = 0 if geometry == 'ULA' else 1
-        self.aoa = aoa_estimator.make(
-            num_elements=self.num_surv,
-            d_lambda=0.5,
-            n_angles=181,
-            min_angle_deg=-90.0,
-            max_angle_deg=90.0,
-            array_type=array_type_val,
-            num_range_bins=self.cpi_len,
-            num_doppler_bins=self.doppler_len,
-            max_detections=100
-        )
-        # AoA takes detection lists from all surveillance channels
-        for i in range(self.num_surv):
-            self.connect((self.cluster_blocks[i], 0), (self.aoa, i))
+        if not self.skip_aoa:
+            # 8. AoA Estimator (C++ Bartlett beamformer)
+            array_type_val = 0 if geometry == 'ULA' else 1
+            self.aoa = aoa_estimator.make(
+                num_elements=self.num_surv,
+                d_lambda=0.5,
+                n_angles=181,
+                min_angle_deg=-90.0,
+                max_angle_deg=90.0,
+                array_type=array_type_val,
+                num_range_bins=self.cpi_len,
+                num_doppler_bins=self.doppler_len,
+                max_detections=100
+            )
+            # AoA takes detection lists from all surveillance channels
+            for i in range(self.num_surv):
+                self.connect((self.cluster_blocks[i], 0), (self.aoa, i))
 
-        # 9. Multi-Target Tracker (C++ Kalman + GNN)
-        self.trk = tracker.make(
-            dt=frame_period,
-            process_noise_range=50.0,
-            process_noise_doppler=5.0,
-            meas_noise_range=range_res * 2,
-            meas_noise_doppler=doppler_res * 2,
-            gate_threshold=9.21,     # chi2(2) @ 99%
-            confirm_hits=3,
-            delete_misses=5,
-            max_tracks=50,
-            max_detections=100
-        )
-        self.connect((self.aoa, 0), (self.trk, 0))
+            # 9. Multi-Target Tracker (C++ Kalman + GNN)
+            self.trk = tracker.make(
+                dt=frame_period,
+                process_noise_range=50.0,
+                process_noise_doppler=5.0,
+                meas_noise_range=range_res * 2,
+                meas_noise_doppler=doppler_res * 2,
+                gate_threshold=9.21,     # chi2(2) @ 99%
+                confirm_hits=3,
+                delete_misses=5,
+                max_tracks=50,
+                max_detections=100
+            )
+            self.connect((self.aoa, 0), (self.trk, 0))
 
-        # 10. Sink
-        self.sink = RadarSink(
-            tracker_block=self.trk,
-            display_callback=self.update_display
-        )
-        self.connect((self.trk, 0), (self.sink, 0))
+            # 10. Sink
+            self.sink = RadarSink(
+                tracker_block=self.trk,
+                display_callback=self.update_display
+            )
+            self.connect((self.trk, 0), (self.sink, 0))
+        else:
+            # RSPdx single-channel mode: skip AoA and tracker
+            # (detection_cluster stride=10 vs tracker stride=12 mismatch)
+            self.aoa = None
+            self.trk = None
+
+            # Sink consumes Doppler power map for display
+            self.sink = RadarSink(
+                tracker_block=None,
+                display_callback=self.update_display
+            )
+            self.connect((self.doppler_blocks[0], 0), (self.sink, 0))
 
     def update_display(self, tracks):
         """Update display with confirmed tracks from the tracker."""
@@ -395,11 +447,16 @@ class PassiveRadarTopBlock(gr.top_block):
         Args:
             reason: Reason for calibration (for logging)
         """
+        if self.cal_controller is None:
+            print("Calibration not available (single-channel mode)")
+            return
         print(f"Triggering calibration: {reason}")
         self.cal_controller.handle_cal_request(reason)
 
     def get_calibration_status(self) -> dict:
         """Get current calibration status."""
+        if self.cal_controller is None:
+            return {'state': 'N/A', 'source_type': self.source_type}
         return self.cal_controller.get_status()
 
     def get_b3_snr(self) -> float:
@@ -444,24 +501,22 @@ class RadarSink(gr.sync_block):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Passive Bistatic Radar using KrakenSDR",
+        description="Passive Bistatic Radar using KrakenSDR or RSPdx",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Signal Flow:
-  KrakenSDR -> Phase Correction -> AGC -> ECA -> CAF -> Doppler -> CFAR -> Display
+Signal Flow (KrakenSDR):
+  KrakenSDR -> Phase Correction -> AGC -> ECA -> CAF -> Doppler -> CFAR -> AoA -> Tracker
 
-Calibration:
-  The system automatically calibrates phase coherence at startup and whenever
-  drift is detected. During calibration, the KrakenSDR's internal noise source
-  is enabled, which activates a hardware switch that DISCONNECTS all antennas
-  and routes only the internal noise to all receivers. This provides a common
-  reference for measuring inter-channel phase offsets.
+Signal Flow (RSPdx, self-referencing):
+  RSPdx -> AGC -> ECA (ref=surv) -> CAF -> Doppler -> CFAR -> Display
         """
     )
+    parser.add_argument("--source", choices=['kraken', 'rspdx'], default='kraken',
+                        help="SDR source: kraken (5-ch KrakenSDR) or rspdx (1-ch SDRplay RSPdx)")
     parser.add_argument("--freq", type=float, default=100e6,
                         help="Center frequency in Hz (default: 100 MHz)")
     parser.add_argument("--gain", type=float, default=30,
-                        help="Receiver gain in dB (default: 30)")
+                        help="Receiver gain in dB (default: 30, KrakenSDR only)")
     parser.add_argument("--geometry", choices=['ULA', 'URA'], default='ULA',
                         help="Antenna array geometry (default: ULA)")
     parser.add_argument("--include-ref", action="store_true",
@@ -470,6 +525,19 @@ Calibration:
                         help="Skip startup calibration (use saved calibration only)")
     parser.add_argument("--visualize", action="store_true",
                         help="Show GUI display")
+
+    # RSPdx-specific arguments
+    parser.add_argument("--if-gain", type=float, default=40.0,
+                        help="RSPdx IF gain IFGR in dB (default: 40, range: 20-59)")
+    parser.add_argument("--rf-gain", type=float, default=0.0,
+                        help="RSPdx RF gain reduction RFGR in dB (default: 0, range: 0-27)")
+    parser.add_argument("--antenna", default='Antenna A',
+                        choices=['Antenna A', 'Antenna B', 'Antenna C'],
+                        help="RSPdx antenna port (default: Antenna A)")
+    parser.add_argument("--bandwidth", type=float, default=0,
+                        help="RSPdx analog bandwidth in Hz (0=auto)")
+    parser.add_argument("--sample-rate", type=float, default=2.4e6,
+                        help="Sample rate in Hz (default: 2.4e6)")
 
     # Block B3: Reference Signal Reconstructor
     parser.add_argument("--b3-signal", choices=['passthrough', 'fm', 'atsc3', 'dvbt'],
@@ -491,16 +559,31 @@ Calibration:
         use_ref_aoa=args.include_ref,
         b3_signal_type=args.b3_signal,
         b3_fft_size=args.b3_fft_size,
-        b3_guard_interval=args.b3_guard_interval
+        b3_guard_interval=args.b3_guard_interval,
+        source_type=args.source,
+        if_gain=args.if_gain,
+        rf_gain=args.rf_gain,
+        antenna=args.antenna,
+        bandwidth=args.bandwidth,
+        sample_rate=args.sample_rate,
     )
 
-    # Startup calibration
-    # This uses the integrated CalibrationController which:
-    # 1. Enables noise source (HW switch isolates antennas)
-    # 2. Captures calibration samples
-    # 3. Computes phase corrections
-    # 4. Disables noise source (HW switch reconnects antennas)
-    if not args.no_startup_cal:
+    if args.source == 'rspdx':
+        print("\n" + "="*60)
+        print("RSPdx MODE: Single-channel self-referencing passive radar")
+        print("="*60)
+        print(f"  Antenna: {args.antenna}")
+        print(f"  IF Gain: {args.if_gain} dB, RF Gain Reduction: {args.rf_gain} dB")
+        print(f"  Sample Rate: {args.sample_rate/1e6:.3f} MHz")
+        print(f"  Phase calibration: SKIPPED (single channel)")
+        print(f"  AoA estimation: SKIPPED (single antenna element)\n")
+    elif not args.no_startup_cal:
+        # Startup calibration (KrakenSDR only)
+        # This uses the integrated CalibrationController which:
+        # 1. Enables noise source (HW switch isolates antennas)
+        # 2. Captures calibration samples
+        # 3. Computes phase corrections
+        # 4. Disables noise source (HW switch reconnects antennas)
         print("\n" + "="*60)
         print("STARTUP CALIBRATION")
         print("Enabling noise source (antennas will be isolated by HW switch)")
@@ -513,8 +596,12 @@ Calibration:
     else:
         print("Skipping startup calibration (using saved calibration if available)")
 
-    print(f"\nProcessing chain: Source -> Phase Corr -> AGC -> Block B3 ({args.b3_signal}) -> ECA (C++) -> CAF -> "
-          f"Doppler (C++) -> CFAR (C++) -> Cluster (C++) -> AoA (C++) -> Tracker (C++)\n")
+    if args.source == 'rspdx':
+        print(f"Processing chain: RSPdx -> AGC -> Block B3 ({args.b3_signal}) -> "
+              f"ECA (self-ref) -> CAF -> Doppler -> CFAR -> Cluster -> Display\n")
+    else:
+        print(f"\nProcessing chain: Source -> Phase Corr -> AGC -> Block B3 ({args.b3_signal}) -> ECA (C++) -> CAF -> "
+              f"Doppler (C++) -> CFAR (C++) -> Cluster (C++) -> AoA (C++) -> Tracker (C++)\n")
 
     if args.b3_signal != 'passthrough':
         print(f"Block B3 Reference Reconstruction: {args.b3_signal.upper()}")
@@ -542,11 +629,14 @@ Calibration:
         try:
             while True:
                 time.sleep(1.0)
-                # Print tracker status periodically
-                n_tracks = tb.trk.get_num_tracks()
-                n_confirmed = tb.trk.get_num_confirmed_tracks()
-                if n_tracks > 0:
-                    print(f"  Tracks: {n_confirmed} confirmed / {n_tracks} total")
+                # Print tracker status periodically (if tracker is active)
+                if tb.trk is not None:
+                    n_tracks = tb.trk.get_num_tracks()
+                    n_confirmed = tb.trk.get_num_confirmed_tracks()
+                    if n_tracks > 0:
+                        print(f"  Tracks: {n_confirmed} confirmed / {n_tracks} total")
+                else:
+                    print("  RSPdx mode: processing...", end='\r')
         except KeyboardInterrupt:
             pass
         tb.stop()

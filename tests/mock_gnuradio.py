@@ -73,6 +73,11 @@ gnuradio.qtgui = qtgui
 osmosdr = MagicMock()
 sys.modules["osmosdr"] = osmosdr
 
+# Create a mock module for soapy (SDRplay RSPdx via SoapySDR)
+soapy = MagicMock()
+sys.modules["gnuradio.soapy"] = soapy
+gnuradio.soapy = soapy
+
 # Create a mock module for PyQt5
 PyQt5 = MagicMock()
 sys.modules["PyQt5"] = PyQt5

@@ -2,6 +2,7 @@
 install(FILES
     __init__.py
     krakensdr_source.py
+    rspdx_source.py
     calibration_controller.py
     custom_blocks.py
     doppler_processing.py
