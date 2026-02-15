@@ -1,26 +1,25 @@
-id: kraken_passive_radar_rspdx_source
-label: RSPdx Source
+id: kraken_passive_radar_rspduo_source
+label: RSPduo Source
 category: '[Kraken Passive Radar]'
 flags: [throttle]
 
 documentation: |-
-  SDRplay RSPdx Source Block
+  SDRplay RSPduo Dual-Tuner Source Block
 
-  Single-channel source using SDRplay RSPdx via SoapySDR.
-  Provides 1 complex output.
+  Dual-channel source using SDRplay RSPduo via gr-sdrplay3 in
+  dual-tuner diversity reception mode.
+  Provides 2 complex outputs: output 0 = reference, output 1 = surveillance.
 
-  For passive radar, use self-referencing mode: split the output to feed
-  both reference and surveillance inputs of the ECA canceller.
+  Both tuners share a common clock for coherent operation.
 
   Hardware capabilities:
     - Frequency: 1 kHz to 2 GHz
-    - Sample rate: 62.5 kHz to 10.66 MHz
-    - IF gain (IFGR): 20 to 59 dB
-    - RF gain reduction (RFGR): 0 to 27 dB
-    - 3 antenna ports: A, B, C (selectable)
-    - HDR mode for improved dynamic range
-    - Bias-T, RF Notch, DAB Notch filters
-    - Bandwidths: 0.2, 0.3, 0.6, 1.536, 5, 6, 7, 8 MHz
+    - Sample rate: 62.5 kHz to 2 MHz (dual-tuner mode limit)
+    - IF gain: 20 to 59 dB
+    - RF gain reduction: 0 to 27 dB
+    - Fixed antenna: Both Tuners (dual-tuner mode)
+    - Bias-T, RF Notch, DAB Notch, AM Notch filters
+    - Bandwidths: 0.2, 0.3, 0.6, 1.536 MHz
 
 parameters:
 - id: id
@@ -33,21 +32,15 @@ parameters:
 - id: sample_rate
   label: Sample Rate
   dtype: float
-  default: 2.4e6
+  default: 2e6
 - id: if_gain
-  label: IF Gain (IFGR, dB)
+  label: IF Gain (dB)
   dtype: float
   default: 40.0
 - id: rf_gain
-  label: RF Gain Reduction (RFGR, dB)
+  label: RF Gain Reduction (dB)
   dtype: float
   default: 0.0
-- id: antenna
-  label: Antenna Port
-  dtype: string
-  default: '"Antenna A"'
-  options: ['"Antenna A"', '"Antenna B"', '"Antenna C"']
-  option_labels: ['Antenna A', 'Antenna B', 'Antenna C']
 - id: bandwidth
   label: Bandwidth (Hz, 0=auto)
   dtype: float
@@ -73,8 +66,8 @@ parameters:
   options: ['True', 'False']
   option_labels: ['On', 'Off']
   hide: part
-- id: hdr_mode
-  label: HDR Mode
+- id: am_notch
+  label: AM Notch Filter
   dtype: bool
   default: 'False'
   options: ['True', 'False']
@@ -84,30 +77,31 @@ parameters:
 inputs: []
 
 outputs:
-- label: out
+- label: ref
   domain: stream
   dtype: complex
-  multiplicity: 1
+- label: surv
+  domain: stream
+  dtype: complex
 
 templates:
-  imports: from gnuradio.kraken_passive_radar import rspdx_source
+  imports: from gnuradio.kraken_passive_radar import rspduo_source
   make: >-
-    rspdx_source(frequency=${frequency}, sample_rate=${sample_rate},
+    rspduo_source(frequency=${frequency}, sample_rate=${sample_rate},
     if_gain=${if_gain}, rf_gain=${rf_gain},
-    antenna=${antenna}, bandwidth=${bandwidth},
+    bandwidth=${bandwidth},
     bias_t=${bias_t}, rf_notch=${rf_notch},
-    dab_notch=${dab_notch}, hdr_mode=${hdr_mode})
+    dab_notch=${dab_notch}, am_notch=${am_notch})
   callbacks:
   - set_frequency(${frequency})
   - set_sample_rate(${sample_rate})
   - set_if_gain(${if_gain})
   - set_rf_gain(${rf_gain})
-  - set_antenna(${antenna})
   - set_bandwidth(${bandwidth})
 
 asserts:
   - ${ frequency >= 1e3 and frequency <= 2e9 }
-  - ${ sample_rate >= 62500 and sample_rate <= 10.66e6 }
+  - ${ sample_rate >= 62500 and sample_rate <= 2e6 }
   - ${ if_gain >= 20 and if_gain <= 59 }
   - ${ rf_gain >= 0 and rf_gain <= 27 }
 

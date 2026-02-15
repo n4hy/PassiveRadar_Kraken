@@ -1,0 +1,961 @@
+options:
+  parameters:
+    author: N4HY
+    catch_exceptions: 'True'
+    category: '[GRC Hier Blocks]'
+    cmake_opt: ''
+    comment: ''
+    copyright: '2026'
+    description: Passive Bistatic Radar with periodic phase calibration and drift
+      tracking
+    gen_cmake: 'On'
+    gen_linking: dynamic
+    generate_options: qt_gui
+    hier_block_src_path: '.:'
+    id: kraken_pbr_flowgraph
+    max_nouts: '0'
+    output_language: python
+    placement: (0,0)
+    qt_qss_theme: ''
+    realtime_scheduling: ''
+    run: 'True'
+    run_command: '{python} -u {filename}'
+    run_options: prompt
+    sizing_mode: fixed
+    thread_safe_setters: ''
+    title: KrakenSDR Passive Radar - Range-Doppler
+    window_size: (1920,1080)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [8, 8]
+    rotation: 0
+    state: enabled
+
+blocks:
+- name: center_freq
+  id: variable
+  parameters:
+    comment: FM station frequency
+    value: 103.7e6
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [8, 320]
+    rotation: 0
+    state: enabled
+- name: cpi_samples
+  id: variable
+  parameters:
+    comment: CPI length in samples (= fft_size)
+    value: '2048'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [8, 640]
+    rotation: 0
+    state: enabled
+- name: decimated_rate
+  id: variable
+  parameters:
+    comment: Post-decimation sample rate
+    value: int(samp_rate / decimation)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [8, 560]
+    rotation: 0
+    state: enabled
+- name: decimation
+  id: variable
+  parameters:
+    comment: Decimation factor
+    value: int(samp_rate / signal_bw)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [8, 480]
+    rotation: 0
+    state: enabled
+- name: eca_reg
+  id: variable
+  parameters:
+    comment: ECA regularization factor
+    value: '0.0001'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [8, 880]
+    rotation: 0
+    state: enabled
+- name: eca_taps
+  id: variable
+  parameters:
+    comment: ECA filter taps
+    value: '256'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [8, 800]
+    rotation: 0
+    state: enabled
+- name: fft_size
+  id: variable
+  parameters:
+    comment: FFT size for cross-correlation
+    value: '2048'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [8, 720]
+    rotation: 0
+    state: enabled
+- name: lpf_taps
+  id: variable
+  parameters:
+    comment: Low-pass filter taps for decimation
+    value: firdes.low_pass(1.0, samp_rate, signal_bw/2, signal_bw/10, window.WIN_HAMMING)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [160, 160]
+    rotation: 0
+    state: enabled
+- name: num_doppler_bins
+  id: variable
+  parameters:
+    comment: Number of CPIs for Doppler FFT
+    value: '64'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [160, 240]
+    rotation: 0
+    state: enabled
+- name: rd_size
+  id: variable
+  parameters:
+    comment: Range-Doppler map total size
+    value: num_doppler_bins * fft_size
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [160, 320]
+    rotation: 0
+    state: enabled
+- name: rf_gain
+  id: variable
+  parameters:
+    comment: RF gain for all channels
+    value: '49.6'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [8, 400]
+    rotation: 0
+    state: enabled
+- name: samp_rate
+  id: variable
+  parameters:
+    comment: KrakenSDR native sample rate
+    value: '2400000'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [8, 160]
+    rotation: 0
+    state: enabled
+- name: signal_bw
+  id: variable
+  parameters:
+    comment: Signal bandwidth of interest
+    value: '250000'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [8, 240]
+    rotation: 0
+    state: enabled
+- name: agc_ref
+  id: analog_agc2_xx
+  parameters:
+    affinity: ''
+    alias: ''
+    attack_rate: '0.01'
+    comment: Reference AGC
+    decay_rate: '0.001'
+    gain: '1.0'
+    max_gain: '65536'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    reference: '1.0'
+    type: complex
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1160, 104]
+    rotation: 0
+    state: enabled
+- name: agc_surv
+  id: analog_agc2_xx
+  parameters:
+    affinity: ''
+    alias: ''
+    attack_rate: '0.01'
+    comment: Surveillance AGC
+    decay_rate: '0.001'
+    gain: '1.0'
+    max_gain: '65536'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    reference: '1.0'
+    type: complex
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1160, 220]
+    rotation: 0
+    state: enabled
+- name: cal_probe_ref
+  id: blocks_probe_signal_x
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: Calibration probe - reference
+    type: complex
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [960, 60]
+    rotation: 0
+    state: enabled
+- name: cal_probe_surv
+  id: blocks_probe_signal_x
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: Calibration probe - surveillance
+    type: complex
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [960, 300]
+    rotation: 0
+    state: enabled
+- name: conjugate_ref
+  id: blocks_conjugate_cc
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: Conjugate reference spectrum
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2160, 44]
+    rotation: 0
+    state: enabled
+- name: dc_blocker_ref
+  id: dc_blocker_xx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: Reference channel DC block
+    length: '32'
+    long_form: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    type: cc
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [560, 132]
+    rotation: 0
+    state: enabled
+- name: dc_blocker_surv
+  id: dc_blocker_xx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: Surveillance channel DC block
+    length: '32'
+    long_form: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    type: cc
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [560, 232]
+    rotation: 0
+    state: enabled
+- name: doppler_proc
+  id: kraken_passive_radar_doppler_processor
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Slow-time FFT for Range-Doppler map
+
+      Accumulates 64 CPIs then FFT across slow-time'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_doppler_bins: num_doppler_bins
+    num_range_bins: fft_size
+    output_power: 'True'
+    window_type: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2560, 168]
+    rotation: 0
+    state: enabled
+- name: eca_canceller
+  id: kraken_passive_radar_eca_canceller
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'ECA-B Clutter Cancellation
+
+      1 ref + 1 surv -> 1 cleaned surv'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_surv: '1'
+    num_taps: eca_taps
+    reg_factor: eca_reg
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1360, 180]
+    rotation: 0
+    state: enabled
+- name: epy_block_phase_corr
+  id: epy_block
+  parameters:
+    _source_code: "import numpy as np\nfrom gnuradio import gr\n\nclass phase_corrector(gr.sync_block):\n\
+      \    \"\"\"\n    Applies phase correction to surveillance channel.\n    Correction\
+      \ phasor updated by calibration routine.\n    \"\"\"\n    def __init__(self):\n\
+      \        gr.sync_block.__init__(\n            self, name=\"Phase Corrector\"\
+      ,\n            in_sig=[np.complex64],\n            out_sig=[np.complex64]\n\
+      \        )\n        self.correction = np.complex64(1.0 + 0j)\n\n    def set_correction(self,\
+      \ phasor):\n        self.correction = np.complex64(phasor)\n\n    def work(self,\
+      \ input_items, output_items):\n        output_items[0][:] = input_items[0] *\
+      \ self.correction\n        return len(output_items[0])\n"
+    affinity: ''
+    alias: ''
+    comment: 'Phase Corrector on surveillance channel
+
+      Correction phasor updated by calibration'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    _io_cache: ('Phase Corrector', 'phase_corrector', [], [('0', 'complex', 1)], [('0',
+      'complex', 1)], '\nApplies phase correction to surveillance channel.\nCorrection
+      phasor updated by calibration routine.\n', [])
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [960, 220]
+    rotation: 0
+    state: enabled
+- name: fft_ref
+  id: fft_vxx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: Reference FFT for CAF
+    fft_size: fft_size
+    forward: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    nthreads: '1'
+    shift: 'False'
+    type: complex
+    window: '[]'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1760, 88]
+    rotation: 0
+    state: enabled
+- name: fft_surv
+  id: fft_vxx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: Surveillance FFT for CAF
+    fft_size: fft_size
+    forward: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    nthreads: '1'
+    shift: 'False'
+    type: complex
+    window: '[]'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1760, 208]
+    rotation: 0
+    state: enabled
+- name: freq_xlating_fir_ref
+  id: freq_xlating_fir_filter_xxx
+  parameters:
+    affinity: ''
+    alias: ''
+    center_freq: '0'
+    comment: 'Reference: decimate to signal_bw'
+    decim: decimation
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    samp_rate: samp_rate
+    taps: lpf_taps
+    type: ccc
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [760, 112]
+    rotation: 0
+    state: enabled
+- name: freq_xlating_fir_surv
+  id: freq_xlating_fir_filter_xxx
+  parameters:
+    affinity: ''
+    alias: ''
+    center_freq: '0'
+    comment: 'Surveillance: decimate to signal_bw'
+    decim: decimation
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    samp_rate: samp_rate
+    taps: lpf_taps
+    type: ccc
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [760, 212]
+    rotation: 0
+    state: enabled
+- name: ifft_surv
+  id: fft_vxx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: IFFT -> Range profile
+    fft_size: fft_size
+    forward: 'False'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    nthreads: '1'
+    shift: 'False'
+    type: complex
+    window: '[]'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2360, 180]
+    rotation: 0
+    state: enabled
+- name: kraken_src
+  id: kraken_passive_radar_krakensdr_source
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'KrakenSDR 5-Channel Coherent Source
+
+      Ch 0: Reference
+
+      Ch 1: Surveillance
+
+      Ch 2-4: Null sinks'
+    frequency: center_freq
+    gain: rf_gain
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    sample_rate: samp_rate
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [320, 280]
+    rotation: 0
+    state: enabled
+- name: multiply_surv
+  id: blocks_multiply_xx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: Cross-spectrum surv * conj(ref)
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_inputs: '2'
+    type: complex
+    vlen: fft_size
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2160, 180]
+    rotation: 0
+    state: enabled
+- name: nlog10_rd
+  id: blocks_nlog10_ff
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 10*log10 for dB display
+    k: '0'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    n: '10'
+    vlen: rd_size
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1968.75, 393.75]
+    rotation: 0
+    state: enabled
+- name: note_signal_flow
+  id: note
+  parameters:
+    alias: ''
+    comment: 'Signal Flow:
+
+
+      KrakenSDR (5ch) -> DC Block -> LPF/Decimate -> Phase Corr (surv) -> AGC -> ECA
+      (1 ref + 1 surv) -> S2V -> FFT -> conj(ref)*surv -> IFFT -> Doppler -> dB ->
+      Display
+
+
+      Phase calibration uses noise source probes (not shown in GRC)'
+    note: PASSIVE RADAR SIGNAL FLOW
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [320, 8]
+    rotation: 0
+    state: enabled
+- name: null_sink_ch2
+  id: blocks_null_sink
+  parameters:
+    affinity: ''
+    alias: ''
+    bus_structure_sink: '[[0,],]'
+    comment: KrakenSDR ch2 (unused)
+    num_inputs: '1'
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [560, 820]
+    rotation: 0
+    state: enabled
+- name: null_sink_ch3
+  id: blocks_null_sink
+  parameters:
+    affinity: ''
+    alias: ''
+    bus_structure_sink: '[[0,],]'
+    comment: KrakenSDR ch3 (unused)
+    num_inputs: '1'
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [560, 868]
+    rotation: 0
+    state: enabled
+- name: null_sink_ch4
+  id: blocks_null_sink
+  parameters:
+    affinity: ''
+    alias: ''
+    bus_structure_sink: '[[0,],]'
+    comment: KrakenSDR ch4 (unused)
+    num_inputs: '1'
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [560, 916]
+    rotation: 0
+    state: enabled
+- name: qtgui_freq_sink_ref
+  id: qtgui_freq_sink_x
+  parameters:
+    affinity: ''
+    alias: ''
+    alpha1: '1.0'
+    alpha10: '1.0'
+    alpha2: '1.0'
+    alpha3: '1.0'
+    alpha4: '1.0'
+    alpha5: '1.0'
+    alpha6: '1.0'
+    alpha7: '1.0'
+    alpha8: '1.0'
+    alpha9: '1.0'
+    autoscale: 'True'
+    average: '0.2'
+    axislabels: 'True'
+    bw: samp_rate
+    color1: '"blue"'
+    color10: '"dark blue"'
+    color2: '"red"'
+    color3: '"green"'
+    color4: '"black"'
+    color5: '"cyan"'
+    color6: '"magenta"'
+    color7: '"yellow"'
+    color8: '"dark red"'
+    color9: '"dark green"'
+    comment: ''
+    ctrlpanel: 'False'
+    fc: '0'
+    fftsize: '2048'
+    freqhalf: 'True'
+    grid: 'True'
+    gui_hint: 1,0,1,1
+    label: Relative Gain
+    label1: Ref
+    label10: ''
+    label2: ''
+    label3: ''
+    label4: ''
+    label5: ''
+    label6: ''
+    label7: ''
+    label8: ''
+    label9: ''
+    legend: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    name: '"Reference (ch0)"'
+    nconnections: '1'
+    norm_window: 'False'
+    showports: 'False'
+    tr_chan: '0'
+    tr_level: '0.0'
+    tr_mode: qtgui.TRIG_MODE_FREE
+    tr_tag: '""'
+    type: complex
+    units: dB
+    update_time: '0.10'
+    width1: '1'
+    width10: '1'
+    width2: '1'
+    width3: '1'
+    width4: '1'
+    width5: '1'
+    width6: '1'
+    width7: '1'
+    width8: '1'
+    width9: '1'
+    wintype: window.WIN_BLACKMAN_hARRIS
+    ymax: '10'
+    ymin: '-140'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [560, 400]
+    rotation: 0
+    state: enabled
+- name: qtgui_freq_sink_surv
+  id: qtgui_freq_sink_x
+  parameters:
+    affinity: ''
+    alias: ''
+    alpha1: '1.0'
+    alpha10: '1.0'
+    alpha2: '1.0'
+    alpha3: '1.0'
+    alpha4: '1.0'
+    alpha5: '1.0'
+    alpha6: '1.0'
+    alpha7: '1.0'
+    alpha8: '1.0'
+    alpha9: '1.0'
+    autoscale: 'True'
+    average: '0.2'
+    axislabels: 'True'
+    bw: samp_rate
+    color1: '"red"'
+    color10: '"dark blue"'
+    color2: '"red"'
+    color3: '"green"'
+    color4: '"black"'
+    color5: '"cyan"'
+    color6: '"magenta"'
+    color7: '"yellow"'
+    color8: '"dark red"'
+    color9: '"dark green"'
+    comment: ''
+    ctrlpanel: 'False'
+    fc: '0'
+    fftsize: '2048'
+    freqhalf: 'True'
+    grid: 'True'
+    gui_hint: 1,1,1,1
+    label: Relative Gain
+    label1: Surv
+    label10: ''
+    label2: ''
+    label3: ''
+    label4: ''
+    label5: ''
+    label6: ''
+    label7: ''
+    label8: ''
+    label9: ''
+    legend: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    name: '"Surveillance (ch1)"'
+    nconnections: '1'
+    norm_window: 'False'
+    showports: 'False'
+    tr_chan: '0'
+    tr_level: '0.0'
+    tr_mode: qtgui.TRIG_MODE_FREE
+    tr_tag: '""'
+    type: complex
+    units: dB
+    update_time: '0.10'
+    width1: '1'
+    width10: '1'
+    width2: '1'
+    width3: '1'
+    width4: '1'
+    width5: '1'
+    width6: '1'
+    width7: '1'
+    width8: '1'
+    width9: '1'
+    wintype: window.WIN_BLACKMAN_hARRIS
+    ymax: '10'
+    ymin: '-140'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [560, 600]
+    rotation: 0
+    state: enabled
+- name: qtgui_vector_sink_rd
+  id: qtgui_vector_sink_f
+  parameters:
+    affinity: ''
+    alias: ''
+    alpha1: '1.0'
+    alpha10: '1.0'
+    alpha2: '1.0'
+    alpha3: '1.0'
+    alpha4: '1.0'
+    alpha5: '1.0'
+    alpha6: '1.0'
+    alpha7: '1.0'
+    alpha8: '1.0'
+    alpha9: '1.0'
+    autoscale: 'True'
+    average: '1.0'
+    color1: '"blue"'
+    color10: '"dark blue"'
+    color2: '"red"'
+    color3: '"green"'
+    color4: '"black"'
+    color5: '"cyan"'
+    color6: '"magenta"'
+    color7: '"yellow"'
+    color8: '"dark red"'
+    color9: '"dark green"'
+    comment: Range-Doppler Map Display (flattened)
+    grid: 'True'
+    gui_hint: 0,0,1,2
+    label1: Range-Doppler (dB)
+    label10: ''
+    label2: ''
+    label3: ''
+    label4: ''
+    label5: ''
+    label6: ''
+    label7: ''
+    label8: ''
+    label9: ''
+    legend: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    name: '"Range-Doppler Map"'
+    nconnections: '1'
+    ref_level: '0'
+    showports: 'False'
+    update_time: '0.40'
+    vlen: rd_size
+    width1: '1'
+    width10: '1'
+    width2: '1'
+    width3: '1'
+    width4: '1'
+    width5: '1'
+    width6: '1'
+    width7: '1'
+    width8: '1'
+    width9: '1'
+    x_axis_label: '"Range-Doppler Bin"'
+    x_start: '0'
+    x_step: '1.0'
+    x_units: '""'
+    y_axis_label: '"Power (dB)"'
+    y_units: '""'
+    ymax: '60'
+    ymin: '-20'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2411.25, 368.75]
+    rotation: 0
+    state: enabled
+- name: s2v_ref
+  id: blocks_stream_to_vector
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Reference: stream to CPI vectors'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_items: cpi_samples
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1560, 100]
+    rotation: 0
+    state: enabled
+- name: s2v_ref_conj
+  id: blocks_stream_to_vector
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: S2V after conjugate
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_items: fft_size
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [2320, 36]
+    rotation: 0
+    state: enabled
+- name: s2v_surv
+  id: blocks_stream_to_vector
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Cleaned surv: stream to CPI vectors'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_items: cpi_samples
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1560, 220]
+    rotation: 0
+    state: enabled
+- name: v2s_ref_for_conj
+  id: blocks_vector_to_stream
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: V2S for element-wise conjugate
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_items: fft_size
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1960, 36]
+    rotation: 0
+    state: enabled
+
+connections:
+- [agc_ref, '0', eca_canceller, '0']
+- [agc_ref, '0', s2v_ref, '0']
+- [agc_surv, '0', eca_canceller, '1']
+- [conjugate_ref, '0', s2v_ref_conj, '0']
+- [dc_blocker_ref, '0', freq_xlating_fir_ref, '0']
+- [dc_blocker_surv, '0', freq_xlating_fir_surv, '0']
+- [doppler_proc, '0', nlog10_rd, '0']
+- [eca_canceller, '0', s2v_surv, '0']
+- [epy_block_phase_corr, '0', agc_surv, '0']
+- [fft_ref, '0', v2s_ref_for_conj, '0']
+- [fft_surv, '0', multiply_surv, '0']
+- [freq_xlating_fir_ref, '0', agc_ref, '0']
+- [freq_xlating_fir_ref, '0', cal_probe_ref, '0']
+- [freq_xlating_fir_surv, '0', cal_probe_surv, '0']
+- [freq_xlating_fir_surv, '0', epy_block_phase_corr, '0']
+- [ifft_surv, '0', doppler_proc, '0']
+- [kraken_src, '0', dc_blocker_ref, '0']
+- [kraken_src, '0', qtgui_freq_sink_ref, '0']
+- [kraken_src, '1', dc_blocker_surv, '0']
+- [kraken_src, '1', qtgui_freq_sink_surv, '0']
+- [kraken_src, '2', null_sink_ch2, '0']
+- [kraken_src, '3', null_sink_ch3, '0']
+- [kraken_src, '4', null_sink_ch4, '0']
+- [multiply_surv, '0', ifft_surv, '0']
+- [nlog10_rd, '0', qtgui_vector_sink_rd, '0']
+- [s2v_ref, '0', fft_ref, '0']
+- [s2v_ref_conj, '0', multiply_surv, '1']
+- [s2v_surv, '0', fft_surv, '0']
+- [v2s_ref_for_conj, '0', conjugate_ref, '0']
+
+metadata:
+  file_format: 1
+  grc_version: 3.10.12.0

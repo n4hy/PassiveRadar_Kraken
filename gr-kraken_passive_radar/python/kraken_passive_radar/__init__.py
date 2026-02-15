@@ -5,7 +5,7 @@ Provides signal processing blocks for passive bistatic radar using KrakenSDR.
 
 Python blocks:
     krakensdr_source         - KrakenSDR 5-channel coherent source
-    rspdx_source             - SDRplay RSPdx single-channel source
+    rspduo_source            - SDRplay RSPduo dual-tuner source
     EcaBClutterCanceller     - ECA-B clutter cancellation (ctypes kernel)
     ConditioningBlock        - AGC / signal conditioning (ctypes kernel)
     CafBlock                 - Cross-Ambiguity Function (ctypes kernel)
@@ -29,7 +29,10 @@ from gnuradio import gr
 
 # Import Python blocks
 from .krakensdr_source import krakensdr_source
-from .rspdx_source import rspdx_source
+try:
+    from .rspduo_source import rspduo_source
+except ImportError:
+    pass  # gr-sdrplay3 not installed; rspduo_source unavailable
 from .calibration_controller import CalibrationController, CalibrationState, CalibrationResult
 from .eca_b_clutter_canceller import EcaBClutterCanceller
 from .custom_blocks import ConditioningBlock, CafBlock, BackendBlock, TimeAlignmentBlock

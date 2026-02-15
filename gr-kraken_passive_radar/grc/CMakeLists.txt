@@ -3,7 +3,7 @@
 
 install(FILES
     kraken_passive_radar_krakensdr_source.block.yml
-    kraken_passive_radar_rspdx_source.block.yml
+    kraken_passive_radar_rspduo_source.block.yml
     kraken_passive_radar_eca_canceller.block.yml
     kraken_passive_radar_eca_b_clutter_canceller.block.yml
     kraken_passive_radar_doppler_processing.block.yml

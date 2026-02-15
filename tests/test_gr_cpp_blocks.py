@@ -66,7 +66,7 @@ class TestEcaCanceller(unittest.TestCase):
 @unittest.skipUnless(HAS_CPP_BLOCKS, "C++ pybind11 blocks not installed (run build_oot.sh)")
 class TestDopplerProcessor(unittest.TestCase):
     def test_make_default(self):
-        blk = kpr.doppler_processor.make(
+        blk = kpr.doppler_processor(
             num_range_bins=256,
             num_doppler_bins=64
         )
@@ -74,7 +74,7 @@ class TestDopplerProcessor(unittest.TestCase):
 
     def test_make_custom_window(self):
         for wtype in range(4):  # rect, hamming, hann, blackman
-            blk = kpr.doppler_processor.make(
+            blk = kpr.doppler_processor(
                 num_range_bins=256,
                 num_doppler_bins=64,
                 window_type=wtype
@@ -82,7 +82,7 @@ class TestDopplerProcessor(unittest.TestCase):
             self.assertIsNotNone(blk)
 
     def test_make_complex_output(self):
-        blk = kpr.doppler_processor.make(
+        blk = kpr.doppler_processor(
             num_range_bins=256,
             num_doppler_bins=64,
             output_power=False
@@ -90,14 +90,14 @@ class TestDopplerProcessor(unittest.TestCase):
         self.assertIsNotNone(blk)
 
     def test_set_num_doppler_bins(self):
-        blk = kpr.doppler_processor.make(
+        blk = kpr.doppler_processor(
             num_range_bins=256,
             num_doppler_bins=64
         )
         blk.set_num_doppler_bins(128)
 
     def test_set_window_type(self):
-        blk = kpr.doppler_processor.make(
+        blk = kpr.doppler_processor(
             num_range_bins=256,
             num_doppler_bins=64
         )
@@ -107,7 +107,7 @@ class TestDopplerProcessor(unittest.TestCase):
 @unittest.skipUnless(HAS_CPP_BLOCKS, "C++ pybind11 blocks not installed (run build_oot.sh)")
 class TestCfarDetector(unittest.TestCase):
     def test_make_default(self):
-        blk = kpr.cfar_detector.make(
+        blk = kpr.cfar_detector(
             num_range_bins=256,
             num_doppler_bins=64
         )
@@ -115,7 +115,7 @@ class TestCfarDetector(unittest.TestCase):
 
     def test_make_all_types(self):
         for cfar_type in range(4):  # CA, GO, SO, OS
-            blk = kpr.cfar_detector.make(
+            blk = kpr.cfar_detector(
                 num_range_bins=256,
                 num_doppler_bins=64,
                 cfar_type=cfar_type,
@@ -124,7 +124,7 @@ class TestCfarDetector(unittest.TestCase):
             self.assertIsNotNone(blk)
 
     def test_make_custom_cells(self):
-        blk = kpr.cfar_detector.make(
+        blk = kpr.cfar_detector(
             num_range_bins=512,
             num_doppler_bins=128,
             guard_cells_range=4,
@@ -136,34 +136,34 @@ class TestCfarDetector(unittest.TestCase):
         self.assertIsNotNone(blk)
 
     def test_set_pfa(self):
-        blk = kpr.cfar_detector.make(num_range_bins=256, num_doppler_bins=64)
+        blk = kpr.cfar_detector(num_range_bins=256, num_doppler_bins=64)
         blk.set_pfa(1e-3)
 
     def test_set_cfar_type(self):
-        blk = kpr.cfar_detector.make(num_range_bins=256, num_doppler_bins=64)
+        blk = kpr.cfar_detector(num_range_bins=256, num_doppler_bins=64)
         blk.set_cfar_type(1)  # GO-CFAR
 
     def test_set_guard_cells(self):
-        blk = kpr.cfar_detector.make(num_range_bins=256, num_doppler_bins=64)
+        blk = kpr.cfar_detector(num_range_bins=256, num_doppler_bins=64)
         blk.set_guard_cells(4, 4)
 
     def test_set_ref_cells(self):
-        blk = kpr.cfar_detector.make(num_range_bins=256, num_doppler_bins=64)
+        blk = kpr.cfar_detector(num_range_bins=256, num_doppler_bins=64)
         blk.set_ref_cells(16, 16)
 
     def test_get_num_detections_initial(self):
-        blk = kpr.cfar_detector.make(num_range_bins=256, num_doppler_bins=64)
+        blk = kpr.cfar_detector(num_range_bins=256, num_doppler_bins=64)
         self.assertEqual(blk.get_num_detections(), 0)
 
 
 @unittest.skipUnless(HAS_CPP_BLOCKS, "C++ pybind11 blocks not installed (run build_oot.sh)")
 class TestCoherenceMonitor(unittest.TestCase):
     def test_make_default(self):
-        blk = kpr.coherence_monitor.make()
+        blk = kpr.coherence_monitor()
         self.assertIsNotNone(blk)
 
     def test_make_custom(self):
-        blk = kpr.coherence_monitor.make(
+        blk = kpr.coherence_monitor(
             num_channels=5,
             sample_rate=2.4e6,
             measure_interval_ms=500.0,
@@ -174,23 +174,23 @@ class TestCoherenceMonitor(unittest.TestCase):
         self.assertIsNotNone(blk)
 
     def test_calibration_state(self):
-        blk = kpr.coherence_monitor.make()
+        blk = kpr.coherence_monitor()
         self.assertIsInstance(blk.is_calibration_needed(), bool)
 
     def test_set_measure_interval(self):
-        blk = kpr.coherence_monitor.make()
+        blk = kpr.coherence_monitor()
         blk.set_measure_interval(2000.0)
 
     def test_set_corr_threshold(self):
-        blk = kpr.coherence_monitor.make()
+        blk = kpr.coherence_monitor()
         blk.set_corr_threshold(0.85)
 
     def test_set_phase_threshold(self):
-        blk = kpr.coherence_monitor.make()
+        blk = kpr.coherence_monitor()
         blk.set_phase_threshold(15.0)
 
     def test_manual_calibration(self):
-        blk = kpr.coherence_monitor.make()
+        blk = kpr.coherence_monitor()
         blk.request_calibration()
         self.assertTrue(blk.is_calibration_needed())
         blk.acknowledge_calibration()
@@ -199,14 +199,14 @@ class TestCoherenceMonitor(unittest.TestCase):
 @unittest.skipUnless(HAS_CPP_BLOCKS, "C++ pybind11 blocks not installed (run build_oot.sh)")
 class TestDetectionCluster(unittest.TestCase):
     def test_make_default(self):
-        blk = kpr.detection_cluster.make(
+        blk = kpr.detection_cluster(
             num_range_bins=256,
             num_doppler_bins=64
         )
         self.assertIsNotNone(blk)
 
     def test_make_custom(self):
-        blk = kpr.detection_cluster.make(
+        blk = kpr.detection_cluster(
             num_range_bins=512,
             num_doppler_bins=128,
             min_cluster_size=3,
@@ -218,27 +218,27 @@ class TestDetectionCluster(unittest.TestCase):
         self.assertIsNotNone(blk)
 
     def test_set_min_cluster_size(self):
-        blk = kpr.detection_cluster.make(num_range_bins=256, num_doppler_bins=64)
+        blk = kpr.detection_cluster(num_range_bins=256, num_doppler_bins=64)
         blk.set_min_cluster_size(5)
 
     def test_set_max_cluster_extent(self):
-        blk = kpr.detection_cluster.make(num_range_bins=256, num_doppler_bins=64)
+        blk = kpr.detection_cluster(num_range_bins=256, num_doppler_bins=64)
         blk.set_max_cluster_extent(75)
 
     def test_set_range_resolution(self):
-        blk = kpr.detection_cluster.make(num_range_bins=256, num_doppler_bins=64)
+        blk = kpr.detection_cluster(num_range_bins=256, num_doppler_bins=64)
         blk.set_range_resolution(1200.0)
 
     def test_set_doppler_resolution(self):
-        blk = kpr.detection_cluster.make(num_range_bins=256, num_doppler_bins=64)
+        blk = kpr.detection_cluster(num_range_bins=256, num_doppler_bins=64)
         blk.set_doppler_resolution(5.0)
 
     def test_get_num_detections_initial(self):
-        blk = kpr.detection_cluster.make(num_range_bins=256, num_doppler_bins=64)
+        blk = kpr.detection_cluster(num_range_bins=256, num_doppler_bins=64)
         self.assertEqual(blk.get_num_detections(), 0)
 
     def test_get_detections_initial(self):
-        blk = kpr.detection_cluster.make(num_range_bins=256, num_doppler_bins=64)
+        blk = kpr.detection_cluster(num_range_bins=256, num_doppler_bins=64)
         dets = blk.get_detections()
         self.assertEqual(len(dets), 0)
 
@@ -348,11 +348,11 @@ class TestAoaEstimatorMusic(unittest.TestCase):
 @unittest.skipUnless(HAS_CPP_BLOCKS, "C++ pybind11 blocks not installed (run build_oot.sh)")
 class TestTracker(unittest.TestCase):
     def test_make_default(self):
-        blk = kpr.tracker.make()
+        blk = kpr.tracker()
         self.assertIsNotNone(blk)
 
     def test_make_custom(self):
-        blk = kpr.tracker.make(
+        blk = kpr.tracker(
             dt=0.05,
             process_noise_range=25.0,
             process_noise_doppler=2.5,
@@ -367,45 +367,45 @@ class TestTracker(unittest.TestCase):
         self.assertIsNotNone(blk)
 
     def test_set_process_noise(self):
-        blk = kpr.tracker.make()
+        blk = kpr.tracker()
         blk.set_process_noise(100.0, 10.0)
 
     def test_set_measurement_noise(self):
-        blk = kpr.tracker.make()
+        blk = kpr.tracker()
         blk.set_measurement_noise(200.0, 5.0)
 
     def test_set_gate_threshold(self):
-        blk = kpr.tracker.make()
+        blk = kpr.tracker()
         blk.set_gate_threshold(5.99)
 
     def test_set_confirm_hits(self):
-        blk = kpr.tracker.make()
+        blk = kpr.tracker()
         blk.set_confirm_hits(5)
 
     def test_set_delete_misses(self):
-        blk = kpr.tracker.make()
+        blk = kpr.tracker()
         blk.set_delete_misses(10)
 
     def test_get_num_tracks_initial(self):
-        blk = kpr.tracker.make()
+        blk = kpr.tracker()
         self.assertEqual(blk.get_num_tracks(), 0)
 
     def test_get_num_confirmed_initial(self):
-        blk = kpr.tracker.make()
+        blk = kpr.tracker()
         self.assertEqual(blk.get_num_confirmed_tracks(), 0)
 
     def test_get_tracks_initial(self):
-        blk = kpr.tracker.make()
+        blk = kpr.tracker()
         tracks = blk.get_tracks()
         self.assertEqual(len(tracks), 0)
 
     def test_get_confirmed_tracks_initial(self):
-        blk = kpr.tracker.make()
+        blk = kpr.tracker()
         tracks = blk.get_confirmed_tracks()
         self.assertEqual(len(tracks), 0)
 
     def test_reset(self):
-        blk = kpr.tracker.make()
+        blk = kpr.tracker()
         blk.reset()
         self.assertEqual(blk.get_num_tracks(), 0)
 

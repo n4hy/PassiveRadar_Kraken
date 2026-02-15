@@ -99,7 +99,7 @@ from gnuradio.eng_arg import eng_float, intx
 from gnuradio import eng_notation
 from gnuradio import kraken_passive_radar
 from gnuradio.kraken_passive_radar import krakensdr_source
-from gnuradio.kraken_passive_radar import rspdx_source
+from gnuradio.kraken_passive_radar import rspduo_source
 import sip
 import threading
 import time
@@ -134,9 +134,8 @@ class phase_corrector(gr.sync_block):
 class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
 
     def __init__(self, source_type='kraken',
-                 rspdx_if_gain=40.0, rspdx_rf_gain=0.0,
-                 rspdx_antenna='Antenna A'):
-        source_label = "RSPdx" if source_type == 'rspdx' else "KrakenSDR"
+                 rspduo_if_gain=40.0, rspduo_rf_gain=0.0):
+        source_label = "RSPduo" if source_type == 'rspduo' else "KrakenSDR"
         title = f"{source_label} Passive Radar — Range-Doppler"
         gr.top_block.__init__(self, title, catch_exceptions=True)
         self.source_type = source_type
@@ -238,7 +237,7 @@ class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
         self.ifft_surv0 = fft.fft_vcc(fft_size, False, [], False, 1)
 
         # Doppler processor: accumulates CPIs, FFT across slow-time
-        self.doppler_proc = kraken_passive_radar.doppler_processor.make(
+        self.doppler_proc = kraken_passive_radar.doppler_processor(
             fft_size, num_doppler_bins,
             1,     # window_type: 1=Hamming
             True   # output_power: float |X|^2
@@ -339,9 +338,9 @@ class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
         self.top_grid_layout.addWidget(self.phase_canvas, 2, 0, 1, 2)
 
         # ---- Row 3: Calibration status label ----
-        if self.source_type == 'rspdx':
-            self.phase_ax.set_title('Phase Drift — N/A (single-channel RSPdx)')
-            self.cal_label = Qt.QLabel("Phase Cal: N/A (single-channel RSPdx)")
+        if self.source_type == 'rspduo':
+            self.phase_ax.set_title('Phase Drift — N/A (RSPduo coherent clock)')
+            self.cal_label = Qt.QLabel("Phase Cal: N/A (RSPduo coherent clock)")
             self.cal_label.setStyleSheet("font-weight: bold; font-size: 14px; color: gray;")
         else:
             self.cal_label = Qt.QLabel("Phase Cal: Waiting for startup...")
@@ -379,11 +378,10 @@ class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
         self._rd_timer.start(400)
 
         # Signal chain blocks
-        if self.source_type == 'rspdx':
-            self.sdr_src = rspdx_source(
+        if self.source_type == 'rspduo':
+            self.sdr_src = rspduo_source(
                 frequency=center_freq, sample_rate=samp_rate,
-                if_gain=rspdx_if_gain, rf_gain=rspdx_rf_gain,
-                antenna=rspdx_antenna
+                if_gain=rspduo_if_gain, rf_gain=rspduo_rf_gain
             )
         else:
             self.sdr_src = krakensdr_source(
@@ -403,12 +401,12 @@ class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
         ##################################################
         # Connections
         ##################################################
-        if self.source_type == 'rspdx':
-            # RSPdx: single channel splits to both ref and surv paths
+        if self.source_type == 'rspduo':
+            # RSPduo: output 0 = ref (Tuner 1), output 1 = surv (Tuner 2)
             self.connect((self.sdr_src, 0), (self.dc_blocker_ref, 0))
             self.connect((self.sdr_src, 0), (self.qtgui_freq_sink_ref, 0))
-            self.connect((self.sdr_src, 0), (self.dc_blocker_surv0, 0))
-            self.connect((self.sdr_src, 0), (self.qtgui_freq_sink_surv, 0))
+            self.connect((self.sdr_src, 1), (self.dc_blocker_surv0, 0))
+            self.connect((self.sdr_src, 1), (self.qtgui_freq_sink_surv, 0))
         else:
             # KrakenSDR: ch0=ref, ch1=surv, ch2-4 to null
             self.null_sink_ch2 = blocks.null_sink(gr.sizeof_gr_complex*1)
@@ -460,8 +458,8 @@ class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
         Thread-safe: only updates shared data under cal_lock.
         UI updates happen in the timer callback.
         """
-        if self.source_type == 'rspdx':
-            return  # No calibration for single-channel RSPdx
+        if self.source_type == 'rspduo':
+            return  # No calibration for RSPduo (coherent clock)
         print("=== Phase Calibration Starting ===")
         with self.cal_lock:
             self._cal_status = "Noise source ON -- calibrating..."
@@ -707,7 +705,7 @@ class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
 
     def set_rf_gain(self, rf_gain):
         self.rf_gain = rf_gain
-        if self.source_type == 'rspdx':
+        if self.source_type == 'rspduo':
             self.sdr_src.set_if_gain(self.rf_gain)
         else:
             self.sdr_src.set_gain(self.rf_gain)
@@ -761,25 +759,21 @@ class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
 
 
 def main(top_block_cls=kraken_pbr_flowgraph, options=None):
-    parser = ArgumentParser(description="KrakenSDR/RSPdx Passive Radar GUI")
-    parser.add_argument("--source", choices=['kraken', 'rspdx'], default='kraken',
-                        help="SDR source: kraken (5-ch KrakenSDR) or rspdx (1-ch SDRplay RSPdx)")
+    parser = ArgumentParser(description="KrakenSDR/RSPduo Passive Radar GUI")
+    parser.add_argument("--source", choices=['kraken', 'rspduo'], default='kraken',
+                        help="SDR source: kraken (5-ch KrakenSDR) or rspduo (2-ch SDRplay RSPduo)")
     parser.add_argument("--if-gain", type=float, default=40.0,
-                        help="RSPdx IF gain IFGR in dB (default: 40, range: 20-59)")
+                        help="RSPduo IF gain in dB (default: 40, range: 20-59)")
     parser.add_argument("--rf-gain", type=float, default=0.0,
-                        help="RSPdx RF gain reduction RFGR in dB (default: 0, range: 0-27)")
-    parser.add_argument("--antenna", default='Antenna A',
-                        choices=['Antenna A', 'Antenna B', 'Antenna C'],
-                        help="RSPdx antenna port (default: Antenna A)")
+                        help="RSPduo RF gain reduction in dB (default: 0, range: 0-27)")
     args, remaining = parser.parse_known_args()
 
     qapp = Qt.QApplication([''] + remaining)
 
     tb = top_block_cls(
         source_type=args.source,
-        rspdx_if_gain=args.if_gain,
-        rspdx_rf_gain=args.rf_gain,
-        rspdx_antenna=args.antenna
+        rspduo_if_gain=args.if_gain,
+        rspduo_rf_gain=args.rf_gain,
     )
 
     tb.start()
@@ -788,11 +782,11 @@ def main(top_block_cls=kraken_pbr_flowgraph, options=None):
     tb.show()
 
     # Start periodic phase calibration in background thread (KrakenSDR only)
-    if tb.source_type != 'rspdx':
+    if tb.source_type != 'rspduo':
         cal_thread = threading.Thread(target=tb._periodic_calibration, daemon=True)
         cal_thread.start()
     else:
-        print("RSPdx mode: Phase calibration skipped (single channel)")
+        print("RSPduo mode: Phase calibration skipped (coherent clock)")
 
     def sig_handler(sig=None, frame=None):
         tb._cal_stop.set()
