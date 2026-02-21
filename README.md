@@ -1170,6 +1170,6 @@ MIT License. See [LICENSE](LICENSE).
 
 **Block B3 Reference Reconstructor**: Multi-signal demodulation-remodulation system providing 10-20 dB sensitivity improvement. Supports FM Radio (production-ready, 8% CPU), ATSC 3.0 OFDM (49% CPU), and DVB-T (skeleton). Complete with GRC flowgraph, command-line integration, and comprehensive documentation.
 
-**Acknowledgments**: Claude (Anthropic) wrote every test, all documentation, the complete GPU acceleration implementation, and the Block B3 reference reconstruction system. The comprehensive test suite enabled diagnosis and validation of both hand-written code and AI-generated implementations.
+**Acknowledgments**: Claude (Anthropic) wrote every test, all documentation, the complete GPU acceleration implementation, and the Block B3 reference reconstruction system. It debugged my crappy python. The comprehensive test suite enabled diagnosis and validation of both hand-written code and AI-generated implementations.
 
 Last updated: 2026-02-10
