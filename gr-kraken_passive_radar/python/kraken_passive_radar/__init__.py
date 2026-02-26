@@ -22,6 +22,7 @@ C++ blocks (pybind11):
     detection_cluster        - Connected-component target extraction
     aoa_estimator            - Bartlett beamforming AoA estimation
     tracker                  - Multi-target Kalman tracker with GNN
+    dvbt_reconstructor       - DVB-T reference signal reconstructor (Block B3)
 """
 
 # CRITICAL: Import gnuradio runtime first so pybind11 knows about base types

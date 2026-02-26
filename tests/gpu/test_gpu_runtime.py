@@ -67,8 +67,8 @@ class TestGPUDeviceDetection:
         assert isinstance(info['compute_capability'], int)
         assert isinstance(info['device_id'], int)
 
-        # Compute capability should be reasonable (5.0 to 9.0 for modern GPUs)
-        assert 50 <= info['compute_capability'] <= 90, \
+        # Compute capability should be reasonable (5.0 to 12.0 for modern GPUs, including Blackwell)
+        assert 50 <= info['compute_capability'] <= 120, \
             f"Unexpected compute capability: {info['compute_capability']}"
 
         print(f"\nDetected GPU: {info['name']} (compute {info['compute_capability']/10:.1f})")

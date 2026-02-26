@@ -135,6 +135,30 @@ install(TARGETS kraken_cfar_gpu
     LIBRARY DESTINATION ${GR_PYTHON_DIR}/kraken_passive_radar
 )
 
+# ECA-B GPU kernel (adaptive clutter cancellation)
+add_library(kraken_eca_gpu SHARED eca_gpu.cu)
+
+target_include_directories(kraken_eca_gpu
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+target_link_libraries(kraken_eca_gpu
+    PUBLIC
+        kraken_gpu_runtime
+        CUDA::cudart
+)
+
+set_target_properties(kraken_eca_gpu PROPERTIES
+    CUDA_SEPARABLE_COMPILATION ON
+    POSITION_INDEPENDENT_CODE ON
+    OUTPUT_NAME "kraken_eca_gpu"
+)
+
+install(TARGETS kraken_eca_gpu
+    LIBRARY DESTINATION ${GR_PYTHON_DIR}/kraken_passive_radar
+)
+
 #===============================================================================
 # Build Summary
 #===============================================================================
@@ -144,3 +168,4 @@ message(STATUS "  - kraken_gpu_runtime (device detection, memory management)")
 message(STATUS "  - kraken_caf_gpu (GPU-accelerated CAF with batched cuFFT)")
 message(STATUS "  - kraken_doppler_gpu (GPU-accelerated Doppler with batched 2D FFT)")
 message(STATUS "  - kraken_cfar_gpu (GPU-accelerated 2D CA-CFAR detection)")
+message(STATUS "  - kraken_eca_gpu (GPU-accelerated ECA-B clutter canceller with cuBLAS/cuSOLVER)")
