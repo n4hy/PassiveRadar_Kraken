@@ -77,7 +77,7 @@ public:
                 scaled[i] = in[i] * db_to_ln;
             }
             // Batch exp using NEON approximation
-            optmath::neon::neon_exp_f32_approx(exp_out.data(), scaled.data(), size);
+            optmath::neon::neon_fast_exp_f32(exp_out.data(), scaled.data(), size);
             for (int i = 0; i < size; ++i) {
                 sum_linear[i] += exp_out[i];
             }

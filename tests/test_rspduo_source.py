@@ -29,8 +29,10 @@ class TestRSPduoSource(unittest.TestCase):
 
     def setUp(self):
         """Reset mock before each test."""
-        mock_sdrplay3.reset_mock()
+        mock_sdrplay3.reset_mock(side_effect=True, return_value=True)
         mock_sdrplay3.stream_args.return_value = MagicMock(name='stream_args_instance')
+        # Ensure rspduo return value is a fresh mock (clears any side_effects from prior tests)
+        mock_sdrplay3.rspduo.return_value = MagicMock(name='rspduo_instance')
 
     def test_initialization_defaults(self):
         """Test block initializes sdrplay3.rspduo with correct default args."""
@@ -42,32 +44,35 @@ class TestRSPduoSource(unittest.TestCase):
                 output_type='fc32', channels_size=2
             )
 
-            # Verify rspduo constructor called with correct mode and antenna
+            # Verify rspduo constructor called with keyword args
             mock_sdrplay3.rspduo.assert_called_once_with(
-                '',
-                mock_sdrplay3.stream_args.return_value,
-                'Dual Tuner (diversity reception)',
-                'Both Tuners',
+                selector='',
+                rspduo_mode='Dual Tuner (diversity reception)',
+                antenna='Both Tuners',
+                stream_args=mock_sdrplay3.stream_args.return_value,
             )
 
             src = mock_sdrplay3.rspduo.return_value
-            src.set_center_freq.assert_called_with(100e6)
-            src.set_sample_rate.assert_called_with(2e6)
+            # Dual-tuner API: set_center_freq(freq, synchronous_updates)
+            src.set_center_freq.assert_called_with(100e6, False)
+            # Dual-tuner API: set_sample_rate(rate, synchronous_updates)
+            src.set_sample_rate.assert_called_with(2e6, False)
 
-            # Verify gain negation on both tuners
-            src.set_gain.assert_any_call(-40.0, 'IF', 0)
-            src.set_gain.assert_any_call(-40.0, 'IF', 1)
-            src.set_gain.assert_any_call(-0.0, 'RF', 0)
-            src.set_gain.assert_any_call(-0.0, 'RF', 1)
+            # Dual-tuner API: set_gain(gain0, gain1, type, sync)
+            src.set_gain.assert_any_call(-40.0, -40.0, 'IF', False)
+            src.set_gain.assert_any_call(-0.0, -0.0, 'RF', False)
 
-            # Bandwidth 0 = auto, so set_bandwidth should NOT be called
-            src.set_bandwidth.assert_not_called()
+            # set_gain_modes(agc0, agc1)
+            src.set_gain_modes.assert_called_with(False, False)
 
-            # Device settings applied
-            src.set_setting.assert_any_call('biasT_ctrl', 'false')
-            src.set_setting.assert_any_call('rfnotch_ctrl', 'true')
-            src.set_setting.assert_any_call('dabnotch_ctrl', 'true')
-            src.set_setting.assert_any_call('amnotch_ctrl', 'false')
+            # Bandwidth 0 is passed through (auto)
+            src.set_bandwidth.assert_called_with(0)
+
+            # Device settings via dedicated setters
+            src.set_biasT.assert_called_with(False)
+            src.set_rf_notch_filter.assert_called_with(False)
+            src.set_dab_notch_filter.assert_called_with(False)
+            src.set_am_notch_filter.assert_called_with(False)
 
     def test_initialization_custom(self):
         """Test block initializes with custom parameters."""
@@ -85,21 +90,20 @@ class TestRSPduoSource(unittest.TestCase):
             )
 
             src = mock_sdrplay3.rspduo.return_value
-            src.set_center_freq.assert_called_with(433e6)
-            src.set_sample_rate.assert_called_with(1e6)
+            src.set_center_freq.assert_called_with(433e6, False)
+            src.set_sample_rate.assert_called_with(1e6, False)
 
-            # Verify gain negation
-            src.set_gain.assert_any_call(-50.0, 'IF', 0)
-            src.set_gain.assert_any_call(-50.0, 'IF', 1)
-            src.set_gain.assert_any_call(-10.0, 'RF', 0)
-            src.set_gain.assert_any_call(-10.0, 'RF', 1)
+            # Verify gain negation with dual-tuner API
+            src.set_gain.assert_any_call(-50.0, -50.0, 'IF', False)
+            src.set_gain.assert_any_call(-10.0, -10.0, 'RF', False)
 
-            src.set_bandwidth.assert_called_with(1.536e6)
+            src.set_bandwidth.assert_called_with(int(1.536e6))
 
-            src.set_setting.assert_any_call('biasT_ctrl', 'true')
-            src.set_setting.assert_any_call('rfnotch_ctrl', 'false')
-            src.set_setting.assert_any_call('dabnotch_ctrl', 'false')
-            src.set_setting.assert_any_call('amnotch_ctrl', 'true')
+            # Dedicated setters
+            src.set_biasT.assert_called_with(True)
+            src.set_rf_notch_filter.assert_called_with(False)
+            src.set_dab_notch_filter.assert_called_with(False)
+            src.set_am_notch_filter.assert_called_with(True)
 
     def test_two_output_signature(self):
         """Verify hier_block2 is constructed with 2-output io_signature."""
@@ -123,7 +127,7 @@ class TestRSPduoSource(unittest.TestCase):
             src.reset_mock()
 
             blk.set_frequency(915e6)
-            src.set_center_freq.assert_called_once_with(915e6)
+            src.set_center_freq.assert_called_once_with(915e6, False)
             self.assertEqual(blk.frequency, 915e6)
 
     def test_set_sample_rate(self):
@@ -134,7 +138,7 @@ class TestRSPduoSource(unittest.TestCase):
             src.reset_mock()
 
             blk.set_sample_rate(500e3)
-            src.set_sample_rate.assert_called_once_with(500e3)
+            src.set_sample_rate.assert_called_once_with(500e3, False)
             self.assertEqual(blk.sample_rate, 500e3)
 
     def test_set_if_gain_negation(self):
@@ -145,9 +149,7 @@ class TestRSPduoSource(unittest.TestCase):
             src.reset_mock()
 
             blk.set_if_gain(55.0)
-            src.set_gain.assert_any_call(-55.0, 'IF', 0)
-            src.set_gain.assert_any_call(-55.0, 'IF', 1)
-            self.assertEqual(src.set_gain.call_count, 2)
+            src.set_gain.assert_called_once_with(-55.0, -55.0, 'IF', False)
             self.assertEqual(blk.if_gain, 55.0)
 
     def test_set_rf_gain_negation(self):
@@ -158,9 +160,7 @@ class TestRSPduoSource(unittest.TestCase):
             src.reset_mock()
 
             blk.set_rf_gain(20.0)
-            src.set_gain.assert_any_call(-20.0, 'RF', 0)
-            src.set_gain.assert_any_call(-20.0, 'RF', 1)
-            self.assertEqual(src.set_gain.call_count, 2)
+            src.set_gain.assert_called_once_with(-20.0, -20.0, 'RF', False)
             self.assertEqual(blk.rf_gain, 20.0)
 
     def test_set_bandwidth(self):
@@ -171,17 +171,17 @@ class TestRSPduoSource(unittest.TestCase):
             src.reset_mock()
 
             blk.set_bandwidth(1.536e6)
-            src.set_bandwidth.assert_called_once_with(1.536e6)
+            src.set_bandwidth.assert_called_once_with(int(1.536e6))
 
-    def test_set_bandwidth_zero_skips(self):
-        """Test that setting bandwidth to 0 does not call set_bandwidth."""
+    def test_set_bandwidth_zero(self):
+        """Test that setting bandwidth to 0 calls set_bandwidth(0)."""
         with patch.object(_rs_module, 'sdrplay3', mock_sdrplay3):
             blk = rspduo_source()
             src = mock_sdrplay3.rspduo.return_value
             src.reset_mock()
 
             blk.set_bandwidth(0)
-            src.set_bandwidth.assert_not_called()
+            src.set_bandwidth.assert_called_once_with(0)
 
     def test_set_bias_t(self):
         """Test runtime Bias-T toggle."""
@@ -191,7 +191,7 @@ class TestRSPduoSource(unittest.TestCase):
             src.reset_mock()
 
             blk.set_bias_t(True)
-            src.set_setting.assert_called_with('biasT_ctrl', 'true')
+            src.set_biasT.assert_called_with(True)
 
     def test_set_rf_notch_filter(self):
         """Test runtime RF notch filter toggle."""
@@ -201,7 +201,7 @@ class TestRSPduoSource(unittest.TestCase):
             src.reset_mock()
 
             blk.set_rf_notch_filter(False)
-            src.set_setting.assert_called_with('rfnotch_ctrl', 'false')
+            src.set_rf_notch_filter.assert_called_with(False)
 
     def test_set_dab_notch_filter(self):
         """Test runtime DAB notch filter toggle."""
@@ -211,7 +211,7 @@ class TestRSPduoSource(unittest.TestCase):
             src.reset_mock()
 
             blk.set_dab_notch_filter(True)
-            src.set_setting.assert_called_with('dabnotch_ctrl', 'true')
+            src.set_dab_notch_filter.assert_called_with(True)
 
     def test_set_am_notch_filter(self):
         """Test runtime AM notch filter toggle."""
@@ -221,15 +221,14 @@ class TestRSPduoSource(unittest.TestCase):
             src.reset_mock()
 
             blk.set_am_notch_filter(True)
-            src.set_setting.assert_called_with('amnotch_ctrl', 'true')
+            src.set_am_notch_filter.assert_called_with(True)
 
-    def test_device_settings_error_handling(self):
-        """Test that device setting failures don't crash initialization."""
-        mock_sdrplay3.rspduo.return_value.set_setting.side_effect = RuntimeError("not supported")
+    def test_device_settings_error_propagation(self):
+        """Test that device setting failures propagate (fail-fast behavior)."""
+        mock_sdrplay3.rspduo.return_value.set_rf_notch_filter.side_effect = RuntimeError("not supported")
         with patch.object(_rs_module, 'sdrplay3', mock_sdrplay3):
-            # Should not raise despite set_setting errors
-            blk = rspduo_source(bias_t=True, am_notch=True)
-            self.assertIsNotNone(blk)
+            with self.assertRaises(RuntimeError):
+                rspduo_source(bias_t=True, am_notch=True)
 
 
 if __name__ == "__main__":
