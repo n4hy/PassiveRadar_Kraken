@@ -245,6 +245,12 @@ void dvbt_reconstructor_impl::init_dvbt_mode()
     GR_LOG_INFO(d_logger, boost::format("  FFT size: %d") % d_fft_size);
     GR_LOG_INFO(d_logger, boost::format("  Guard interval: 1/%d") % d_guard_interval);
 
+    // Validate guard interval before use
+    if (d_guard_interval <= 0) {
+        GR_LOG_ERROR(d_logger, "Invalid guard interval (must be > 0), defaulting to 4");
+        d_guard_interval = 4;
+    }
+
     // Calculate symbol parameters
     d_symbol_length = d_fft_size + (d_fft_size / d_guard_interval);
 

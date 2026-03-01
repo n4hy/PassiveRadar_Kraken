@@ -14,9 +14,7 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
-from matplotlib.patches import Rectangle, Circle, Wedge
-from matplotlib.collections import PatchCollection
-import matplotlib.colors as mcolors
+from matplotlib.patches import Rectangle, Circle
 import threading
 from collections import deque
 from dataclasses import dataclass, field

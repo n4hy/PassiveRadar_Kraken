@@ -4,14 +4,26 @@ import os
 import unittest
 import numpy as np
 import ctypes
+import sysconfig
+from pathlib import Path
 
 class TestAoACpp(unittest.TestCase):
     def setUp(self):
         # Locate libraries (names match CMake targets: kraken_doppler_processing, kraken_aoa_processing)
-        lib_doppler_path = os.path.abspath("src/libkraken_doppler_processing.so")
-        lib_aoa_path = os.path.abspath("src/libkraken_aoa_processing.so")
+        repo_root = Path(__file__).resolve().parents[1]
+        site_packages = Path(sysconfig.get_paths()["purelib"])
 
-        if not os.path.exists(lib_doppler_path) or not os.path.exists(lib_aoa_path):
+        lib_doppler_path = None
+        lib_aoa_path = None
+        for base in [repo_root / "src", site_packages / "kraken_passive_radar"]:
+            dp = base / "libkraken_doppler_processing.so"
+            ap = base / "libkraken_aoa_processing.so"
+            if dp.exists() and ap.exists():
+                lib_doppler_path = str(dp)
+                lib_aoa_path = str(ap)
+                break
+
+        if not lib_doppler_path or not lib_aoa_path:
              self.skipTest("C++ Libraries not found (compilation likely failed due to missing FFTW)")
 
         try:
@@ -123,9 +135,17 @@ class TestAoACpp(unittest.TestCase):
 
 class TestAoAMusicCpp(unittest.TestCase):
     def setUp(self):
-        lib_aoa_path = os.path.abspath("src/libkraken_aoa_processing.so")
+        repo_root = Path(__file__).resolve().parents[1]
+        site_packages = Path(sysconfig.get_paths()["purelib"])
 
-        if not os.path.exists(lib_aoa_path):
+        lib_aoa_path = None
+        for base in [repo_root / "src", site_packages / "kraken_passive_radar"]:
+            ap = base / "libkraken_aoa_processing.so"
+            if ap.exists():
+                lib_aoa_path = str(ap)
+                break
+
+        if not lib_aoa_path:
             self.skipTest("C++ AoA library not found")
 
         try:

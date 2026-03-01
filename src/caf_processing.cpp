@@ -129,6 +129,12 @@ public:
      * @param dop_step Doppler step size (Hz)
      * @param fs Sample rate (Hz)
      */
+    // Non-copyable, non-movable (owns FFTW resources)
+    CafProcessor(const CafProcessor&) = delete;
+    CafProcessor& operator=(const CafProcessor&) = delete;
+    CafProcessor(CafProcessor&&) = delete;
+    CafProcessor& operator=(CafProcessor&&) = delete;
+
     CafProcessor(int samples, int n_doppler = 64, int n_range = 256,
                  float dop_start = -125.0f, float dop_step = 3.9f,
                  float fs = 250000.0f)
@@ -144,7 +150,8 @@ public:
 
         // FFT length: next power of 2 >= 2 * n_samples for linear correlation
         fft_len = 1;
-        while (fft_len < 2 * n_samples) fft_len <<= 1;
+        while (fft_len < 2 * n_samples && fft_len > 0) fft_len <<= 1;
+        if (fft_len <= 0) fft_len = 1 << 20; // Cap at 1M on overflow
 
         // FFTW buffers
         buf_ref = fftwf_alloc_complex(fft_len);

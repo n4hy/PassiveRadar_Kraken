@@ -59,9 +59,10 @@ sys.modules["osmosdr"] = MagicMock()
 # OOT module path must come BEFORE display package to resolve namespace correctly
 oot_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../gr-kraken_passive_radar/python"))
 sys.path.insert(0, oot_path)
-# Clear any cached kraken_passive_radar from display system
-if 'kraken_passive_radar' in sys.modules:
-    del sys.modules['kraken_passive_radar']
+# Clear any cached kraken_passive_radar (and submodules) from display system
+for key in list(sys.modules.keys()):
+    if key == 'kraken_passive_radar' or key.startswith('kraken_passive_radar.'):
+        del sys.modules[key]
 
 from kraken_passive_radar.eca_b_clutter_canceller import EcaBClutterCanceller
 from kraken_passive_radar.custom_blocks import ConditioningBlock, CafBlock, BackendBlock
@@ -69,20 +70,6 @@ from kraken_passive_radar.doppler_processing import DopplerProcessingBlock
 
 class TestEndToEndOffline(unittest.TestCase):
     def test_manual_pipeline(self):
-        # Check if libs exist, if not skip
-        try:
-            from kraken_passive_radar.doppler_processing import DopplerProcessingBlock
-        except OSError:
-            # Try to help user by pointing to installed libs if they exist
-            site_packages = Path(sysconfig.get_paths()["purelib"])
-            lib_path = site_packages / "kraken_passive_radar" / "libkraken_doppler_processing.so"
-            if lib_path.exists():
-                 # Should have loaded. Maybe mismatch?
-                 pass
-
-            self.skipTest("C++ Libraries not found (Doppler/FFTW missing)")
-            return
-
         print("SETTING UP MANUAL PIPELINE TEST")
 
         cpi_len = 4096

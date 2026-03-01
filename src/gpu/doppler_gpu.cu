@@ -319,7 +319,11 @@ void doppler_gpu_process(void* handle, const float* input, float* output) {
     // ========================================================================
     // Step 3: Batched FFT (all columns in parallel)
     // ========================================================================
-    cufftExecC2C(proc->fft_plan, proc->d_input, proc->d_output, CUFFT_FORWARD);
+    cufftResult fft_err = cufftExecC2C(proc->fft_plan, proc->d_input, proc->d_output, CUFFT_FORWARD);
+    if (fft_err != CUFFT_SUCCESS) {
+        fprintf(stderr, "cuFFT exec failed in doppler_gpu: %d\n", (int)fft_err);
+        return;
+    }
 
     // ========================================================================
     // Step 4: FFT shift and extract log magnitude

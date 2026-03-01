@@ -1,5 +1,4 @@
 
-import sys
 
 def create_block(name, id, parameters, coordinate, rotation=0, state='enabled'):
     return {
@@ -252,7 +251,7 @@ def generate():
         blocks.append(create_block(
             ifft_name, 'ifft_vcc',
             {
-                'fft_size': 'fft_len', 'forward': 'True', 'shift': 'True',
+                'fft_size': 'fft_len', 'forward': 'False', 'shift': 'True',
                 'window': 'window.blackmanharris(fft_len)', 'nthreads': '1', 'comment': ''
             },
             [START_X + C_IFFT*COL_W, row_y]

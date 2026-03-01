@@ -167,8 +167,8 @@ void tracker_impl::mat2x2_inverse(const float* M, float* out)
 {
     float det = M[0] * M[3] - M[1] * M[2];
     if (std::abs(det) < 1e-10f) {
-        // Near-singular, use pseudoinverse
-        det = 1e-10f;
+        // Near-singular, clamp magnitude but preserve sign
+        det = (det >= 0) ? 1e-10f : -1e-10f;
     }
     float inv_det = 1.0f / det;
     out[0] = M[3] * inv_det;

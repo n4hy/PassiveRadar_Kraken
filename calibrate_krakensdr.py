@@ -12,7 +12,6 @@ from pathlib import Path
 sys.path.append(os.path.join(os.path.dirname(__file__), "gr-kraken_passive_radar/python"))
 
 from kraken_passive_radar.krakensdr_source import krakensdr_source
-from kraken_passive_radar.custom_blocks import TimeAlignmentBlock
 
 def calibrate(args):
     print("Starting KrakenSDR Calibration...")
@@ -102,6 +101,10 @@ def calibrate(args):
     # Average over multiple chunks
     n_chunks = len(data[0]) // align_len
     if n_chunks > 100: n_chunks = 100
+
+    if n_chunks == 0:
+        print("WARNING: Not enough samples for calibration")
+        return
 
     print(f"Averaging over {n_chunks} blocks...")
 

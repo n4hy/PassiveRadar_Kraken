@@ -96,6 +96,7 @@ class CalibrationController:
         # Current phase corrections (radians, applied to channels 1-4)
         # Channel 0 is reference, always 0 correction
         self.phase_corrections = np.zeros(num_channels, dtype=np.float32)
+        self._cached_phasors = {}  # channel -> precomputed exp(1j * correction)
 
         # Calibration buffers
         self.cal_buffers: List[np.ndarray] = [None] * num_channels
@@ -231,6 +232,11 @@ class CalibrationController:
 
         # Update corrections
         self.phase_corrections = phase_offsets.astype(np.float32)
+        # Precompute phasors for apply_phase_correction
+        self._cached_phasors = {}
+        for ch in range(len(self.phase_corrections)):
+            if self.phase_corrections[ch] != 0:
+                self._cached_phasors[ch] = np.complex64(np.exp(1j * self.phase_corrections[ch]))
 
         print(f"CalibrationController: Phase corrections (deg): "
               f"{np.degrees(self.phase_corrections)}")
@@ -283,9 +289,12 @@ class CalibrationController:
         if channel == 0 or self.phase_corrections[channel] == 0:
             return samples
 
-        # Apply phase rotation
-        correction = np.exp(1j * self.phase_corrections[channel])
-        return samples * correction
+        # Apply phase rotation using cached phasor
+        phasor = self._cached_phasors.get(channel)
+        if phasor is None:
+            phasor = np.complex64(np.exp(1j * self.phase_corrections[channel]))
+            self._cached_phasors[channel] = phasor
+        return samples * phasor
 
     def get_correction_phasors(self) -> np.ndarray:
         """

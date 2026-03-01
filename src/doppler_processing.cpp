@@ -37,6 +37,12 @@ private:
     fftwf_complex* out_buf;
 
 public:
+    // Non-copyable, non-movable (owns FFTW resources)
+    DopplerProcessor(const DopplerProcessor&) = delete;
+    DopplerProcessor& operator=(const DopplerProcessor&) = delete;
+    DopplerProcessor(DopplerProcessor&&) = delete;
+    DopplerProcessor& operator=(DopplerProcessor&&) = delete;
+
     DopplerProcessor(int n_fft, int n_doppler) : fft_len(n_fft), doppler_len(n_doppler) {
         // Initialize FFTW thread support (centralized, safe to call multiple times)
         kraken_fftw_init();

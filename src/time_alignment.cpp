@@ -33,12 +33,19 @@ class TimeAligner {
     std::vector<float> interleaved_prod;
 
 public:
+    // Non-copyable, non-movable (owns FFTW resources)
+    TimeAligner(const TimeAligner&) = delete;
+    TimeAligner& operator=(const TimeAligner&) = delete;
+    TimeAligner(TimeAligner&&) = delete;
+    TimeAligner& operator=(TimeAligner&&) = delete;
+
     TimeAligner(int samples) : n_samples(samples) {
         // Initialize FFTW thread support (centralized, safe to call multiple times)
         kraken_fftw_init();
 
         fft_len = 1;
-        while (fft_len < 2 * n_samples) fft_len <<= 1;
+        while (fft_len < 2 * n_samples && fft_len > 0) fft_len <<= 1;
+        if (fft_len <= 0) fft_len = 1 << 20; // Cap at 1M on overflow
 
         buf_ref = fftwf_alloc_complex(fft_len);
         buf_surv = fftwf_alloc_complex(fft_len);

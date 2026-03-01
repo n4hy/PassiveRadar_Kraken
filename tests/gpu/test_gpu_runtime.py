@@ -15,8 +15,12 @@ import os
 import sys
 from pathlib import Path
 
-# Add kraken_passive_radar to path
-sys.path.insert(0, str(Path(__file__).parents[2]))
+# Add repo root to path (contains the display/GUI kraken_passive_radar package)
+# Clear any cached OOT version that test_end_to_end may have loaded
+_repo_root = str(Path(__file__).parents[2])
+sys.path.insert(0, _repo_root)
+if 'kraken_passive_radar' in sys.modules:
+    del sys.modules['kraken_passive_radar']
 
 from kraken_passive_radar import (
     is_gpu_available,
@@ -157,8 +161,21 @@ class TestBackendFallback:
 class TestPythonAPIConsistency:
     """Test Python API remains consistent across platforms."""
 
+    @staticmethod
+    def _reload_display_package():
+        """Ensure we load the display package (not OOT module)."""
+        # The OOT module (gr-kraken_passive_radar/python/kraken_passive_radar)
+        # may be cached in sys.modules from other tests. Clear it so we can
+        # import the display/GUI package from the repo root.
+        if 'kraken_passive_radar' in sys.modules:
+            mod = sys.modules['kraken_passive_radar']
+            mod_file = getattr(mod, '__file__', '') or ''
+            if 'gr-kraken_passive_radar' in mod_file:
+                del sys.modules['kraken_passive_radar']
+
     def test_all_functions_exist(self):
         """Test that all GPU API functions exist (even on CPU-only)."""
+        self._reload_display_package()
         # These should exist on both GPU and CPU-only builds
         from kraken_passive_radar import (
             is_gpu_available,
@@ -190,6 +207,7 @@ class TestPythonAPIConsistency:
 
     def test_no_imports_fail_on_rpi5(self):
         """Test that imports work even without GPU libraries (RPi5 mode)."""
+        self._reload_display_package()
         # This import should never fail, even on RPi5 CPU-only
         from kraken_passive_radar import is_gpu_available
 

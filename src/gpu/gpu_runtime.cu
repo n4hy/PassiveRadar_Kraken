@@ -66,7 +66,8 @@ void kraken_gpu_get_device_info(int device_id, char* name_out, int* compute_capa
 
     if (err != cudaSuccess) {
         if (name_out) {
-            strcpy(name_out, "Unknown");
+            strncpy(name_out, "Unknown", 255);
+            name_out[255] = '\0';
         }
         if (compute_capability_out) {
             *compute_capability_out = 0;

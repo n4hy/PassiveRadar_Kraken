@@ -14,7 +14,7 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
-from matplotlib.patches import Rectangle, Circle
+from matplotlib.patches import Circle
 import threading
 from dataclasses import dataclass, field
 from typing import List, Optional, Dict
@@ -440,7 +440,10 @@ class MetricsDashboard:
         )
 
         # Sample rate check
-        rate_error = abs(m.sample_rate_actual - m.sample_rate_expected) / m.sample_rate_expected
+        if m.sample_rate_expected > 0:
+            rate_error = abs(m.sample_rate_actual - m.sample_rate_expected) / m.sample_rate_expected
+        else:
+            rate_error = 0.0
         if rate_error < 0.01:
             sr_color = self.color_good
         elif rate_error < 0.05:

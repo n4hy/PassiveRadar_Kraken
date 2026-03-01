@@ -57,6 +57,8 @@ int eca_canceller_impl::work(int noutput_items,
                              gr_vector_const_void_star& input_items,
                              gr_vector_void_star& output_items)
 {
+    gr::thread::scoped_lock guard(d_setlock);
+
     const gr_complex* ref = static_cast<const gr_complex*>(input_items[0]);
 
     // Total samples available including history

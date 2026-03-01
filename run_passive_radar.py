@@ -40,7 +40,6 @@ This is a hardware feature essential for phase calibration.
 
 import sys
 import time
-import signal
 import numpy as np
 from gnuradio import gr, blocks
 import os
@@ -70,13 +69,13 @@ from gnuradio.kraken_passive_radar import (
 # New Display (optional)
 try:
     # Try installed version first
-    from gnuradio.kraken_passive_radar.radar_display import PPIDisplay
+    from gnuradio.kraken_passive_radar.radar_display import PPIDisplay, PPIDetection
     HAS_DISPLAY = True
 except ImportError:
     # Fall back to local version
     try:
         sys.path.append(os.path.join(os.path.dirname(__file__), "gr-kraken_passive_radar/python"))
-        from kraken_passive_radar.radar_display import PPIDisplay
+        from kraken_passive_radar.radar_display import PPIDisplay, PPIDetection
         HAS_DISPLAY = True
     except ImportError:
         HAS_DISPLAY = False
@@ -126,7 +125,7 @@ class PhaseCorrectorBlock(gr.sync_block):
 
 
 class PassiveRadarTopBlock(gr.top_block):
-    def __init__(self, freq=100e6, gain=30, geometry='ULA', calibration_file=None, use_ref_aoa=False,
+    def __init__(self, freq=100e6, gain=30, geometry='ULA', calibration_file=None,
                  b3_signal_type='passthrough', b3_fft_size=8192, b3_guard_interval=192,
                  source_type='kraken', if_gain=40.0, rf_gain=0.0,
                  bandwidth=0, sample_rate=2.4e6):
@@ -141,7 +140,6 @@ class PassiveRadarTopBlock(gr.top_block):
         self.doppler_len = 64
         self.num_taps = 128
         self.geometry = geometry
-        self.use_ref_aoa = use_ref_aoa
         self.b3_signal_type = b3_signal_type
         self.b3_fft_size = b3_fft_size
         self.b3_guard_interval = b3_guard_interval
@@ -407,10 +405,10 @@ class PassiveRadarTopBlock(gr.top_block):
         """Update display with confirmed tracks from the tracker."""
         mapped = []
         for t in tracks:
-            mapped.append((
-                t.get('aoa_deg', 0.0),
-                t['range_m'],
-                t.get('snr_db', 0.0)
+            mapped.append(PPIDetection(
+                azimuth_deg=t.get('aoa_deg', 0.0),
+                range_m=t['range_m'],
+                power_db=t.get('snr_db', 0.0)
             ))
         if hasattr(self, 'display_ref') and self.display_ref:
             self.display_ref.update_detections(mapped)
@@ -523,8 +521,6 @@ Signal Flow (RSPduo, dual-tuner):
                         help="Receiver gain in dB (default: 30, KrakenSDR only)")
     parser.add_argument("--geometry", choices=['ULA', 'URA'], default='ULA',
                         help="Antenna array geometry (default: ULA)")
-    parser.add_argument("--include-ref", action="store_true",
-                        help="Include Reference antenna in AoA array")
     parser.add_argument("--no-startup-cal", action="store_true",
                         help="Skip startup calibration (use saved calibration only)")
     parser.add_argument("--visualize", action="store_true",
@@ -557,7 +553,6 @@ Signal Flow (RSPduo, dual-tuner):
         gain=args.gain,
         geometry=args.geometry,
         calibration_file="calibration.json",
-        use_ref_aoa=args.include_ref,
         b3_signal_type=args.b3_signal,
         b3_fft_size=args.b3_fft_size,
         b3_guard_interval=args.b3_guard_interval,
@@ -588,6 +583,7 @@ Signal Flow (RSPduo, dual-tuner):
         print("STARTUP CALIBRATION")
         print("Enabling noise source (antennas will be isolated by HW switch)")
         print("="*60 + "\n")
+        tb.start()
         tb.trigger_calibration("startup")
         # Wait for calibration to complete
         while tb.cal_controller.is_calibrating:

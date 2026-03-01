@@ -19,12 +19,13 @@ private:
     // Weights for each surveillance channel.
     std::vector<std::vector<Complex>> weights;
 
-    // History buffer for the Reference signal R(t)
+    // Circular buffer for the Reference signal R(t)
     std::vector<Complex> r_history;
+    size_t r_history_pos;  // Points to most recent sample (index 0 in logical view)
 
 public:
     AdaptiveSignalConditioner(size_t len, float step_size = 0.1)
-        : filter_length(len), mu(step_size), epsilon(1e-8f) {
+        : filter_length(len), mu(step_size), epsilon(1e-8f), r_history_pos(0) {
         // Initialize history buffer
         r_history.resize(filter_length, Complex(0.0f, 0.0f));
     }
@@ -88,10 +89,14 @@ public:
 
 private:
     void update_history(Complex val) {
-        for (size_t i = filter_length - 1; i > 0; --i) {
-            r_history[i] = r_history[i-1];
-        }
-        r_history[0] = val;
+        // Circular buffer: O(1) instead of O(n) shift
+        r_history_pos = (r_history_pos == 0) ? filter_length - 1 : r_history_pos - 1;
+        r_history[r_history_pos] = val;
+    }
+
+    // Access history element k (0 = most recent)
+    inline Complex history_at(size_t k) const {
+        return r_history[(r_history_pos + k) % filter_length];
     }
 
     float get_history_energy() {
@@ -105,7 +110,7 @@ private:
     Complex filter(size_t ch) {
         Complex y = 0.0f;
         for (size_t k = 0; k < filter_length; ++k) {
-            y += std::conj(weights[ch][k]) * r_history[k];
+            y += std::conj(weights[ch][k]) * history_at(k);
         }
         return y;
     }
@@ -117,7 +122,7 @@ private:
         // Check for NaN/Inf before applying
         if (!std::isfinite(step_scale.real()) || !std::isfinite(step_scale.imag())) return;
         for (size_t k = 0; k < filter_length; ++k) {
-            weights[ch][k] += step_scale * r_history[k];
+            weights[ch][k] += step_scale * history_at(k);
         }
     }
 };

@@ -50,7 +50,7 @@ set(GR_DOC_DIR ${GR_DATA_DIR}/doc)
 
 # Find where gnuradio's Python package is installed (critical for namespace integration)
 execute_process(
-    COMMAND python3 -c "import os, gnuradio; print(os.path.dirname(gnuradio.__file__))"
+    COMMAND ${PYTHON_EXECUTABLE} -c "import os, gnuradio; print(os.path.dirname(gnuradio.__file__))"
     OUTPUT_VARIABLE GNURADIO_PYTHON_DIR
     OUTPUT_STRIP_TRAILING_WHITESPACE
     ERROR_QUIET

@@ -14,8 +14,6 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
-from matplotlib.patches import FancyArrow
-from matplotlib.collections import LineCollection
 import threading
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple

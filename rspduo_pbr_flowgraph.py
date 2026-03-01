@@ -22,7 +22,6 @@ from gnuradio.filter import firdes
 from gnuradio import gr
 import sys
 import signal
-from PyQt5 import Qt
 from argparse import ArgumentParser
 from gnuradio.eng_arg import eng_float, intx
 from gnuradio import eng_notation
@@ -64,7 +63,6 @@ class rspduo_pbr_flowgraph(gr.top_block, Qt.QWidget):
                 self.restoreGeometry(geometry)
         except BaseException as exc:
             print(f"Qt GUI: Could not restore geometry: {str(exc)}", file=sys.stderr)
-        self.flowgraph_started = threading.Event()
 
         ##################################################
         # Variables
@@ -393,8 +391,6 @@ def main(top_block_cls=rspduo_pbr_flowgraph, options=None):
     tb = top_block_cls()
 
     tb.start()
-    tb.flowgraph_started.set()
-
     tb.show()
 
     def sig_handler(sig=None, frame=None):

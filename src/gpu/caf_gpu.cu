@@ -394,6 +394,9 @@ void caf_gpu_process_full(void* handle, const float* ref, const float* surv,
         (float*)proc->d_reference, proc->d_reference, proc->n_samples, proc->fft_len
     );
 
+    // Wait for reference transfer to complete before reusing pinned buffer
+    cudaStreamSynchronize(proc->stream);
+
     // Surveillance signal (copy n_samples, zero-pad to fft_len)
     memcpy(proc->h_input_pinned, surv, 2 * proc->n_samples * sizeof(float));
     kraken_gpu_memcpy_h2d_async(proc->d_surveillance, proc->h_input_pinned,

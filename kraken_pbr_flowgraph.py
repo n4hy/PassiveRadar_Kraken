@@ -30,15 +30,15 @@ def _autodetect_display():
     if os.environ.get('SSH_CONNECTION') or os.environ.get('SSH_CLIENT'):
         import socket
         for offset in range(10, 70):
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             try:
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 s.settimeout(0.05)
                 s.connect(('127.0.0.1', 6000 + offset))
                 s.close()
                 os.environ['DISPLAY'] = f'localhost:{offset}.0'
                 return
             except OSError:
-                pass
+                s.close()
         print("NOTE: SSH session detected but no X11 forwarding port found.\n"
               "  Run with 'ssh -Y' to forward the display, or set DISPLAY=:0\n"
               "  to render on the Pi's local screen.", file=sys.stderr)
@@ -166,7 +166,6 @@ class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
                 self.restoreGeometry(geometry)
         except BaseException as exc:
             print(f"Qt GUI: Could not restore geometry: {str(exc)}", file=sys.stderr)
-        self.flowgraph_started = threading.Event()
 
         ##################################################
         # Variables
@@ -583,7 +582,7 @@ class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
         try:
             rd_data = self.rd_probe.level()
             if len(rd_data) == self.rd_size:
-                rd_map = np.array(rd_data).reshape(self.num_doppler_bins, self.fft_size)
+                rd_map = np.asarray(rd_data).reshape(self.num_doppler_bins, self.fft_size)
                 rd_map = np.clip(rd_map, -50, 100)
                 rd_zoomed = rd_map[:, :self.rd_display_bins]
                 self.rd_img.set_data(rd_zoomed)
@@ -706,7 +705,7 @@ class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
     def set_rf_gain(self, rf_gain):
         self.rf_gain = rf_gain
         if self.source_type == 'rspduo':
-            self.sdr_src.set_if_gain(self.rf_gain)
+            self.sdr_src.set_rf_gain(self.rf_gain)
         else:
             self.sdr_src.set_gain(self.rf_gain)
 
@@ -777,8 +776,6 @@ def main(top_block_cls=kraken_pbr_flowgraph, options=None):
     )
 
     tb.start()
-    tb.flowgraph_started.set()
-
     tb.show()
 
     # Start periodic phase calibration in background thread (KrakenSDR only)

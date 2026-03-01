@@ -88,7 +88,7 @@ class CafBlock(gr.basic_block):
         surv = input_items[1]
         out = output_items[0]
 
-        n_in = len(ref)
+        n_in = min(len(ref), len(surv))
         n_out_avail = len(out)
 
         n_chunks = min(n_out_avail, n_in // self.n_samples)
