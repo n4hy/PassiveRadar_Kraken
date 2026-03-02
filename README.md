@@ -35,85 +35,43 @@ GNU Radio Out-of-Tree (OOT) module for passive bistatic radar using the KrakenSD
 
 ## Test Results
 
-**Platform**: Raspberry Pi 5 (aarch64), Python 3.13.5, GNU Radio 3.10.12
+**Platform**: x86_64 (NVIDIA RTX 5090), Python 3.12.3, GNU Radio 3.10.9
 
-**Date**: 2026-02-10 (updated with Block B3)
-
-**Note:** Block B3 has a separate test suite in `test_block_b3.py` (5 tests, all passing).
+**Date**: 2026-03-02
 
 ```
 ========================= test session starts =========================
-platform linux -- Python 3.13.5, pytest-8.3.5
-collected 205 items
+platform linux -- Python 3.12.3, pytest-9.0.2
+collected 251 items
 
-tests/benchmarks/test_bench_kernels.py
-  TestKernelBenchmarks::test_bench_caf_4096                        PASSED
-  TestKernelBenchmarks::test_bench_cfar_2d                         PASSED
-  TestKernelBenchmarks::test_bench_eca_4096                        PASSED
-  TestKernelBenchmarks::test_bench_numpy_fft                       PASSED
-  TestKernelBenchmarks::test_bench_numpy_xcorr                     PASSED
-  TestMemoryBenchmarks::test_allocation_overhead                   PASSED
+tests/benchmarks/test_bench_kernels.py      (6 tests)              PASSED
+tests/gpu/test_gpu_caf.py                   (6 tests)              PASSED
+tests/gpu/test_gpu_doppler.py               (8 tests)              PASSED
+tests/gpu/test_gpu_eca.py                   (3 tests)              PASSED
+tests/gpu/test_gpu_runtime.py              (15 tests)              PASSED
+tests/integration/test_full_pipeline.py     (5 tests)              PASSED
+tests/test_aoa_cpp.py                       (2 tests)              PASSED
+tests/test_backend_cpp.py                   (1 test)               PASSED
+tests/test_caf_cpp.py                       (1 test)               PASSED
+tests/test_conditioning_cpp.py              (1 test)               PASSED
+tests/test_doppler_cpp.py                   (1 test)               PASSED
+tests/test_eca_b_cpp.py                     (1 test)               PASSED
+tests/test_end_to_end.py                    (1 test)               PASSED
+tests/test_gr_cpp_blocks.py                (66 tests)              PASSED
+tests/test_krakensdr_source.py              (2 tests)              PASSED
+tests/test_rspduo_source.py                (14 tests)              PASSED
+tests/test_time_alignment_cpp.py            (1 test)               PASSED
+tests/unit/test_aoa_kernels.py              (8 tests)              PASSED
+tests/unit/test_caf_kernels.py              (8 tests)              PASSED
+tests/unit/test_cfar_kernels.py             (8 tests)              PASSED
+tests/unit/test_clustering.py              (11 tests)              PASSED
+tests/unit/test_display_modules.py         (17 tests)              PASSED
+tests/unit/test_doppler_kernels.py         (10 tests)              PASSED
+tests/unit/test_eca_kernels.py              (7 tests)              PASSED
+tests/unit/test_fixtures.py                (28 tests)              PASSED
+tests/unit/test_tracker.py                 (10 tests)              PASSED
 
-tests/integration/test_full_pipeline.py
-  TestPipelineIntegration::test_eca_improves_detection             PASSED
-  TestPipelineIntegration::test_multi_target_scenario              PASSED
-  TestPipelineIntegration::test_single_target_detection            PASSED
-  TestProcessingChainValidation::test_power_conservation           PASSED
-  TestProcessingChainValidation::test_signal_dimensions            PASSED
-
-tests/test_aoa_cpp.py
-  TestAoACpp::test_aoa_estimation                                  PASSED
-  TestAoAMusicCpp::test_aoa_music_estimation                       PASSED
-
-tests/test_backend_cpp.py
-  TestBackendCpp::test_cfar_detects_target                         PASSED
-
-tests/test_caf_cpp.py
-  TestCafCpp::test_caf_process                                     PASSED
-
-tests/test_conditioning_cpp.py
-  TestConditioningCpp::test_agc_normalizes_level                   PASSED
-
-tests/test_doppler_cpp.py
-  TestDopplerCpp::test_doppler_processing                          PASSED
-
-tests/test_eca_b_cpp.py
-  TestEcaBCpp::test_eca_b_reduces_clutter_power                    PASSED
-
-tests/test_end_to_end.py
-  TestEndToEndOffline::test_manual_pipeline                        PASSED
-
-tests/test_gr_cpp_blocks.py
-  TestEcaCanceller      (4 tests)                                  PASSED
-  TestDopplerProcessor  (5 tests)                                  PASSED
-  TestCfarDetector      (8 tests)                                  PASSED
-  TestCoherenceMonitor  (7 tests)                                  PASSED
-  TestDetectionCluster  (8 tests)                                  PASSED
-  TestAoaEstimator      (8 tests)                                  PASSED
-  TestAoaAlgorithmEnum  (2 tests)                                  PASSED
-  TestAoaEstimatorMusic (6 tests)                                  PASSED
-  TestTracker          (12 tests)                                  PASSED
-  TestTrackStatusEnum   (3 tests)                                  PASSED
-  TestTrackStruct       (3 tests)                                  PASSED
-
-tests/test_krakensdr_source.py
-  TestKrakenSDRSource::test_initialization                         PASSED
-  TestKrakenSDRSource::test_setters                                PASSED
-
-tests/test_time_alignment_cpp.py
-  TestTimeAlignmentCpp::test_detects_known_delay                   PASSED
-
-tests/unit/test_aoa_kernels.py        (8 tests)                   PASSED
-tests/unit/test_caf_kernels.py        (8 tests)                   PASSED
-tests/unit/test_cfar_kernels.py       (8 tests)                   PASSED
-tests/unit/test_clustering.py        (11 tests)                   PASSED
-tests/unit/test_display_modules.py   (12 passed, 5 skipped)
-tests/unit/test_doppler_kernels.py   (10 tests)                   PASSED
-tests/unit/test_eca_kernels.py        (7 tests)                   PASSED
-tests/unit/test_fixtures.py          (28 tests)                   PASSED
-tests/unit/test_tracker.py           (10 tests)                   PASSED
-
-=============== 200 passed, 5 skipped in 17.90s ======================
+======================= 251 passed in 28.90s ==========================
 ```
 
 ### Summary
@@ -122,16 +80,14 @@ tests/unit/test_tracker.py           (10 tests)                   PASSED
 |----------|------:|--------|
 | C++ kernel libraries | 8 | 8 passed |
 | GNU Radio C++ blocks (pybind11) | 66 | 66 passed |
-| GNU Radio Python blocks | 2 | 2 passed |
-| Unit tests (algorithms) | 74 | 74 passed |
+| GNU Radio Python blocks | 16 | 16 passed |
+| GPU kernel tests | 32 | 32 passed |
+| Unit tests (algorithms) | 79 | 79 passed |
 | Integration / end-to-end | 6 | 6 passed |
 | Benchmarks | 6 | 6 passed |
 | Test fixtures | 28 | 28 passed |
-| Display module math | 10 | 10 passed |
-| Display module imports | 5 | 5 skipped (headless) |
-| **Total** | **205** | **200 passed, 5 skipped** |
-
-The 5 skipped tests are display module import checks that require a GUI environment (DISPLAY or WAYLAND_DISPLAY). All algorithmic tests for those modules still pass.
+| Display modules | 17 | 17 passed |
+| **Total** | **251** | **251 passed** |
 
 ---
 
@@ -143,6 +99,7 @@ PassiveRadar_Kraken now includes **optional GPU acceleration** for compute-inten
 
 | Kernel | CPU Baseline | GPU Accelerated | Speedup | Status |
 |--------|--------------|-----------------|---------|--------|
+| **ECA-B Clutter Cancellation** | ~5 ms | **<1 ms** | **10x+** | ✅ Validated |
 | **Doppler Processing** | ~1.5 ms | **1.27 ms** | 1.2x* | ✅ Validated |
 | **CFAR Detection** | 592 ms | **1.94 ms** | **305x** | ✅ Validated |
 | **CAF Processing** | 46.7 ms | **2.03 ms** | **23x** | ✅ Validated |
@@ -363,7 +320,8 @@ PassiveRadar_Kraken/
 |       |-- gpu_common.h/.cu        Common GPU utilities
 |       |-- gpu_runtime.h/.cu       Device detection, backend selection
 |       |-- gpu_memory.h/.cu        Memory pool, pinned allocations
-|       |-- caf_gpu.h/.cu           CAF GPU kernel (batched cuFFT)
+|       |-- eca_gpu.h/.cu           ECA-B GPU kernel (validated ✅)
+|       |-- caf_gpu.h/.cu           CAF GPU kernel (batched cuFFT, validated ✅)
 |       |-- doppler_gpu.h/.cu       Doppler GPU kernel (validated ✅)
 |       +-- cfar_gpu.h/.cu          CFAR GPU kernel (validated ✅)
 |
@@ -375,16 +333,18 @@ PassiveRadar_Kraken/
 |   |-- metrics_dashboard.py
 |   +-- gpu_backend.py              GPU runtime API (optional, graceful fallback)
 |
-|-- tests/                           Test suite (205 tests)
+|-- tests/                           Test suite (251 tests)
 |   |-- conftest.py                  Shared pytest fixtures
 |   |-- mock_gnuradio.py            GNU Radio mock for headless testing
 |   |-- test_gr_cpp_blocks.py       66 pybind11 block tests
 |   |-- test_end_to_end.py          Full pipeline test
-|   |-- test_krakensdr_source.py    Source block tests
+|   |-- test_krakensdr_source.py    KrakenSDR source block tests
+|   |-- test_rspduo_source.py       RSPduo dual-tuner source tests
 |   |-- test_*_cpp.py               Per-kernel C++ tests (7 files)
 |   |-- unit/                       Algorithm unit tests (9 files)
 |   |-- integration/                Pipeline integration tests
 |   |-- benchmarks/                 Performance benchmarks
+|   |-- gpu/                        GPU kernel tests (CAF, Doppler, ECA, runtime)
 |   +-- fixtures/                   Synthetic targets, clutter, noise
 |
 |-- .github/workflows/ci.yml        GitHub Actions CI
@@ -496,11 +456,12 @@ All functions are gated by `HAVE_OPTMATHKERNELS` compile definitions with scalar
 
 ### GPU Libraries (Optional, CUDA Required)
 
-Four CUDA libraries provide GPU-accelerated implementations of compute-intensive kernels. Built only when CUDA is available and enabled.
+Five CUDA libraries provide GPU-accelerated implementations of compute-intensive kernels. Built only when CUDA is available and enabled.
 
 | Library | Description | Status | Dependencies |
 |---------|-------------|--------|--------------|
 | `libkraken_gpu_runtime.so` | Device detection, memory management, backend selection | ✅ Production | CUDA runtime |
+| `libkraken_eca_gpu.so` | GPU ECA-B clutter cancellation (cuBLAS/custom kernels) | ✅ Validated | gpu_runtime, CUDA runtime |
 | `libkraken_doppler_gpu.so` | GPU Doppler processing (batched 2D FFT) | ✅ Validated | gpu_runtime, cuFFT |
 | `libkraken_cfar_gpu.so` | GPU CFAR detection (parallel 2D) | ✅ Validated | gpu_runtime, CUDA runtime |
 | `libkraken_caf_gpu.so` | GPU CAF processing (batched cuFFT) | ✅ Validated | gpu_runtime, cuFFT |
@@ -774,8 +735,9 @@ tests/
   conftest.py                        Shared fixtures (sample_rate, complex_noise, etc.)
   mock_gnuradio.py                   GNU Radio mock for headless testing
 
-  test_gr_cpp_blocks.py              66 tests - all 7 C++ pybind11 blocks
+  test_gr_cpp_blocks.py              66 tests - all C++ pybind11 blocks
   test_krakensdr_source.py            2 tests - KrakenSDR source init/setters
+  test_rspduo_source.py              14 tests - RSPduo dual-tuner source
   test_end_to_end.py                  1 test  - full offline pipeline
   test_eca_b_cpp.py                   1 test  - ECA-B kernel clutter reduction
   test_caf_cpp.py                     1 test  - CAF kernel processing
@@ -784,6 +746,12 @@ tests/
   test_conditioning_cpp.py            1 test  - AGC kernel normalization
   test_time_alignment_cpp.py          1 test  - time alignment kernel
   test_aoa_cpp.py                     2 tests - AoA kernel (Bartlett + MUSIC)
+
+  gpu/
+    test_gpu_caf.py                   6 tests - GPU CAF correctness + performance
+    test_gpu_doppler.py               8 tests - GPU Doppler correctness + performance
+    test_gpu_eca.py                   3 tests - GPU ECA-B clutter cancellation
+    test_gpu_runtime.py              15 tests - GPU detection, backend selection
 
   unit/
     test_eca_kernels.py               7 tests - ECA algorithm variants
@@ -1172,4 +1140,4 @@ MIT License. See [LICENSE](LICENSE).
 
 **Acknowledgments**: Claude (Anthropic) wrote every test, all documentation, the complete GPU acceleration implementation, and the Block B3 reference reconstruction system. It debugged my crappy python. The comprehensive test suite enabled diagnosis and validation of both hand-written code and AI-generated implementations.
 
-Last updated: 2026-02-10
+Last updated: 2026-03-02
