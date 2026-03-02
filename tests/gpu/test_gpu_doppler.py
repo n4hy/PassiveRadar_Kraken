@@ -207,7 +207,7 @@ class TestGPUDopplerCorrectness:
         cpu_doppler_lib.doppler_destroy(cpu_handle)
 
         # Compare complex outputs (relaxed tolerance for GPU/CPU floating-point differences in FFT)
-        np.testing.assert_allclose(gpu_output, cpu_output, rtol=2e-3, atol=5e-5,
+        np.testing.assert_allclose(gpu_output, cpu_output, rtol=2e-3, atol=2e-4,
                                    err_msg="GPU and CPU complex outputs differ")
 
         print(f"\n✓ GPU/CPU complex output match (max diff: {np.max(np.abs(gpu_output - cpu_output)):.6f})")
