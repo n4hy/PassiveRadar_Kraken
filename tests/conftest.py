@@ -15,6 +15,42 @@ sys.path.insert(0, str(PROJECT_ROOT / "kraken_passive_radar"))
 sys.path.insert(0, str(PROJECT_ROOT / "gr-kraken_passive_radar" / "python"))
 
 
+def find_kernel_lib(lib_name: str, repo_root: Path = None) -> Path:
+    """
+    Find a kernel library, checking build directory first, then legacy source directory.
+
+    Args:
+        lib_name: Library name without 'libkraken_' prefix and '.so' suffix.
+                  e.g., 'caf_processing', 'eca_b_clutter_canceller'
+        repo_root: Repository root path. Defaults to PROJECT_ROOT.
+
+    Returns:
+        Path to the library file, or expected path if not found.
+    """
+    if repo_root is None:
+        repo_root = PROJECT_ROOT
+
+    full_name = f"libkraken_{lib_name}.so"
+
+    # Check standard build directory first (build/lib/)
+    build_lib = repo_root / "build" / "lib" / full_name
+    if build_lib.exists():
+        return build_lib
+
+    # Check src/build/lib/ (in-source build of src/ only)
+    src_build_lib = repo_root / "src" / "build" / "lib" / full_name
+    if src_build_lib.exists():
+        return src_build_lib
+
+    # Legacy: check source directory (old in-source builds)
+    src_lib = repo_root / "src" / full_name
+    if src_lib.exists():
+        return src_lib
+
+    # Return expected path for better error messages
+    return build_lib
+
+
 @pytest.fixture
 def sample_rate():
     """Standard sample rate for tests."""
@@ -84,14 +120,13 @@ def target_with_delay_doppler(fm_reference_signal, sample_rate):
 @pytest.fixture
 def lib_paths():
     """Return dictionary of library paths."""
-    src_dir = PROJECT_ROOT / "src"
     return {
-        'caf': src_dir / "libkraken_caf_processing.so",
-        'eca': src_dir / "libkraken_eca_b_clutter_canceller.so",
-        'doppler': src_dir / "libkraken_doppler_processing.so",
-        'backend': src_dir / "libkraken_backend.so",
-        'conditioning': src_dir / "libkraken_conditioning.so",
-        'time_alignment': src_dir / "libkraken_time_alignment.so",
+        'caf': find_kernel_lib("caf_processing"),
+        'eca': find_kernel_lib("eca_b_clutter_canceller"),
+        'doppler': find_kernel_lib("doppler_processing"),
+        'backend': find_kernel_lib("backend"),
+        'conditioning': find_kernel_lib("conditioning"),
+        'time_alignment': find_kernel_lib("time_alignment"),
     }
 
 

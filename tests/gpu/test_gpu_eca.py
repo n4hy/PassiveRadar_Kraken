@@ -9,7 +9,11 @@ Tests GPU-accelerated ECA-B clutter canceller against CPU version.
 import pytest
 import numpy as np
 import ctypes
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from conftest import find_kernel_lib
 
 pytestmark = pytest.mark.gpu
 
@@ -17,7 +21,7 @@ pytestmark = pytest.mark.gpu
 @pytest.fixture
 def gpu_eca_lib():
     """Load GPU ECA library."""
-    lib_path = Path("/home/n4hy/PassiveRadar_Kraken/src/libkraken_eca_gpu.so")
+    lib_path = find_kernel_lib("eca_gpu")
     if not lib_path.exists():
         pytest.skip("GPU ECA library not built")
     return ctypes.cdll.LoadLibrary(str(lib_path))
@@ -26,7 +30,7 @@ def gpu_eca_lib():
 @pytest.fixture
 def cpu_eca_lib():
     """Load CPU ECA library for comparison."""
-    lib_path = Path("/home/n4hy/PassiveRadar_Kraken/src/libkraken_eca_b_clutter_canceller.so")
+    lib_path = find_kernel_lib("eca_b_clutter_canceller")
     if not lib_path.exists():
         pytest.skip("CPU ECA library not found")
     return ctypes.cdll.LoadLibrary(str(lib_path))

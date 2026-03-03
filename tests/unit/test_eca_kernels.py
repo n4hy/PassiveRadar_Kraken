@@ -18,8 +18,8 @@ class TestECAClutterCancellation(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Load ECA library."""
-        repo_root = Path(__file__).resolve().parents[2]
-        lib_path = repo_root / "src" / "libkraken_eca_b_clutter_canceller.so"
+        from tests.conftest import find_kernel_lib
+        lib_path = find_kernel_lib("eca_b_clutter_canceller")
 
         if not lib_path.exists():
             raise unittest.SkipTest(f"ECA library not found at {lib_path}")

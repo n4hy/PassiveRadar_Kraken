@@ -1,46 +1,24 @@
+import sys
 import unittest
 import numpy as np
 import ctypes
-import os
-import sysconfig
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[0]))
+from conftest import find_kernel_lib
+
 
 class TestCafCpp(unittest.TestCase):
     def test_caf_process(self):
-        print("DEBUG: Loading Lib...", flush=True)
-        # Robust path finding:
-        # __file__ is tests/test_caf_cpp.py
-        # parents[1] is repo root
-        repo_root = Path(__file__).resolve().parents[1]
+        lib_path = find_kernel_lib("caf_processing")
 
-        # System install path
-        site_packages = Path(sysconfig.get_paths()["purelib"])
-
-        # Try finding the lib in multiple places
-        candidates = [
-            repo_root / "src" / "libkraken_caf_processing.so",
-            repo_root / "gr-kraken_passive_radar" / "python" / "kraken_passive_radar" / "libkraken_caf_processing.so",
-            site_packages / "kraken_passive_radar" / "libkraken_caf_processing.so",
-            Path("libkraken_caf_processing.so") # Fallback to system path
-        ]
-
-        lib_path = None
-        for p in candidates:
-            if p.exists():
-                lib_path = p
-                break
-
-        if not lib_path:
-             print(f"DEBUG: Searched for libraries in: {[str(c) for c in candidates]}")
-             print("DEBUG: Hint: Ensure 'libfftw3-dev' is installed and run './build_oot.sh'")
-             # If we can't find it, try loading by name (maybe installed)
-             lib_path = "libkraken_caf_processing.so"
+        if not lib_path.exists():
+            self.skipTest(f"CAF library not found at {lib_path}")
 
         try:
             lib = ctypes.cdll.LoadLibrary(str(lib_path))
         except OSError as e:
-            self.skipTest(f"Could not load C++ library: {e}. (Searched paths printed above)")
-            return
+            self.skipTest(f"Could not load C++ library: {e}")
 
         lib.caf_create.restype = ctypes.c_void_p
         lib.caf_create.argtypes = [ctypes.c_int]

@@ -1,19 +1,23 @@
 # Build the ECA-B clutter canceller shared library for use via ctypes
 # GPU acceleration support requires CMake 3.18+
 cmake_minimum_required(VERSION 3.18)
-project(kraken_passive_radar_kernels C CXX)
 
-# C++ Standard
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# Only set project if this is the top-level CMakeLists.txt
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    project(kraken_passive_radar_kernels C CXX)
 
-# Enforce Release build for performance
-if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE Release)
+    # C++ Standard (only if standalone)
+    set(CMAKE_CXX_STANDARD 17)
+    set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+    # Enforce Release build for performance (only if standalone)
+    if(NOT CMAKE_BUILD_TYPE)
+        set(CMAKE_BUILD_TYPE Release)
+    endif()
 endif()
 
-# Output .so files to source directory for backward compatibility with tests
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR})
+# Output .so files to build/lib directory
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 # Define GR_PYTHON_DIR if not set by parent project
 if(NOT DEFINED GR_PYTHON_DIR)

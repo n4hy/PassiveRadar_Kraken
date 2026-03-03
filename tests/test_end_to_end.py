@@ -4,8 +4,10 @@ import sys
 import os
 import ctypes
 from unittest.mock import MagicMock
-import sysconfig
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[0]))
+from conftest import find_kernel_lib
 
 # 1. Mock GNU Radio
 class MockBlock:
@@ -102,21 +104,9 @@ class TestEndToEndOffline(unittest.TestCase):
         surv_sig += noise
         surv_sig = surv_sig.astype(np.complex64)
 
-        # Helper path
-        repo_root = Path(__file__).resolve().parents[1]
-        site_packages = Path(sysconfig.get_paths()["purelib"])
-
-        # Try to find lib for ECA
-        eca_candidates = [
-            repo_root / "src" / "libkraken_eca_b_clutter_canceller.so",
-            repo_root / "gr-kraken_passive_radar" / "python" / "kraken_passive_radar" / "libkraken_eca_b_clutter_canceller.so",
-            site_packages / "kraken_passive_radar" / "libkraken_eca_b_clutter_canceller.so"
-        ]
-        eca_lib = None
-        for p in eca_candidates:
-            if p.exists():
-                eca_lib = str(p)
-                break
+        # Find ECA library using centralized function
+        eca_lib_path = find_kernel_lib("eca_b_clutter_canceller")
+        eca_lib = str(eca_lib_path) if eca_lib_path.exists() else None
 
         # 2. Instantiate Blocks
         cond_ref = ConditioningBlock(rate=0.0)

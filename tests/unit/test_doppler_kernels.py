@@ -16,8 +16,8 @@ class TestDopplerProcessing(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Load Doppler library."""
-        repo_root = Path(__file__).resolve().parents[2]
-        lib_path = repo_root / "src" / "libkraken_doppler_processing.so"
+        from tests.conftest import find_kernel_lib
+        lib_path = find_kernel_lib("doppler_processing")
 
         if not lib_path.exists():
             raise unittest.SkipTest(f"Doppler library not found at {lib_path}")

@@ -3,34 +3,18 @@ import sys
 import unittest
 import numpy as np
 import ctypes
-import subprocess
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[0]))
+from conftest import find_kernel_lib
 
 
 class TestTimeAlignmentCpp(unittest.TestCase):
     def test_detects_known_delay(self):
-        repo_root = Path(__file__).resolve().parents[1]
-        src_dir = repo_root / "src"
-        lib_path = src_dir / "libkraken_time_alignment.so"
+        lib_path = find_kernel_lib("time_alignment")
 
-        # Build the shared library if it does not exist
         if not lib_path.exists():
-            cpp_file = src_dir / "time_alignment.cpp"
-            cmd = [
-                "g++",
-                "-O3",
-                "-march=native",
-                "-ffast-math",
-                "-fPIC",
-                "-shared",
-                str(cpp_file),
-                "-o",
-                str(lib_path),
-                "-lfftw3f",
-                "-lfftw3f_threads",
-                "-lpthread",
-            ]
-            subprocess.check_call(cmd, cwd=str(src_dir))
+            self.skipTest(f"Time alignment library not found at {lib_path}")
 
         lib = ctypes.cdll.LoadLibrary(str(lib_path))
 

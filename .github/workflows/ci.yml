@@ -18,30 +18,29 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             build-essential cmake pkg-config \
-            libfftw3-dev \
+            libfftw3-dev libeigen3-dev \
             python3-dev python3-numpy python3-pytest
 
       - name: Build kernels (out-of-source)
         run: |
-          cd src
           mkdir -p build && cd build
-          cmake .. -DCMAKE_BUILD_TYPE=Release
+          cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_OOT_MODULE=OFF
           make -j$(nproc)
 
       - name: Verify kernel libraries
         run: |
-          ls -la src/libkraken_*.so
+          ls -la build/lib/libkraken_*.so
           # Verify all 10 libraries exist
-          test -f src/libkraken_eca_b_clutter_canceller.so
-          test -f src/libkraken_conditioning.so
-          test -f src/libkraken_fftw_init.so
-          test -f src/libkraken_time_alignment.so
-          test -f src/libkraken_caf_processing.so
-          test -f src/libkraken_doppler_processing.so
-          test -f src/libkraken_backend.so
-          test -f src/libkraken_aoa_processing.so
-          test -f src/libkraken_resampler.so
-          test -f src/libkraken_nlms_clutter_canceller.so
+          test -f build/lib/libkraken_eca_b_clutter_canceller.so
+          test -f build/lib/libkraken_conditioning.so
+          test -f build/lib/libkraken_fftw_init.so
+          test -f build/lib/libkraken_time_alignment.so
+          test -f build/lib/libkraken_caf_processing.so
+          test -f build/lib/libkraken_doppler_processing.so
+          test -f build/lib/libkraken_backend.so
+          test -f build/lib/libkraken_aoa_processing.so
+          test -f build/lib/libkraken_resampler.so
+          test -f build/lib/libkraken_nlms_clutter_canceller.so
 
       - name: Run kernel unit tests
         run: |
@@ -69,14 +68,13 @@ jobs:
 
       - name: Build OOT module
         run: |
-          cd gr-kraken_passive_radar
           mkdir -p build && cd build
-          cmake -DCMAKE_BUILD_TYPE=Release ..
+          cmake .. -DCMAKE_BUILD_TYPE=Release
           make -j$(nproc)
 
       - name: Install OOT module
         run: |
-          cd gr-kraken_passive_radar/build
+          cd build
           sudo make install
           sudo ldconfig
 

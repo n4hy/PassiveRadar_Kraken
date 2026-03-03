@@ -144,9 +144,10 @@ PassiveRadar_Kraken now includes **optional GPU acceleration** for compute-inten
 python3 -c "from kraken_passive_radar import is_gpu_available; print('GPU:', is_gpu_available())"
 
 # Build with GPU support (auto-detects CUDA)
-cd src && mkdir build && cd build
-cmake .. -DENABLE_GPU=ON
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release -DENABLE_GPU=ON
 make -j$(nproc)
+sudo make install && sudo ldconfig
 
 # Force GPU backend
 export KRAKEN_GPU_BACKEND=gpu
@@ -302,9 +303,8 @@ PassiveRadar_Kraken/
 |   +-- grc/                         GRC block YAML definitions (13 blocks)
 |       +-- kraken_passive_radar_dvbt_reconstructor.block.yml  Block B3 GRC def
 |
-|-- src/                             C++ kernel libraries (10 CPU + 4 GPU .so)
-|   |-- build/                       Out-of-source CMake build directory
-|   |-- CMakeLists.txt               Build configuration (CPU + optional GPU)
+|-- src/                             C++ kernel libraries (10 CPU + 5 GPU .so)
+|   |-- CMakeLists.txt               Kernel build configuration (CPU + optional GPU)
 |   |-- eca_b_clutter_canceller.cpp
 |   |-- conditioning.cpp
 |   |-- caf_processing.cpp
@@ -347,10 +347,9 @@ PassiveRadar_Kraken/
 |   |-- gpu/                        GPU kernel tests (CAF, Doppler, ECA, runtime)
 |   +-- fixtures/                   Synthetic targets, clutter, noise
 |
+|-- CMakeLists.txt                   Top-level CMake (builds kernels + OOT module)
 |-- .github/workflows/ci.yml        GitHub Actions CI
 |-- run_passive_radar.py             Main application script (updated with --b3-signal)
-|-- build_oot.sh                     OOT module build script
-|-- rebuild_libs.sh                  Kernel library build script
 |-- kraken_passive_radar_103_7MHz.grc  Example GRC flowgraph
 |-- passive_radar_block_b3.grc       Complete flowgraph with Block B3
 |-- test_block_b3.py                 Block B3 test suite (5 tests, all passing)
@@ -550,34 +549,53 @@ nvidia-smi
 
 ## Building
 
-### 1. Build C++ kernel libraries
+The project uses standard CMake with an out-of-source build directory. A top-level `CMakeLists.txt` orchestrates building both the C++ kernel libraries and the GNU Radio OOT module.
 
-#### CPU-Only Build (Default)
+### Quick Start (Full Build)
 
 ```bash
-cd src
-mkdir -p build && cd build
+# From repository root
+mkdir build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release
 make -j$(nproc)
-cd ../..
+sudo make install && sudo ldconfig
 ```
 
-Libraries are output to `src/` (build artifacts stay in `src/build/`). Portable by default; add `-DNATIVE_OPTIMIZATION=ON` for `-march=native` when building and running on the same machine.
+This builds:
+- All C++ kernel libraries (`libkraken_*.so`) in `build/lib/`
+- GNU Radio OOT module with pybind11 bindings (if GNU Radio is installed)
+- GPU-accelerated kernels (if CUDA is available)
 
-#### GPU-Enabled Build (Optional)
+### Build Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-DBUILD_KERNELS=ON` | ON | Build C++ signal processing kernels |
+| `-DBUILD_OOT_MODULE=ON` | ON | Build GNU Radio OOT module (requires GNU Radio 3.10+) |
+| `-DENABLE_GPU=ON` | ON | Build GPU-accelerated kernels (requires CUDA 11.8+) |
+| `-DNATIVE_OPTIMIZATION=ON` | OFF | Use `-march=native` (non-portable, faster on same machine) |
+
+### Kernels Only (No GNU Radio)
 
 ```bash
-cd src
-mkdir -p build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release -DENABLE_GPU=ON
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_OOT_MODULE=OFF
 make -j$(nproc)
-cd ../..
 ```
 
-**GPU Build Options:**
-- `-DENABLE_GPU=ON`: Enable GPU support (auto-detects CUDA, falls back to CPU-only if unavailable)
-- `-DENABLE_GPU=OFF`: Force CPU-only build even if CUDA is present
-- Default: `ON` (auto-detect)
+Libraries are output to `build/lib/`. This is useful for CI testing or systems without GNU Radio installed.
+
+### GPU-Enabled Build
+
+GPU support is enabled by default when CUDA is available. To explicitly control it:
+
+```bash
+# Force GPU support (fail if CUDA unavailable)
+cmake .. -DENABLE_GPU=ON
+
+# Disable GPU even if CUDA is present
+cmake .. -DENABLE_GPU=OFF
+```
 
 **GPU Architectures:** The build automatically targets multiple GPU generations:
 - `sm_75`: Turing (RTX 2000 series)
@@ -589,7 +607,7 @@ cd ../..
 
 ```bash
 # Check that GPU libraries were built
-ls -lh src/libkraken_*gpu*.so
+ls -lh build/lib/libkraken_*gpu*.so
 
 # Expected output:
 # libkraken_gpu_runtime.so    (39 KB)
@@ -606,17 +624,13 @@ else:
 "
 ```
 
-### 2. Build and install the OOT module
+### Verify Installation
 
 ```bash
-./build_oot.sh
-```
+# Check kernel libraries
+ls -la build/lib/libkraken_*.so
 
-This builds all 7 C++ blocks with pybind11 bindings, installs them into the gnuradio Python namespace, and copies Python blocks and GRC definitions.
-
-### 3. Verify installation
-
-```bash
+# Check GNU Radio module (after install)
 python3 -c "
 from gnuradio import kraken_passive_radar as kpr
 print('eca_canceller:', kpr.eca_canceller)
@@ -1002,7 +1016,10 @@ track_status_t.COASTING    # 2 - predicting, no measurement
 The OOT module needs to be built and installed:
 
 ```bash
-./build_oot.sh
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
+sudo make install && sudo ldconfig
 ```
 
 ### "Could not load libkraken_*.so"
@@ -1010,8 +1027,12 @@ The OOT module needs to be built and installed:
 Build the kernel libraries:
 
 ```bash
-cd src && mkdir -p build && cd build && cmake .. && make -j$(nproc)
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
 ```
+
+Libraries are output to `build/lib/`. Tests automatically search for libraries in both `build/lib/` and legacy `src/` locations.
 
 ### Tests fail with MagicMock errors
 
@@ -1039,7 +1060,7 @@ nvcc --version
 nvidia-smi
 
 # Check GPU libraries were built
-ls -lh src/libkraken_*gpu*.so
+ls -lh build/lib/libkraken_*gpu*.so
 
 # Test GPU detection
 python3 -c "from kraken_passive_radar import is_gpu_available; print(is_gpu_available())"
@@ -1047,7 +1068,7 @@ python3 -c "from kraken_passive_radar import is_gpu_available; print(is_gpu_avai
 
 **Common Issues:**
 - **CUDA not in PATH**: Add `/usr/local/cuda/bin` to PATH
-- **Libraries not found**: Ensure `src/libkraken_gpu_runtime.so` exists
+- **Libraries not found**: Ensure `build/lib/libkraken_gpu_runtime.so` exists
 - **Driver mismatch**: Update NVIDIA drivers to match CUDA version
 - **Compute capability mismatch**: GPU must support sm_75+ (Turing or newer)
 
@@ -1057,15 +1078,15 @@ If you see "Could not load libkraken_*gpu*.so":
 
 ```bash
 # Rebuild with GPU support
-cd src/build
+cd build
 cmake .. -DENABLE_GPU=ON
 make -j$(nproc)
 
 # Verify libraries exist
-ls -lh ../libkraken_*gpu*.so
+ls -lh lib/libkraken_*gpu*.so
 
 # Check for missing dependencies
-ldd ../libkraken_gpu_runtime.so
+ldd lib/libkraken_gpu_runtime.so
 ```
 
 ### Performance not improved with GPU
@@ -1090,8 +1111,8 @@ python3 tests/gpu/test_gpu_cfar.py
 To build without GPU support even if CUDA is present:
 
 ```bash
-cd src/build
-cmake .. -DENABLE_GPU=OFF
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release -DENABLE_GPU=OFF
 make -j$(nproc)
 ```
 

@@ -13,7 +13,11 @@ import pytest
 import numpy as np
 import ctypes
 import time
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from conftest import find_kernel_lib
 
 # Skip all GPU tests if CUDA not available
 pytestmark = pytest.mark.gpu
@@ -22,7 +26,7 @@ pytestmark = pytest.mark.gpu
 @pytest.fixture
 def gpu_caf_lib():
     """Load GPU CAF library."""
-    lib_path = Path("/home/n4hy/PassiveRadar_Kraken/src/libkraken_caf_gpu.so")
+    lib_path = find_kernel_lib("caf_gpu")
     if not lib_path.exists():
         pytest.skip("GPU CAF library not built")
     return ctypes.cdll.LoadLibrary(str(lib_path))
@@ -31,7 +35,7 @@ def gpu_caf_lib():
 @pytest.fixture
 def cpu_caf_lib():
     """Load CPU CAF library for comparison."""
-    lib_path = Path("/home/n4hy/PassiveRadar_Kraken/src/libkraken_caf_processing.so")
+    lib_path = find_kernel_lib("caf_processing")
     if not lib_path.exists():
         pytest.skip("CPU CAF library not found")
     return ctypes.cdll.LoadLibrary(str(lib_path))

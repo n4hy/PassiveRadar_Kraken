@@ -21,13 +21,13 @@ class TestPipelineIntegration(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Load required libraries."""
-        repo_root = Path(__file__).resolve().parents[2]
+        from tests.conftest import find_kernel_lib
 
         cls.libs = {}
         lib_names = ['caf_processing', 'eca_b_clutter_canceller', 'doppler_processing']
 
         for name in lib_names:
-            lib_path = repo_root / "src" / f"libkraken_{name}.so"
+            lib_path = find_kernel_lib(name)
             if lib_path.exists():
                 try:
                     cls.libs[name] = ctypes.cdll.LoadLibrary(str(lib_path))

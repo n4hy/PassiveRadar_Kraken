@@ -1,42 +1,25 @@
-
 import sys
-import os
 import unittest
 import numpy as np
 import ctypes
-import sysconfig
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[0]))
+from conftest import find_kernel_lib
+
 # Test the Doppler Processor logic specifically
-# We will compile/load the library manually or reuse the logic in top block
-# To avoid complex deps, we load the .so directly
+# We load the .so directly via ctypes
+
 
 class TestDopplerCpp(unittest.TestCase):
     def setUp(self):
-        # Locate library
-        repo_root = Path(__file__).resolve().parents[1]
-        site_packages = Path(sysconfig.get_paths()["purelib"])
+        lib_path = find_kernel_lib("doppler_processing")
 
-        candidates = [
-            repo_root / "src" / "libkraken_doppler_processing.so",
-            repo_root / "gr-kraken_passive_radar" / "python" / "kraken_passive_radar" / "libkraken_doppler_processing.so",
-            site_packages / "kraken_passive_radar" / "libkraken_doppler_processing.so",
-            Path("libkraken_doppler_processing.so")
-        ]
-
-        self.lib_path = None
-        for p in candidates:
-            if p.exists():
-                self.lib_path = p
-                break
-
-        if not self.lib_path:
-             print(f"DEBUG: Searched for libraries in: {[str(c) for c in candidates]}")
-             print("DEBUG: Hint: Ensure 'libfftw3-dev' is installed and run './build_oot.sh'")
-             self.skipTest("C++ Library not found (compilation likely failed due to missing FFTW)")
+        if not lib_path.exists():
+            self.skipTest(f"Doppler library not found at {lib_path}")
 
         try:
-            self.lib = ctypes.CDLL(str(self.lib_path))
+            self.lib = ctypes.CDLL(str(lib_path))
         except OSError:
             self.skipTest("Could not load C++ Library (missing dependencies?)")
 

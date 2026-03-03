@@ -1,36 +1,28 @@
-
 import sys
 import os
 import unittest
 import numpy as np
 import ctypes
-import sysconfig
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[0]))
+from conftest import find_kernel_lib
+
 
 class TestAoACpp(unittest.TestCase):
     def setUp(self):
-        # Locate libraries (names match CMake targets: kraken_doppler_processing, kraken_aoa_processing)
-        repo_root = Path(__file__).resolve().parents[1]
-        site_packages = Path(sysconfig.get_paths()["purelib"])
+        # Locate libraries using centralized find_kernel_lib
+        lib_doppler_path = find_kernel_lib("doppler_processing")
+        lib_aoa_path = find_kernel_lib("aoa_processing")
 
-        lib_doppler_path = None
-        lib_aoa_path = None
-        for base in [repo_root / "src", site_packages / "kraken_passive_radar"]:
-            dp = base / "libkraken_doppler_processing.so"
-            ap = base / "libkraken_aoa_processing.so"
-            if dp.exists() and ap.exists():
-                lib_doppler_path = str(dp)
-                lib_aoa_path = str(ap)
-                break
-
-        if not lib_doppler_path or not lib_aoa_path:
-             self.skipTest("C++ Libraries not found (compilation likely failed due to missing FFTW)")
+        if not lib_doppler_path.exists() or not lib_aoa_path.exists():
+            self.skipTest("C++ Libraries not found (compilation likely failed due to missing FFTW)")
 
         try:
-            self.doppler_lib = ctypes.CDLL(lib_doppler_path)
-            self.aoa_lib = ctypes.CDLL(lib_aoa_path)
+            self.doppler_lib = ctypes.CDLL(str(lib_doppler_path))
+            self.aoa_lib = ctypes.CDLL(str(lib_aoa_path))
         except OSError:
-             self.skipTest("Could not load C++ Libraries")
+            self.skipTest("Could not load C++ Libraries")
 
         # Doppler signatures
         self.doppler_lib.doppler_create.argtypes = [ctypes.c_int, ctypes.c_int]
@@ -135,21 +127,13 @@ class TestAoACpp(unittest.TestCase):
 
 class TestAoAMusicCpp(unittest.TestCase):
     def setUp(self):
-        repo_root = Path(__file__).resolve().parents[1]
-        site_packages = Path(sysconfig.get_paths()["purelib"])
+        lib_aoa_path = find_kernel_lib("aoa_processing")
 
-        lib_aoa_path = None
-        for base in [repo_root / "src", site_packages / "kraken_passive_radar"]:
-            ap = base / "libkraken_aoa_processing.so"
-            if ap.exists():
-                lib_aoa_path = str(ap)
-                break
-
-        if not lib_aoa_path:
+        if not lib_aoa_path.exists():
             self.skipTest("C++ AoA library not found")
 
         try:
-            self.aoa_lib = ctypes.CDLL(lib_aoa_path)
+            self.aoa_lib = ctypes.CDLL(str(lib_aoa_path))
         except OSError:
             self.skipTest("Could not load C++ AoA library")
 

@@ -3,31 +3,18 @@ import sys
 import unittest
 import numpy as np
 import ctypes
-import subprocess
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[0]))
+from conftest import find_kernel_lib
 
 
 class TestConditioningCpp(unittest.TestCase):
     def test_agc_normalizes_level(self):
-        repo_root = Path(__file__).resolve().parents[1]
-        src_dir = repo_root / "src"
-        lib_path = src_dir / "libkraken_conditioning.so"
+        lib_path = find_kernel_lib("conditioning")
 
-        # Build the shared library if it does not exist
         if not lib_path.exists():
-            cpp_file = src_dir / "conditioning.cpp"
-            cmd = [
-                "g++",
-                "-O3",
-                "-march=native",
-                "-ffast-math",
-                "-fPIC",
-                "-shared",
-                str(cpp_file),
-                "-o",
-                str(lib_path),
-            ]
-            subprocess.check_call(cmd, cwd=str(src_dir))
+            self.skipTest(f"Conditioning library not found at {lib_path}")
 
         lib = ctypes.cdll.LoadLibrary(str(lib_path))
 
