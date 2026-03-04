@@ -12,7 +12,7 @@
 #ifndef INCLUDED_KRAKEN_PASSIVE_RADAR_DOPPLER_PROCESSOR_H
 #define INCLUDED_KRAKEN_PASSIVE_RADAR_DOPPLER_PROCESSOR_H
 
-#include <gnuradio/sync_block.h>
+#include <gnuradio/sync_decimator.h>
 #include <gnuradio/kraken_passive_radar/api.h>
 
 namespace gr {
@@ -22,16 +22,17 @@ namespace kraken_passive_radar {
  * \brief Doppler processor for passive radar
  * \ingroup kraken_passive_radar
  *
- * Accumulates range profiles over multiple CPIs and computes
+ * Accumulates num_doppler_bins range profiles and computes
  * FFT across slow-time to extract Doppler information.
+ * Decimation = num_doppler_bins (256 inputs → 1 output).
  *
  * Processing:
- * 1. Accumulate num_doppler_bins range profiles
+ * 1. Consume num_doppler_bins range profiles per output item
  * 2. Apply window function (Hamming/Hann/Blackman)
  * 3. Compute FFT across slow-time for each range bin
- * 4. Output |FFT|² as range-Doppler map
+ * 4. Output |FFT|² or complex FFT as range-Doppler map
  */
-class KRAKEN_PASSIVE_RADAR_API doppler_processor : virtual public gr::sync_block
+class KRAKEN_PASSIVE_RADAR_API doppler_processor : virtual public gr::sync_decimator
 {
 public:
     typedef std::shared_ptr<doppler_processor> sptr;

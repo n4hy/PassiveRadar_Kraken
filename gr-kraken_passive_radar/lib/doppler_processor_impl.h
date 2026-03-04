@@ -8,6 +8,7 @@
 #define INCLUDED_KRAKEN_PASSIVE_RADAR_DOPPLER_PROCESSOR_IMPL_H
 
 #include <gnuradio/kraken_passive_radar/doppler_processor.h>
+#include <gnuradio/sync_decimator.h>
 #include <gnuradio/thread/thread.h>
 #include <fftw3.h>
 #include <vector>
@@ -22,8 +23,6 @@ private:
     int d_num_doppler_bins;
     int d_window_type;
     bool d_output_power;
-    int d_cpi_count;
-    
     std::vector<gr_complex> d_accumulator;
     std::vector<float> d_window;
     std::vector<gr_complex> d_output_buffer;

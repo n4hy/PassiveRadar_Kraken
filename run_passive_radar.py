@@ -46,12 +46,14 @@ import os
 import argparse
 import json
 import threading
+import signal
+import subprocess
+import atexit
 
 # Import all blocks from installed gnuradio.kraken_passive_radar
 from gnuradio.kraken_passive_radar import (
     # Python blocks
     krakensdr_source,
-    rspduo_source,
     ConditioningBlock,
     CafBlock,
     TimeAlignmentBlock,
@@ -66,6 +68,14 @@ from gnuradio.kraken_passive_radar import (
     dvbt_reconstructor,
 )
 
+# RSPduo source requires gr-sdrplay3 — import lazily so the program
+# doesn't crash on machines without it installed
+try:
+    from gnuradio.kraken_passive_radar import rspduo_source
+    HAS_RSPDUO = True
+except ImportError:
+    HAS_RSPDUO = False
+
 # New Display (optional)
 try:
     # Try installed version first
@@ -79,6 +89,13 @@ except ImportError:
         HAS_DISPLAY = True
     except ImportError:
         HAS_DISPLAY = False
+
+# Range-Doppler Display (optional, for RSPduo mode)
+try:
+    from kraken_passive_radar.range_doppler_display import RangeDopplerDisplay, RDDisplayParams
+    HAS_RD_DISPLAY = True
+except ImportError:
+    HAS_RD_DISPLAY = False
 
 
 class PhaseCorrectorBlock(gr.sync_block):
@@ -128,7 +145,7 @@ class PassiveRadarTopBlock(gr.top_block):
     def __init__(self, freq=100e6, gain=30, geometry='ULA', calibration_file=None,
                  b3_signal_type='passthrough', b3_fft_size=8192, b3_guard_interval=192,
                  source_type='kraken', if_gain=40.0, rf_gain=0.0,
-                 bandwidth=0, sample_rate=2.4e6):
+                 bandwidth=0, sample_rate=2.4e6, skip_aoa=False):
         gr.top_block.__init__(self, "Passive Radar Run")
 
         # Parameters
@@ -137,7 +154,7 @@ class PassiveRadarTopBlock(gr.top_block):
         self.source_type = source_type
         self.sample_rate = sample_rate
         self.cpi_len = 4096
-        self.doppler_len = 64
+        self.doppler_len = 256
         self.num_taps = 128
         self.geometry = geometry
         self.b3_signal_type = b3_signal_type
@@ -151,14 +168,16 @@ class PassiveRadarTopBlock(gr.top_block):
             self.skip_calibration = True
         else:
             self.num_surv = 4
-            self.skip_aoa = False
+            self.skip_aoa = skip_aoa
             self.skip_calibration = False
 
         # Derived parameters
         c = 3e8
         wavelength = c / freq
-        range_res = c / (2 * self.sample_rate)  # meters per range bin
-        doppler_res = self.sample_rate / (self.cpi_len * self.doppler_len)  # Hz per Doppler bin
+        self.range_res = c / (2 * self.sample_rate)  # meters per range bin
+        self.doppler_res = self.sample_rate / (self.cpi_len * self.doppler_len)  # Hz per Doppler bin
+        range_res = self.range_res
+        doppler_res = self.doppler_res
         frame_period = (self.cpi_len * self.doppler_len) / self.sample_rate
 
         # Load Calibration
@@ -305,16 +324,35 @@ class PassiveRadarTopBlock(gr.top_block):
 
         # 5. Doppler Processor (C++ FFTW-accelerated)
         # Accumulates doppler_len range profiles, applies window + slow-time FFT
+        # AoA mode: output complex (for beamforming), then |·|² for CFAR
+        # Skip-AoA mode: output power directly
+        rd_vlen = self.cpi_len * self.doppler_len
+        need_complex_doppler = not self.skip_aoa
+
         self.doppler_blocks = []
+        self.mag_sq_blocks = []  # Only used when AoA is active
         for i in range(self.num_surv):
             blk = doppler_processor(
                 num_range_bins=self.cpi_len,
                 num_doppler_bins=self.doppler_len,
                 window_type=1,       # Hamming
-                output_power=True    # Output |X|^2 for CFAR
+                output_power=(not need_complex_doppler)
             )
             self.doppler_blocks.append(blk)
             self.connect((self.caf_blocks[i], 0), (blk, 0))
+
+        # When AoA is active, insert complex→power conversion for CFAR path
+        if need_complex_doppler:
+            for i in range(self.num_surv):
+                mag_sq = blocks.complex_to_mag_squared(rd_vlen)
+                self.mag_sq_blocks.append(mag_sq)
+                self.connect((self.doppler_blocks[i], 0), (mag_sq, 0))
+
+        # Power source for CFAR: mag_sq blocks (AoA mode) or doppler blocks (skip-AoA)
+        def power_src(i):
+            if need_complex_doppler:
+                return (self.mag_sq_blocks[i], 0)
+            return (self.doppler_blocks[i], 0)
 
         # 6. CFAR Detector (C++ accelerated) - per surveillance channel
         self.cfar_blocks = []
@@ -330,7 +368,7 @@ class PassiveRadarTopBlock(gr.top_block):
                 cfar_type=0          # CA-CFAR
             )
             self.cfar_blocks.append(blk)
-            self.connect((self.doppler_blocks[i], 0), (blk, 0))
+            self.connect(power_src(i), (blk, 0))
 
         # 7. Detection Clustering (C++ accelerated) - per surveillance channel
         self.cluster_blocks = []
@@ -347,10 +385,12 @@ class PassiveRadarTopBlock(gr.top_block):
             self.cluster_blocks.append(blk)
             # Cluster takes CFAR mask (input 0) and power map (input 1)
             self.connect((self.cfar_blocks[i], 0), (blk, 0))
-            self.connect((self.doppler_blocks[i], 0), (blk, 1))
+            self.connect(power_src(i), (blk, 1))
 
         if not self.skip_aoa:
             # 8. AoA Estimator (C++ Bartlett beamformer)
+            # Inputs 0..num_surv-1: complex range-Doppler maps (from doppler)
+            # Input num_surv: detection list (from cluster[0])
             array_type_val = 0 if geometry == 'ULA' else 1
             self.aoa = aoa_estimator.make(
                 num_elements=self.num_surv,
@@ -363,11 +403,19 @@ class PassiveRadarTopBlock(gr.top_block):
                 num_doppler_bins=self.doppler_len,
                 max_detections=100
             )
-            # AoA takes detection lists from all surveillance channels
+            # AoA CAF inputs: complex doppler output per surveillance channel
             for i in range(self.num_surv):
-                self.connect((self.cluster_blocks[i], 0), (self.aoa, i))
+                self.connect((self.doppler_blocks[i], 0), (self.aoa, i))
+            # AoA detection input: use first surveillance channel's detections
+            self.connect((self.cluster_blocks[0], 0), (self.aoa, self.num_surv))
+            # Null-sink remaining cluster outputs (must be connected)
+            for i in range(1, self.num_surv):
+                cluster_item_size = 100 * 10 * 4
+                ns = blocks.null_sink(cluster_item_size)
+                self.connect((self.cluster_blocks[i], 0), (ns, 0))
 
             # 9. Multi-Target Tracker (C++ Kalman + GNN)
+            max_tracks = 50
             self.trk = tracker(
                 dt=frame_period,
                 process_noise_range=50.0,
@@ -377,27 +425,40 @@ class PassiveRadarTopBlock(gr.top_block):
                 gate_threshold=9.21,     # chi2(2) @ 99%
                 confirm_hits=3,
                 delete_misses=5,
-                max_tracks=50,
+                max_tracks=max_tracks,
                 max_detections=100
             )
             self.connect((self.aoa, 0), (self.trk, 0))
 
-            # 10. Sink
+            # 10. Sink (consumes tracker output to trigger display updates)
             self.sink = RadarSink(
                 tracker_block=self.trk,
-                display_callback=self.update_display
+                display_callback=self.update_display,
+                vector_len=max_tracks * 20,
             )
             self.connect((self.trk, 0), (self.sink, 0))
         else:
-            # RSPduo single-surveillance mode: skip AoA and tracker
-            # (detection_cluster stride=10 vs tracker stride=12 mismatch)
+            # Skip AoA and tracker: range-Doppler display mode
             self.aoa = None
             self.trk = None
 
+            # Connect cluster outputs to null sinks (outputs must be connected)
+            for i in range(self.num_surv):
+                cluster_item_size = 100 * 10 * 4  # max_detections * 10 fields * sizeof(float)
+                ns = blocks.null_sink(cluster_item_size)
+                self.connect((self.cluster_blocks[i], 0), (ns, 0))
+
             # Sink consumes Doppler power map for display
+            max_range_km = 50.0
+            max_range_bin = int(max_range_km * 1000.0 / range_res) + 1
+            max_range_bin = min(max_range_bin, self.cpi_len)
             self.sink = RadarSink(
                 tracker_block=None,
-                display_callback=self.update_display
+                display_callback=self.update_display,
+                vector_len=rd_vlen,
+                num_range_bins=self.cpi_len,
+                num_doppler_bins=self.doppler_len,
+                max_range_bin=max_range_bin,
             )
             self.connect((self.doppler_blocks[0], 0), (self.sink, 0))
 
@@ -469,17 +530,22 @@ class PassiveRadarTopBlock(gr.top_block):
 
 
 class RadarSink(gr.sync_block):
-    def __init__(self, tracker_block=None, display_callback=None):
+    def __init__(self, tracker_block=None, display_callback=None, vector_len=1,
+                 num_range_bins=0, num_doppler_bins=0, max_range_bin=0):
         gr.sync_block.__init__(
             self,
             name="Radar Sink",
-            in_sig=[np.float32],
+            in_sig=[(np.float32, vector_len)],
             out_sig=None
         )
         self.tracker_block = tracker_block
         self.callback = display_callback
         self.last_display_time = 0
         self.display_interval = 0.1  # 10 Hz display update
+        self.num_range_bins = num_range_bins
+        self.num_doppler_bins = num_doppler_bins
+        self.max_range_bin = max_range_bin
+        self.rd_display_callback = None  # Set externally for range-Doppler display
 
     def work(self, input_items, output_items):
         n = len(input_items[0])
@@ -499,6 +565,13 @@ class RadarSink(gr.sync_block):
                             'snr_db': t.score,
                         })
                     self.callback(tracks)
+            elif self.rd_display_callback and self.num_range_bins > 0:
+                # RSPduo mode: reshape Doppler power map and send to display
+                raw = input_items[0][0]
+                power = raw.reshape(self.num_doppler_bins, self.num_range_bins)
+                power_sliced = power[:, :self.max_range_bin]
+                power_db = 10.0 * np.log10(power_sliced + 1e-20)
+                self.rd_display_callback(power_db)
         return n
 
 def main():
@@ -515,16 +588,20 @@ Signal Flow (RSPduo, dual-tuner):
     )
     parser.add_argument("--source", choices=['kraken', 'rspduo'], default='kraken',
                         help="SDR source: kraken (5-ch KrakenSDR) or rspduo (2-ch SDRplay RSPduo)")
-    parser.add_argument("--freq", type=float, default=100e6,
-                        help="Center frequency in Hz (default: 100 MHz)")
+    parser.add_argument("--freq", type=float, default=103.7e6,
+                        help="Center frequency in Hz (default: 103.7 MHz)")
     parser.add_argument("--gain", type=float, default=30,
                         help="Receiver gain in dB (default: 30, KrakenSDR only)")
     parser.add_argument("--geometry", choices=['ULA', 'URA'], default='ULA',
                         help="Antenna array geometry (default: ULA)")
     parser.add_argument("--no-startup-cal", action="store_true",
                         help="Skip startup calibration (use saved calibration only)")
+    parser.add_argument("--skip-aoa", action="store_true",
+                        help="Skip AoA estimator and tracker (range-Doppler display only)")
     parser.add_argument("--visualize", action="store_true",
                         help="Show GUI display")
+    parser.add_argument("--demo", action="store_true",
+                        help="Demo mode: show display with simulated data (no hardware needed)")
 
     # RSPduo-specific arguments
     parser.add_argument("--if-gain", type=float, default=40.0,
@@ -548,11 +625,48 @@ Signal Flow (RSPduo, dual-tuner):
 
     args = parser.parse_args()
 
+    if args.source == 'rspduo' and not HAS_RSPDUO:
+        print("ERROR: --source rspduo requires gr-sdrplay3 (gnuradio.sdrplay3).")
+        print("Install gr-sdrplay3: https://github.com/fventuri/gr-sdrplay3")
+        sys.exit(1)
+
+    # Demo mode: simulated display, no hardware needed
+    if args.demo:
+        if not HAS_RD_DISPLAY:
+            print("ERROR: Range-Doppler display not available. Check kraken_passive_radar installation.")
+            sys.exit(1)
+        from kraken_passive_radar.range_doppler_display import demo_delay_doppler
+        print("DEMO MODE: Simulated Delay-Doppler display (no hardware)")
+        demo_delay_doppler()
+        sys.exit(0)
+
+    # --- Pre-startup calibration (KrakenSDR only) ---
+    # Must run BEFORE constructing the flowgraph because osmosdr and librtlsdr
+    # both need exclusive device access.
+    cal_file = "calibration.json"
+    if args.source == 'kraken' and not args.no_startup_cal:
+        from krakensdr_calibrate import calibrate
+        print("\n" + "="*60)
+        print("STARTUP CALIBRATION (librtlsdr direct)")
+        print("="*60 + "\n")
+        try:
+            calibrate(
+                freq_hz=int(args.freq),
+                sample_rate=int(args.sample_rate),
+                gain_db=args.gain,
+                cal_samples=262144,
+                cal_file=cal_file,
+            )
+        except Exception as e:
+            print(f"\nCalibration failed: {e}")
+            print("Continuing without calibration.\n")
+        print()
+
     tb = PassiveRadarTopBlock(
         freq=args.freq,
         gain=args.gain,
         geometry=args.geometry,
-        calibration_file="calibration.json",
+        calibration_file=cal_file,
         b3_signal_type=args.b3_signal,
         b3_fft_size=args.b3_fft_size,
         b3_guard_interval=args.b3_guard_interval,
@@ -561,6 +675,7 @@ Signal Flow (RSPduo, dual-tuner):
         rf_gain=args.rf_gain,
         bandwidth=args.bandwidth,
         sample_rate=args.sample_rate,
+        skip_aoa=args.skip_aoa,
     )
 
     if args.source == 'rspduo':
@@ -572,29 +687,16 @@ Signal Flow (RSPduo, dual-tuner):
         print(f"  Sample Rate: {args.sample_rate/1e6:.3f} MHz")
         print(f"  Phase calibration: SKIPPED (coherent clock)")
         print(f"  AoA estimation: SKIPPED (single surveillance element)\n")
-    elif not args.no_startup_cal:
-        # Startup calibration (KrakenSDR only)
-        # This uses the integrated CalibrationController which:
-        # 1. Enables noise source (HW switch isolates antennas)
-        # 2. Captures calibration samples
-        # 3. Computes phase corrections
-        # 4. Disables noise source (HW switch reconnects antennas)
-        print("\n" + "="*60)
-        print("STARTUP CALIBRATION")
-        print("Enabling noise source (antennas will be isolated by HW switch)")
-        print("="*60 + "\n")
-        tb.start()
-        tb.trigger_calibration("startup")
-        # Wait for calibration to complete
-        while tb.cal_controller.is_calibrating:
-            time.sleep(0.1)
-        print("\nStartup calibration complete. Normal operation starting.\n")
-    else:
+    elif args.no_startup_cal:
         print("Skipping startup calibration (using saved calibration if available)")
 
     if args.source == 'rspduo':
         print(f"Processing chain: RSPduo [ref|surv] -> AGC -> Block B3 ({args.b3_signal}) -> "
               f"ECA -> CAF -> Doppler -> CFAR -> Cluster -> Display\n")
+    elif tb.skip_aoa:
+        print(f"\nProcessing chain: Source -> Phase Corr -> AGC -> Block B3 ({args.b3_signal}) -> ECA (C++) -> CAF -> "
+              f"Doppler (C++) -> CFAR (C++) -> Cluster (C++) -> Display\n")
+        print("  AoA/Tracker: SKIPPED (--skip-aoa)")
     else:
         print(f"\nProcessing chain: Source -> Phase Corr -> AGC -> Block B3 ({args.b3_signal}) -> ECA (C++) -> CAF -> "
               f"Doppler (C++) -> CFAR (C++) -> Cluster (C++) -> AoA (C++) -> Tracker (C++)\n")
@@ -604,7 +706,82 @@ Signal Flow (RSPduo, dual-tuner):
         print(f"  Expected SNR improvement: 10-20 dB")
         print(f"  Initial SNR estimate: {tb.b3_recon.get_snr_estimate():.1f} dB\n")
 
-    if args.visualize and HAS_DISPLAY:
+    # --- Clean shutdown handling ---
+    # Ensures GNU Radio stops cleanly and SDRplay service is restarted
+    # on any exit path: Ctrl-C, window close, crash, or normal exit.
+    shutdown_done = threading.Event()
+
+    def cleanup():
+        if shutdown_done.is_set():
+            return
+        shutdown_done.set()
+        print("\nShutting down...")
+        try:
+            tb.stop()
+            tb.wait()
+            print("GNU Radio flowgraph stopped.")
+        except Exception:
+            pass
+        if args.source == 'rspduo':
+            print("Restarting SDRplay service to release device...")
+            try:
+                subprocess.run(
+                    ["sudo", "systemctl", "restart", "sdrplay"],
+                    timeout=15, capture_output=True
+                )
+                time.sleep(5)
+                print("SDRplay service restarted. Device ready for next run.")
+            except Exception as e:
+                print(f"Warning: could not restart sdrplay service: {e}")
+                print("Run manually: sudo systemctl restart sdrplay")
+
+    atexit.register(cleanup)
+
+    def sigint_handler(signum, frame):
+        cleanup()
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, sigint_handler)
+    signal.signal(signal.SIGTERM, sigint_handler)
+
+    # --- Start pipeline ---
+    if args.visualize and tb.skip_aoa and HAS_RD_DISPLAY:
+        # Range-Doppler heatmap display (RSPduo or KrakenSDR --skip-aoa)
+        max_doppler_hz = tb.doppler_res * (tb.doppler_len // 2)
+        rd_params = RDDisplayParams(
+            n_range_bins=tb.sink.max_range_bin,
+            n_doppler_bins=tb.doppler_len,
+            range_resolution_m=tb.range_res,
+            doppler_resolution_hz=tb.doppler_res,
+            max_range_km=50.0,
+            min_doppler_hz=-max_doppler_hz,
+            max_doppler_hz=max_doppler_hz,
+        )
+        rd_display = RangeDopplerDisplay(rd_params, update_interval_ms=100)
+        tb.sink.rd_display_callback = rd_display.update_caf
+
+        print("Starting Range-Doppler display...")
+        print(f"  Range: 0 - 50 km ({tb.sink.max_range_bin} bins, {tb.range_res:.1f} m/bin)")
+        print(f"  Doppler: +/- {max_doppler_hz:.1f} Hz ({tb.doppler_len} bins, {tb.doppler_res:.2f} Hz/bin)")
+        print("Press Ctrl+C or close window to stop.\n")
+
+        # Start flowgraph in main thread so sdrplay_api_Init errors
+        # propagate as exceptions instead of being swallowed in a daemon thread.
+        tb.start()
+
+        def wait_gr():
+            tb.wait()
+
+        t = threading.Thread(target=wait_gr, daemon=True)
+        t.start()
+
+        try:
+            rd_display.start()  # Blocks in main thread (matplotlib needs main thread)
+        finally:
+            cleanup()
+
+    elif args.visualize and HAS_DISPLAY:
+        # KrakenSDR mode: PPI display
         print("Starting GUI...")
         disp = PPIDisplay()
         tb.display_ref = disp
@@ -616,7 +793,11 @@ Signal Flow (RSPduo, dual-tuner):
         t = threading.Thread(target=run_gr, daemon=True)
         t.start()
 
-        disp.start()
+        try:
+            disp.start()
+        finally:
+            cleanup()
+
     else:
         print("Running Headless...")
         print("Press Ctrl+C to stop")
@@ -625,18 +806,18 @@ Signal Flow (RSPduo, dual-tuner):
         try:
             while True:
                 time.sleep(1.0)
-                # Print tracker status periodically (if tracker is active)
                 if tb.trk is not None:
                     n_tracks = tb.trk.get_num_tracks()
                     n_confirmed = tb.trk.get_num_confirmed_tracks()
                     if n_tracks > 0:
                         print(f"  Tracks: {n_confirmed} confirmed / {n_tracks} total")
                 else:
-                    print("  RSPduo mode: processing...", end='\r')
+                    print("  Range-Doppler mode: processing...", end='\r')
         except KeyboardInterrupt:
             pass
-        tb.stop()
-        tb.wait()
+        finally:
+            cleanup()
+
 
 if __name__ == "__main__":
     main()
