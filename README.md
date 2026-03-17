@@ -811,6 +811,7 @@ The `kraken_passive_radar/` package provides Tkinter + matplotlib visualization:
 | `calibration_panel.py` | Per-channel SNR, phase offset monitoring |
 | `metrics_dashboard.py` | Processing latency and system health metrics |
 | `remote_display.py` | Remote delay-Doppler client for retnode.com KrakenSDR servers |
+| `multi_display_dashboard.py` | 5-panel dashboard: live map, max-hold, delay/Doppler/trails over time |
 | `local_processing.py` | Standalone CFAR, clustering, and tracking (no GNU Radio dependency) |
 | `enhanced_remote_display.py` | Remote display with local CFAR/tracking overlay |
 
@@ -947,6 +948,77 @@ detections = clusterer.cluster(mask, power_db, range_axis_m, doppler_axis_hz)
 tracker = MultiTargetTracker(confirm_hits=3, delete_misses=5)
 tracker.update(detections)
 confirmed = tracker.get_confirmed_tracks()
+```
+
+### Multi-Display Dashboard
+
+Comprehensive 5-panel dashboard displaying all radar views simultaneously:
+
+1. **Delay-Doppler Map** - Live CAF heatmap
+2. **Max-Hold Delay-Doppler Map** - Accumulated maximum power over time
+3. **Detections in Delay over Time** - Time vs delay waterfall (shows target range history)
+4. **Detections in Doppler over Time** - Time vs Doppler waterfall (shows target velocity history)
+5. **Detections in Delay-Doppler with Trails** - Delay vs Doppler with history trails
+
+```bash
+# Default settings (radar3.retnode.com, 1s poll, 60s history)
+python -m kraken_passive_radar.multi_display_dashboard
+
+# Custom server and settings
+python -m kraken_passive_radar.multi_display_dashboard \
+    --url https://radar3.retnode.com \
+    --interval 0.5 \
+    --history 120 \
+    --decay 0.99
+```
+
+**Parameters:**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--url` | radar3.retnode.com | Remote radar server URL |
+| `--interval` | 1.0 | Poll interval in seconds |
+| `--history` | 60.0 | Detection history duration in seconds |
+| `--decay` | 0.995 | Max-hold decay factor per frame (0=instant, 1=infinite) |
+
+**Dashboard Layout:**
+
+```
++-------------------+-------------------+
+| Delay-Doppler     | Max-Hold          |
+| Map (Live)        | Map               |
++-------------------+-------------------+
+| Detections vs     | Detections vs     |
+| Time (Delay)      | Time (Doppler)    |
++-------------------+-------------------+
+|    Detections in Delay-Doppler        |
+|         with History Trails           |
++---------------------------------------+
+```
+
+**Programmatic API:**
+
+```python
+from kraken_passive_radar import MultiDisplayDashboard
+
+# Create dashboard
+dashboard = MultiDisplayDashboard(
+    base_url='https://radar3.retnode.com',
+    poll_interval=1.0,
+    history_duration=60.0,
+    max_hold_decay=0.995,
+)
+
+# Start display (blocking)
+dashboard.start()
+
+# Or non-blocking for integration
+dashboard.start(blocking=False)
+
+# Control methods
+dashboard.reset_max_hold()  # Clear max-hold accumulator
+dashboard.clear_history()   # Clear detection history
+dashboard.stop()            # Stop and close
 ```
 
 ---

@@ -26,6 +26,7 @@ from .radar_gui import RadarGUI
 
 # Remote display modules
 from .remote_display import RemoteRadarDisplay
+from .multi_display_dashboard import MultiDisplayDashboard
 from .local_processing import (
     CfarDetector,
     DetectionClusterer,
@@ -97,6 +98,7 @@ __all__ = [
     "RadarGUI",
     # Remote Display
     "RemoteRadarDisplay",
+    "MultiDisplayDashboard",
     "EnhancedRemoteRadarDisplay",
     # Local Processing
     "CfarDetector",
