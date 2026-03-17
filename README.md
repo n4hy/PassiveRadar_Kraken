@@ -26,6 +26,7 @@ GNU Radio Out-of-Tree (OOT) module for passive bistatic radar using the KrakenSD
 - [Running](#running)
 - [Testing](#testing)
 - [Display System](#display-system)
+  - [Remote Delay-Doppler Display](#remote-delay-doppler-display)
 - [API Reference](#api-reference)
 - [Troubleshooting](#troubleshooting)
 - [License](#license)
@@ -805,8 +806,32 @@ The `kraken_passive_radar/` package provides Tkinter + matplotlib visualization:
 | `radar_display.py` | PPI polar display with track trails |
 | `calibration_panel.py` | Per-channel SNR, phase offset monitoring |
 | `metrics_dashboard.py` | Processing latency and system health metrics |
+| `remote_display.py` | Remote delay-Doppler client for retnode.com KrakenSDR servers |
 
 The display system automatically selects the `Agg` matplotlib backend when no display server is available (headless operation).
+
+### Remote Delay-Doppler Display
+
+Connect to a remote KrakenSDR passive radar server (e.g., [radar3.retnode.com](https://radar3.retnode.com/controller/)) and display a live delay-Doppler heatmap with CFAR detection overlay:
+
+```bash
+# Default server (radar3.retnode.com), 1 second poll interval
+python -m kraken_passive_radar.remote_display
+
+# Custom server and poll interval
+python -m kraken_passive_radar.remote_display --url https://radar3.retnode.com --interval 0.5
+```
+
+The remote display fetches data from the server's REST API:
+
+| Endpoint | Data |
+|----------|------|
+| `/api/map` | 301×411 delay-Doppler CAF matrix (dB), delay/doppler axes |
+| `/api/detection` | CFAR detections: delay (km), Doppler (Hz), SNR (dB), ADS-B correlation |
+| `/api/timing` | CPI duration, processing stage latencies, uptime |
+| `/api/tracker` | Track manager state (tentative/active/coasting counts) |
+
+Features: viridis heatmap with percentile auto-scaling, red circle detection markers sized by SNR, mouse cursor readout (delay/Doppler/power), info overlay with CPI timing and uptime.
 
 ---
 
