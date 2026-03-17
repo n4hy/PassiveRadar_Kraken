@@ -24,6 +24,20 @@ from .range_doppler_display import (
 from .calibration_panel import CalibrationPanel, CalibrationPanelParams, CalibrationStatus
 from .radar_gui import RadarGUI
 
+# Remote display modules
+from .remote_display import RemoteRadarDisplay
+from .local_processing import (
+    CfarDetector,
+    DetectionClusterer,
+    KalmanFilter,
+    MultiTargetTracker,
+    LocalProcessingPipeline,
+    Detection as LocalDetection,
+    Track as LocalTrack,
+    TrackStatus,
+)
+from .enhanced_remote_display import EnhancedRemoteRadarDisplay
+
 # GPU Backend (optional - only if GPU libraries installed)
 try:
     from .gpu_backend import (
@@ -81,6 +95,18 @@ __all__ = [
     "CalibrationStatus",
     # Main GUI
     "RadarGUI",
+    # Remote Display
+    "RemoteRadarDisplay",
+    "EnhancedRemoteRadarDisplay",
+    # Local Processing
+    "CfarDetector",
+    "DetectionClusterer",
+    "KalmanFilter",
+    "MultiTargetTracker",
+    "LocalProcessingPipeline",
+    "LocalDetection",
+    "LocalTrack",
+    "TrackStatus",
     # GPU Backend (available on all platforms, graceful fallback on CPU-only)
     "GPU_AVAILABLE",
     "set_processing_backend",

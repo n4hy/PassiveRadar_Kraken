@@ -27,6 +27,7 @@ GNU Radio Out-of-Tree (OOT) module for passive bistatic radar using the KrakenSD
 - [Testing](#testing)
 - [Display System](#display-system)
   - [Remote Delay-Doppler Display](#remote-delay-doppler-display)
+  - [Enhanced Remote Display with Local Processing](#enhanced-remote-display-with-local-processing)
 - [API Reference](#api-reference)
 - [Troubleshooting](#troubleshooting)
 - [License](#license)
@@ -332,7 +333,10 @@ PassiveRadar_Kraken/
 |   |-- radar_display.py
 |   |-- calibration_panel.py
 |   |-- metrics_dashboard.py
-|   +-- gpu_backend.py              GPU runtime API (optional, graceful fallback)
+|   |-- gpu_backend.py              GPU runtime API (optional, graceful fallback)
+|   |-- remote_display.py           Remote delay-Doppler client
+|   |-- local_processing.py         CFAR, clustering, tracking (no GNU Radio)
+|   +-- enhanced_remote_display.py  Remote display + local processing overlay
 |
 |-- tests/                           Test suite (251 tests)
 |   |-- conftest.py                  Shared pytest fixtures
@@ -807,6 +811,8 @@ The `kraken_passive_radar/` package provides Tkinter + matplotlib visualization:
 | `calibration_panel.py` | Per-channel SNR, phase offset monitoring |
 | `metrics_dashboard.py` | Processing latency and system health metrics |
 | `remote_display.py` | Remote delay-Doppler client for retnode.com KrakenSDR servers |
+| `local_processing.py` | Standalone CFAR, clustering, and tracking (no GNU Radio dependency) |
+| `enhanced_remote_display.py` | Remote display with local CFAR/tracking overlay |
 
 The display system automatically selects the `Agg` matplotlib backend when no display server is available (headless operation).
 
@@ -832,6 +838,116 @@ The remote display fetches data from the server's REST API:
 | `/api/tracker` | Track manager state (tentative/active/coasting counts) |
 
 Features: viridis heatmap with percentile auto-scaling, red circle detection markers sized by SNR, mouse cursor readout (delay/Doppler/power), info overlay with CPI timing and uptime.
+
+### Enhanced Remote Display with Local Processing
+
+Run your own CFAR detection, clustering, and multi-target tracking on delay-Doppler maps fetched from remote servers. Compare server detections against locally-computed results with tunable parameters.
+
+```bash
+# Server detections only (default, same as remote_display)
+python -m kraken_passive_radar.enhanced_remote_display
+
+# Enable local CFAR/clustering/tracking pipeline
+python -m kraken_passive_radar.enhanced_remote_display --local
+
+# Custom CFAR parameters
+python -m kraken_passive_radar.enhanced_remote_display --local \
+    --cfar-guard 2 --cfar-train 8 --cfar-threshold 10
+
+# Custom tracker parameters
+python -m kraken_passive_radar.enhanced_remote_display --local \
+    --track-confirm 2 --track-delete 3 --track-gate 150
+```
+
+**Display Legend:**
+
+| Marker | Color | Meaning |
+|--------|-------|---------|
+| ○ | Red | Server detections (from `/api/detection`) |
+| ○ | Green | Local CFAR detections |
+| ◆ | Yellow | Confirmed tracks |
+| — | Yellow/Orange | Track history trail |
+
+**Local Processing Pipeline:**
+
+```
+Remote Map Data (/api/map)
+        │
+        ▼
+┌─────────────┐
+│  CFAR 2D    │  Native C (libkraken_backend.so) or Python fallback
+│  CA/GO/SO   │  Tunable: guard, train, threshold
+└─────────────┘
+        │
+        ▼
+┌─────────────┐
+│  Clustering │  scipy.ndimage.label (8-connectivity)
+│             │  Power-weighted centroids
+└─────────────┘
+        │
+        ▼
+┌─────────────┐
+│   Tracker   │  Kalman filter (constant velocity model)
+│   GNN       │  Tentative → Confirmed → Coasting lifecycle
+└─────────────┘
+        │
+        ▼
+    Display Overlay
+```
+
+**CFAR Parameters:**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--cfar-guard` | 2 | Guard cells around cell under test |
+| `--cfar-train` | 4 | Training cells for noise estimate |
+| `--cfar-threshold` | 12.0 | Detection threshold (dB above noise) |
+| `--cfar-type` | ca | CFAR variant: `ca` (cell-averaging), `go` (greatest-of), `so` (smallest-of) |
+
+**Tracker Parameters:**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--track-dt` | poll interval | Time step in seconds |
+| `--track-confirm` | 3 | Consecutive hits to confirm track |
+| `--track-delete` | 5 | Consecutive misses to delete track |
+| `--track-gate` | 100.0 | Association gate (Mahalanobis distance) |
+
+**Programmatic API:**
+
+```python
+from kraken_passive_radar import (
+    CfarDetector,
+    DetectionClusterer,
+    MultiTargetTracker,
+    LocalProcessingPipeline,
+    EnhancedRemoteRadarDisplay,
+)
+
+# Standalone processing pipeline
+pipeline = LocalProcessingPipeline(
+    cfar_guard=2, cfar_train=4, cfar_threshold_db=12.0,
+    tracker_dt=1.0, tracker_confirm=3, tracker_delete=5
+)
+
+# Process a frame
+detections, tracks, cfar_mask = pipeline.process(
+    power_db,      # 2D array [n_doppler, n_range]
+    range_axis_m,  # 1D array [n_range]
+    doppler_axis_hz  # 1D array [n_doppler]
+)
+
+# Or use individual components
+cfar = CfarDetector(guard=2, train=4, threshold_db=12.0)
+mask = cfar.detect(power_db)
+
+clusterer = DetectionClusterer()
+detections = clusterer.cluster(mask, power_db, range_axis_m, doppler_axis_hz)
+
+tracker = MultiTargetTracker(confirm_hits=3, delete_misses=5)
+tracker.update(detections)
+confirmed = tracker.get_confirmed_tracks()
+```
 
 ---
 
@@ -1186,4 +1302,4 @@ MIT License. See [LICENSE](LICENSE).
 
 **Acknowledgments**: Claude (Anthropic) wrote every test, all documentation, the complete GPU acceleration implementation, and the Block B3 reference reconstruction system. It debugged my crappy python. The comprehensive test suite enabled diagnosis and validation of both hand-written code and AI-generated implementations.
 
-Last updated: 2026-03-02
+Last updated: 2026-03-17
