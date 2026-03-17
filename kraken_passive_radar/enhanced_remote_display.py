@@ -286,12 +286,8 @@ class EnhancedRemoteRadarDisplay(RemoteRadarDisplay):
         self.im.set_data(data_sorted)
         self.im.set_extent(extent)
 
-        # Percentile auto-scale
-        vmax = np.percentile(data_sorted, 99.5)
-        vmin = np.percentile(data_sorted, 5)
-        if vmax - vmin < 10.0:
-            vmin = vmax - 10.0
-        self.im.set_clim(vmin, vmax)
+        # Fixed 0-15 dB scale for bluer background
+        self.im.set_clim(0, 15)
 
         self.ax.set_xlim(extent[0], extent[1])
         self.ax.set_ylim(extent[2], extent[3])
