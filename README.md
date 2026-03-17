@@ -39,7 +39,7 @@ GNU Radio Out-of-Tree (OOT) module for passive bistatic radar using the KrakenSD
 
 **Platform**: x86_64 (NVIDIA RTX 5090), Python 3.12.3, GNU Radio 3.10.9
 
-**Date**: 2026-03-02
+**Date**: 2026-03-17
 
 ```
 ========================= test session starts =========================
@@ -73,7 +73,7 @@ tests/unit/test_eca_kernels.py              (7 tests)              PASSED
 tests/unit/test_fixtures.py                (28 tests)              PASSED
 tests/unit/test_tracker.py                 (10 tests)              PASSED
 
-======================= 251 passed in 28.90s ==========================
+======================= 251 passed in 27.30s ==========================
 ```
 
 ### Summary

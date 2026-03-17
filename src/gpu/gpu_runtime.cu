@@ -14,7 +14,7 @@
 // Global backend setting
 static KrakenBackend g_backend = KRAKEN_BACKEND_AUTO;
 static int g_gpu_initialized = 0;
-static int g_active_device = 0;
+static int g_active_device = 0;  // Used to track which device is active
 
 /**
  * Get number of CUDA devices
