@@ -10,7 +10,7 @@ mkdir -p build
 cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release
 make -j"$(nproc)"
-cd "$SCRIPT_DIR/src"
+cd "$SCRIPT_DIR/src/build/lib"
 
 echo "Copying libraries to Python package..."
 # Copy to local source tree

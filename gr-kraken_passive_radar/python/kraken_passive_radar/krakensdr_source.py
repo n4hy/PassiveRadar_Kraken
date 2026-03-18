@@ -2,6 +2,7 @@ import numpy as np
 from gnuradio import gr
 import osmosdr
 import sys
+import ctypes
 
 class krakensdr_source(gr.hier_block2):
     """
@@ -75,18 +76,44 @@ class krakensdr_source(gr.hier_block2):
     def set_noise_source(self, enable):
         """
         Enables or disables the KrakenSDR internal noise source.
-        The noise source is controlled via GPIO 0 on Device Index 1 (Serial 1001).
-        Device Index 1 corresponds to Channel 1 (since Ch0=1000, Ch1=1001).
+
+        The noise source is controlled via GPIO 0 on the device with serial 1000.
+        gr-osmosdr does NOT support GPIO control, so we use librtlsdr directly
+        via ctypes. librtlsdr can open a device by serial even while osmosdr
+        holds the main data interface, because rtlsdr_set_bias_tee_gpio only
+        needs a brief USB control transfer.
+
+        IMPORTANT: When enabled, the hardware silicon switch DISCONNECTS all
+        antennas and routes ONLY the internal noise source to all receivers.
 
         Args:
             enable (bool): True to enable, False to disable.
         """
-        val = 1 if enable else 0
         try:
-            # set_gpio_bit(bank, bit, value, channel)
-            # We assume Bank 0, Bit 0 is the noise source on Channel 1.
-            self.osmosdr.set_gpio_bit(0, 0, val, 1)
-        except AttributeError:
-            print("Warning: osmosdr.source.set_gpio_bit not available. Noise source control failed.", file=sys.stderr)
+            lib = ctypes.CDLL('librtlsdr.so.0')
+            # Find device index by serial "1000"
+            idx = lib.rtlsdr_get_index_by_serial(b"1000")
+            if idx < 0:
+                print("Warning: KrakenSDR SN 1000 not found for noise source control",
+                      file=sys.stderr)
+                return
+            dev = ctypes.c_void_p()
+            ret = lib.rtlsdr_open(ctypes.byref(dev), ctypes.c_uint32(idx))
+            if ret != 0:
+                print(f"Warning: Could not open rtlsdr device for noise source: error {ret}",
+                      file=sys.stderr)
+                return
+            try:
+                gpio = 0
+                val = 1 if enable else 0
+                ret = lib.rtlsdr_set_bias_tee_gpio(dev, ctypes.c_int(gpio), ctypes.c_int(val))
+                if ret != 0:
+                    print(f"Warning: rtlsdr_set_bias_tee_gpio returned {ret}",
+                          file=sys.stderr)
+            finally:
+                lib.rtlsdr_close(dev)
+        except OSError as e:
+            print(f"Warning: librtlsdr.so.0 not available for noise source control: {e}",
+                  file=sys.stderr)
         except Exception as e:
             print(f"Warning: Failed to set noise source: {e}", file=sys.stderr)

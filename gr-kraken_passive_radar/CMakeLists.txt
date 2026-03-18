@@ -4,6 +4,20 @@ project(gr-kraken_passive_radar CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Portable architecture-specific optimization (same policy as src/CMakeLists.txt)
+option(NATIVE_OPTIMIZATION "Build with -march=native (non-portable)" OFF)
+if(NOT MSVC)
+    add_compile_options(-O3 -ffast-math -funroll-loops)
+    if(NATIVE_OPTIMIZATION)
+        add_compile_options(-march=native)
+    else()
+        if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|ARM64")
+            add_compile_options(-mcpu=cortex-a76)  # RPi5
+        endif()
+    endif()
+    add_compile_options(-fPIC)
+endif()
+
 # Find GNU Radio (adjust version as needed)
 find_package(Gnuradio "3.10" REQUIRED COMPONENTS runtime blocks fft filter dtv)
 

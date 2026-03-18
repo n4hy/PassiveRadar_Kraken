@@ -74,6 +74,7 @@ class dashboard_sink(gr.sync_block):
         sample_rate: float = 2.4e6,
         center_freq: float = 100e6,
         update_rate: float = 10.0,
+        external_display: bool = False,
     ):
         """
         Initialize the dashboard sink.
@@ -139,16 +140,24 @@ class dashboard_sink(gr.sync_block):
         self.widgets = {}
         self.anim = None
 
-        # Start display thread
+        # Start display thread (or external via run_display_blocking)
+        self._external_display = external_display
         self._display_thread = None
         self._running = False
 
     def start(self):
         """Called when flowgraph starts."""
         self._running = True
-        self._display_thread = threading.Thread(target=self._run_display, daemon=True)
-        self._display_thread.start()
+        if not self._external_display:
+            self._display_thread = threading.Thread(target=self._run_display, daemon=True)
+            self._display_thread.start()
         return True
+
+    def run_display_blocking(self):
+        """Run the display in the calling thread (must be main thread for TkAgg).
+        Call this AFTER tb.start() from the main thread."""
+        self._running = True
+        self._run_display()
 
     def stop(self):
         """Called when flowgraph stops."""
@@ -228,27 +237,47 @@ class dashboard_sink(gr.sync_block):
                 self.channel_health[i + 1].correlation_coeff = min(1.0, 0.9 + snr / 100)
                 self.channel_health[i + 1].phase_offset_deg = (i - 1.5) * 10  # Placeholder
 
+    def _on_close(self, event):
+        """Handle figure close event gracefully."""
+        self._running = False
+        if self.anim is not None and self.anim.event_source is not None:
+            self.anim.event_source.stop()
+            self.anim = None
+
     def _run_display(self):
-        """Display thread - runs matplotlib."""
+        """Run display - uses manual update loop for X11 robustness."""
         plt.ion()
 
         self._setup_main_figure()
         self._setup_control_figure()
+
+        self.fig.canvas.mpl_connect('close_event', self._on_close)
+        self.ctrl_fig.canvas.mpl_connect('close_event', self._on_close)
 
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()
         self.ctrl_fig.canvas.draw()
         self.ctrl_fig.canvas.flush_events()
 
-        self.anim = FuncAnimation(
-            self.fig, self._update_display,
-            interval=int(1000 / self.update_rate),
-            blit=False,
-            cache_frame_data=False,
-        )
-
-        plt.ioff()
-        plt.show()
+        # Manual update loop instead of FuncAnimation for X11 stability
+        interval = 1.0 / self.update_rate
+        frame = 0
+        while self._running:
+            try:
+                if self.fig is None:
+                    break
+                self._update_display(frame)
+                self.fig.canvas.draw_idle()
+                self.fig.canvas.flush_events()
+                if self.ctrl_fig is not None:
+                    self.ctrl_fig.canvas.flush_events()
+                frame += 1
+                plt.pause(interval)
+            except Exception as e:
+                if not self._running:
+                    break
+                print(f"Display error: {e}")
+                break
 
     def _setup_main_figure(self):
         """Setup main display figure."""
@@ -463,6 +492,8 @@ class dashboard_sink(gr.sync_block):
 
     def _update_display(self, frame):
         """Animation update callback."""
+        if not self._running or self.fig is None:
+            return []
         now = time.time()
 
         with self.lock:
@@ -547,8 +578,5 @@ class dashboard_sink(gr.sync_block):
         self.artists['info'].set_text(
             f'Frames: {frames}  Detections: {len(recent)}  History: {len(history)}'
         )
-
-        self.fig.canvas.draw_idle()
-        self.fig.canvas.flush_events()
 
         return list(self.artists.values())

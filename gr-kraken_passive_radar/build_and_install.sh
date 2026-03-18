@@ -12,10 +12,12 @@ mkdir build
 cd build
 
 # Configure
+# Architecture-specific optimization is handled by the parent CMakeLists.txt
+# (aarch64 gets -mcpu=cortex-a76, x86_64 gets generic -O3)
+# Use -DNATIVE_OPTIMIZATION=ON only for single-machine builds.
 echo ""
 echo "[1/4] Configuring with CMake..."
 cmake -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_CXX_FLAGS="-O3 -march=native" \
       ..
 
 # Build

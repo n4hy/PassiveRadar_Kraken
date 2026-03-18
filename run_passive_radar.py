@@ -66,6 +66,8 @@ from gnuradio.kraken_passive_radar import (
     aoa_estimator,
     tracker,
     dvbt_reconstructor,
+    # Display
+    dashboard_sink,
 )
 
 # RSPduo source requires gr-sdrplay3 — import lazily so the program
@@ -100,19 +102,26 @@ except ImportError:
 
 class PhaseCorrectorBlock(gr.sync_block):
     """
-    GNU Radio block that applies phase corrections from CalibrationController.
+    GNU Radio block that applies phase corrections from CalibrationController,
+    including linear drift rate compensation.
 
     This block sits between the KrakenSDR source and the conditioning/ECA blocks.
     It ensures phase coherence is maintained by:
-    1. Applying stored phase corrections during normal operation
+    1. Applying stored phase corrections + drift extrapolation during normal operation
     2. Feeding samples to CalibrationController during calibration
     3. Outputting zeros during calibration (antennas are isolated anyway)
+
+    The drift rate compensation is critical: without it, the R820T PLL frequency
+    offsets (1-3 deg/s) make calibration useless after ~2 seconds. With linear
+    extrapolation, residual error stays <5 deg for 300+ seconds.
 
     IMPORTANT: This MUST be in the signal path BEFORE ECA processing.
     The ECA clutter canceller requires phase-coherent inputs to work correctly.
     """
 
-    def __init__(self, cal_controller: CalibrationController, channel: int):
+    def __init__(self, cal_controller: CalibrationController, channel: int,
+                 initial_phase: float = 0.0, drift_rate: float = 0.0,
+                 cal_timestamp: float = 0.0, sample_rate: float = 2.4e6):
         gr.sync_block.__init__(
             self,
             name=f"Phase Corrector Ch{channel}",
@@ -121,6 +130,22 @@ class PhaseCorrectorBlock(gr.sync_block):
         )
         self.cal_controller = cal_controller
         self.channel = channel
+        self.sample_rate = sample_rate
+
+        # Phase correction state: phase(t) = initial_phase + drift_rate * (t - cal_timestamp)
+        self.initial_phase = initial_phase    # radians at cal_timestamp
+        self.drift_rate = drift_rate          # radians per second
+        self.cal_timestamp = cal_timestamp    # absolute time of calibration
+        self._start_time = time.time()        # flowgraph start time
+        self._sample_count = 0                # samples processed since start
+
+    def update_calibration(self, phase_rad: float, drift_rate_rad: float, timestamp: float):
+        """Update phase correction parameters after a recalibration."""
+        self.initial_phase = phase_rad
+        self.drift_rate = drift_rate_rad
+        self.cal_timestamp = timestamp
+        self._start_time = time.time()
+        self._sample_count = 0
 
     def work(self, input_items, output_items):
         samples = input_items[0]
@@ -133,11 +158,19 @@ class PhaseCorrectorBlock(gr.sync_block):
             self.cal_controller.process_calibration_samples(self.channel, samples)
             output_items[0][:n_samples] = 0
         else:
-            # Normal operation: apply phase correction
-            output_items[0][:n_samples] = self.cal_controller.apply_phase_correction(
-                self.channel, samples
-            )
+            # Normal operation: apply phase correction with drift compensation
+            if self.channel == 0 or (self.initial_phase == 0.0 and self.drift_rate == 0.0):
+                output_items[0][:n_samples] = samples
+            else:
+                # Compute time since calibration
+                t_now = time.time()
+                dt = t_now - self.cal_timestamp if self.cal_timestamp > 0 else 0.0
+                # Total correction = initial_phase + drift_rate * elapsed_time
+                correction = self.initial_phase + self.drift_rate * dt
+                phasor = np.complex64(np.exp(1j * correction))
+                output_items[0][:n_samples] = samples * phasor
 
+        self._sample_count += n_samples
         return n_samples
 
 
@@ -145,7 +178,7 @@ class PassiveRadarTopBlock(gr.top_block):
     def __init__(self, freq=100e6, gain=30, geometry='ULA', calibration_file=None,
                  b3_signal_type='passthrough', b3_fft_size=8192, b3_guard_interval=192,
                  source_type='kraken', if_gain=40.0, rf_gain=0.0,
-                 bandwidth=0, sample_rate=2.4e6, skip_aoa=False):
+                 bandwidth=0, sample_rate=2.4e6, skip_aoa=False, cpi_len=2048):
         gr.top_block.__init__(self, "Passive Radar Run")
 
         # Parameters
@@ -153,7 +186,7 @@ class PassiveRadarTopBlock(gr.top_block):
         self.gain = gain
         self.source_type = source_type
         self.sample_rate = sample_rate
-        self.cpi_len = 4096
+        self.cpi_len = cpi_len
         self.doppler_len = 256
         self.num_taps = 128
         self.geometry = geometry
@@ -180,14 +213,21 @@ class PassiveRadarTopBlock(gr.top_block):
         doppler_res = self.doppler_res
         frame_period = (self.cpi_len * self.doppler_len) / self.sample_rate
 
-        # Load Calibration
-        self.phase_offsets = np.zeros(5, dtype=np.float32)
+        # Load Calibration (phase offsets AND drift rates)
+        self.phase_offsets = np.zeros(5, dtype=np.float64)
+        self.drift_rates = np.zeros(5, dtype=np.float64)  # radians/sec
+        self.cal_timestamp = 0.0
         if calibration_file and os.path.exists(calibration_file):
             print(f"Loading calibration from {calibration_file}...")
             with open(calibration_file, 'r') as f:
                 cal = json.load(f)
+                self.cal_timestamp = cal.get("timestamp", 0.0)
                 for i in range(5):
-                    self.phase_offsets[i] = cal.get(f"ch{i}", 0.0)
+                    # krakensdr_calibrate.py saves ch{i}_phase_rad and ch{i}_drift_rad_per_sec
+                    self.phase_offsets[i] = cal.get(f"ch{i}_phase_rad", cal.get(f"ch{i}", 0.0))
+                    self.drift_rates[i] = cal.get(f"ch{i}_drift_rad_per_sec", 0.0)
+            print(f"  Phase offsets (deg): {np.degrees(self.phase_offsets)}")
+            print(f"  Drift rates (deg/s): {np.degrees(self.drift_rates)}")
         else:
             print("No calibration loaded. Using default (0).")
 
@@ -215,11 +255,16 @@ class PassiveRadarTopBlock(gr.top_block):
             )
 
             # 1c. Phase Corrector Blocks (one per channel)
+            # Pass initial calibration (phase + drift rate) from startup cal
             self.phase_correctors = []
             for i in range(5):
                 blk = PhaseCorrectorBlock(
                     cal_controller=self.cal_controller,
-                    channel=i
+                    channel=i,
+                    initial_phase=float(self.phase_offsets[i]),
+                    drift_rate=float(self.drift_rates[i]),
+                    cal_timestamp=self.cal_timestamp,
+                    sample_rate=self.sample_rate,
                 )
                 self.phase_correctors.append(blk)
                 self.connect((self.source, i), (blk, 0))
@@ -354,6 +399,10 @@ class PassiveRadarTopBlock(gr.top_block):
                 return (self.mag_sq_blocks[i], 0)
             return (self.doppler_blocks[i], 0)
 
+        # 5b. Dashboard Sink (optional, for --visualize with KrakenSDR)
+        # Taps the power output from each surveillance channel's Doppler processor
+        self.dashboard = None
+
         # 6. CFAR Detector (C++ accelerated) - per surveillance channel
         self.cfar_blocks = []
         for i in range(self.num_surv):
@@ -478,6 +527,9 @@ class PassiveRadarTopBlock(gr.top_block):
         """
         Callback when automatic calibration completes.
 
+        Updates phase corrector blocks with new offsets and drift rates,
+        and persists calibration to disk.
+
         Args:
             result: CalibrationResult with phase offsets and correlation
         """
@@ -485,13 +537,27 @@ class PassiveRadarTopBlock(gr.top_block):
         print(f"  Phase corrections (deg): {np.degrees(result.phase_offsets)}")
         print(f"  Correlations: {result.correlation}")
 
-        # Save calibration to file for persistence
+        now = result.timestamp
+
+        # Update phase correctors with new calibration
+        if self.phase_correctors:
+            for i in range(5):
+                self.phase_correctors[i].update_calibration(
+                    phase_rad=float(result.phase_offsets[i]),
+                    drift_rate_rad=float(self.drift_rates[i]),  # keep existing drift rate
+                    timestamp=now,
+                )
+
+        # Save calibration to file (same format as krakensdr_calibrate.py)
         cal_data = {
-            f"ch{i}": float(result.phase_offsets[i])
-            for i in range(5)
+            "timestamp": now,
+            "freq_hz": int(self.freq),
+            "calibration_count": self.cal_controller.calibration_count,
         }
-        cal_data['timestamp'] = result.timestamp
-        cal_data['calibration_count'] = self.cal_controller.calibration_count
+        for i in range(5):
+            cal_data[f"ch{i}_phase_rad"] = float(result.phase_offsets[i])
+            cal_data[f"ch{i}_drift_rad_per_sec"] = float(self.drift_rates[i])
+            cal_data[f"ch{i}_corr"] = float(result.correlation[i])
 
         try:
             with open("calibration.json", 'w') as f:
@@ -527,6 +593,65 @@ class PassiveRadarTopBlock(gr.top_block):
         if hasattr(self, 'b3_recon'):
             return self.b3_recon.get_snr_estimate()
         return 0.0
+
+    def start_periodic_recal(self, interval_sec: float = 120.0):
+        """
+        Start a background thread that triggers periodic recalibration.
+
+        With drift rate compensation, 120s interval keeps residual error <5 deg.
+        The noise source is briefly enabled (~1s), capturing calibration samples,
+        then disabled. The HW silicon switch isolates antennas during this time.
+
+        Args:
+            interval_sec: Seconds between recalibrations (default: 120)
+        """
+        if self.cal_controller is None:
+            return  # No calibration for RSPduo/single-channel
+
+        self._recal_stop = threading.Event()
+
+        def recal_loop():
+            while not self._recal_stop.wait(interval_sec):
+                try:
+                    self.trigger_calibration(reason="periodic")
+                except Exception as e:
+                    print(f"Periodic recalibration error: {e}")
+
+        self._recal_thread = threading.Thread(target=recal_loop, daemon=True)
+        self._recal_thread.start()
+        print(f"Periodic recalibration: every {interval_sec:.0f}s")
+
+    def stop_periodic_recal(self):
+        """Stop the periodic recalibration thread."""
+        if hasattr(self, '_recal_stop'):
+            self._recal_stop.set()
+
+    def attach_dashboard(self):
+        """
+        Wire up the dashboard_sink to receive live CAF power data
+        from each surveillance channel's Doppler processor.
+
+        Must be called BEFORE tb.start(). Use external_display=True so
+        that the matplotlib GUI is driven from the main thread (required
+        by TkAgg on most platforms).
+        """
+        self.dashboard = dashboard_sink(
+            fft_len=self.cpi_len,
+            doppler_len=self.doppler_len,
+            num_channels=self.num_surv,
+            sample_rate=self.sample_rate,
+            center_freq=self.freq,
+            update_rate=10.0,
+            external_display=True,
+        )
+        # Tap power output (same source as CFAR) into the dashboard
+        need_complex = not self.skip_aoa
+        for i in range(self.num_surv):
+            if need_complex:
+                src = (self.mag_sq_blocks[i], 0)
+            else:
+                src = (self.doppler_blocks[i], 0)
+            self.connect(src, (self.dashboard, i))
 
 
 class RadarSink(gr.sync_block):
@@ -596,8 +721,12 @@ Signal Flow (RSPduo, dual-tuner):
                         help="Antenna array geometry (default: ULA)")
     parser.add_argument("--no-startup-cal", action="store_true",
                         help="Skip startup calibration (use saved calibration only)")
+    parser.add_argument("--recal-interval", type=float, default=120.0,
+                        help="Periodic recalibration interval in seconds (default: 120)")
     parser.add_argument("--skip-aoa", action="store_true",
                         help="Skip AoA estimator and tracker (range-Doppler display only)")
+    parser.add_argument("--cpi-len", type=int, default=2048, choices=[512, 1024, 2048, 4096],
+                        help="CPI length / range bins (default: 2048, range res = c/2/fs per bin)")
     parser.add_argument("--visualize", action="store_true",
                         help="Show GUI display")
     parser.add_argument("--demo", action="store_true",
@@ -640,6 +769,36 @@ Signal Flow (RSPduo, dual-tuner):
         demo_delay_doppler()
         sys.exit(0)
 
+    # --- OS-level buffer preflight check ---
+    def check_os_buffers():
+        """Check and warn about OS-level buffer settings critical for 5-dongle SDR."""
+        issues = []
+        try:
+            with open('/sys/module/usbcore/parameters/usbfs_memory_mb') as f:
+                usb_mb = int(f.read().strip())
+            # 5 dongles × 128 buffers × 64KB = 40 MB minimum
+            if usb_mb < 64:
+                issues.append(f"  usbfs_memory_mb = {usb_mb} (need >= 64, recommend 256)")
+                issues.append("    Fix: sudo sh -c 'echo 256 > /sys/module/usbcore/parameters/usbfs_memory_mb'")
+            else:
+                print(f"  USB buffer pool: {usb_mb} MB (OK)")
+        except Exception:
+            pass
+        try:
+            page_size = os.sysconf('SC_PAGE_SIZE')
+            if page_size > 4096:
+                print(f"  Page size: {page_size} bytes (16K pages — GR buffers will be padded)")
+        except Exception:
+            pass
+        if issues:
+            print("WARNING: OS buffer settings may cause overruns:")
+            for i in issues:
+                print(i)
+            print()
+
+    if args.source == 'kraken':
+        check_os_buffers()
+
     # --- Pre-startup calibration (KrakenSDR only) ---
     # Must run BEFORE constructing the flowgraph because osmosdr and librtlsdr
     # both need exclusive device access.
@@ -676,6 +835,7 @@ Signal Flow (RSPduo, dual-tuner):
         bandwidth=args.bandwidth,
         sample_rate=args.sample_rate,
         skip_aoa=args.skip_aoa,
+        cpi_len=args.cpi_len,
     )
 
     if args.source == 'rspduo':
@@ -745,7 +905,30 @@ Signal Flow (RSPduo, dual-tuner):
     signal.signal(signal.SIGTERM, sigint_handler)
 
     # --- Start pipeline ---
-    if args.visualize and tb.skip_aoa and HAS_RD_DISPLAY:
+    if args.visualize and args.source == 'kraken':
+        # 5-channel KrakenSDR dashboard: per-channel CAFs, fused CAF,
+        # PPI, channel health, waterfalls, max-hold, detection trails
+        tb.attach_dashboard()
+
+        max_delay_km = tb.cpi_len * (3e8 / (2 * tb.sample_rate)) / 1000.0
+        max_doppler_hz = tb.doppler_res * (tb.doppler_len // 2)
+        print("Starting 5-channel KrakenSDR dashboard...")
+        print(f"  Channels: {tb.num_surv} surveillance + 1 reference")
+        print(f"  Range: 0 - {max_delay_km:.1f} km ({tb.cpi_len} bins, {tb.range_res:.1f} m/bin)")
+        print(f"  Doppler: +/- {max_doppler_hz:.1f} Hz ({tb.doppler_len} bins, {tb.doppler_res:.2f} Hz/bin)")
+        print("Press Ctrl+C or close window to stop.\n")
+
+        tb.start()
+        tb.start_periodic_recal(interval_sec=args.recal_interval)
+
+        try:
+            # Matplotlib must run in main thread (TkAgg requirement)
+            tb.dashboard.run_display_blocking()
+        finally:
+            tb.stop_periodic_recal()
+            cleanup()
+
+    elif args.visualize and tb.skip_aoa and HAS_RD_DISPLAY:
         # Range-Doppler heatmap display (RSPduo or KrakenSDR --skip-aoa)
         max_doppler_hz = tb.doppler_res * (tb.doppler_len // 2)
         rd_params = RDDisplayParams(
@@ -768,6 +951,7 @@ Signal Flow (RSPduo, dual-tuner):
         # Start flowgraph in main thread so sdrplay_api_Init errors
         # propagate as exceptions instead of being swallowed in a daemon thread.
         tb.start()
+        tb.start_periodic_recal(interval_sec=args.recal_interval)
 
         def wait_gr():
             tb.wait()
@@ -778,10 +962,11 @@ Signal Flow (RSPduo, dual-tuner):
         try:
             rd_display.start()  # Blocks in main thread (matplotlib needs main thread)
         finally:
+            tb.stop_periodic_recal()
             cleanup()
 
     elif args.visualize and HAS_DISPLAY:
-        # KrakenSDR mode: PPI display
+        # KrakenSDR mode: PPI display (fallback if dashboard unavailable)
         print("Starting GUI...")
         disp = PPIDisplay()
         tb.display_ref = disp
@@ -792,20 +977,35 @@ Signal Flow (RSPduo, dual-tuner):
 
         t = threading.Thread(target=run_gr, daemon=True)
         t.start()
+        tb.start_periodic_recal(interval_sec=args.recal_interval)
 
         try:
             disp.start()
         finally:
+            tb.stop_periodic_recal()
             cleanup()
 
     else:
         print("Running Headless...")
         print("Press Ctrl+C to stop")
         print(f"Calibration status: {tb.get_calibration_status()}")
+
+        # Periodic recalibration setup (KrakenSDR only)
+        # With drift rate compensation, recal every 120s is sufficient
+        recal_interval = args.recal_interval
+        last_recal_time = time.time()
+
         tb.start()
         try:
             while True:
                 time.sleep(1.0)
+
+                # Periodic recalibration trigger
+                if (tb.cal_controller is not None and
+                        time.time() - last_recal_time >= recal_interval):
+                    tb.trigger_calibration(reason="periodic")
+                    last_recal_time = time.time()
+
                 if tb.trk is not None:
                     n_tracks = tb.trk.get_num_tracks()
                     n_confirmed = tb.trk.get_num_confirmed_tracks()

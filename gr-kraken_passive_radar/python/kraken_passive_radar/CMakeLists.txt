@@ -5,6 +5,7 @@ install(FILES
     rspduo_source.py
     calibration_controller.py
     custom_blocks.py
+    dashboard_sink.py
     doppler_processing.py
     eca_b_clutter_canceller.py
     vector_zero_pad.py

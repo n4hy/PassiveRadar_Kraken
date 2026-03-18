@@ -2,8 +2,37 @@ import ctypes
 import numpy as np
 from gnuradio import gr
 import os
+import sys
+import sysconfig
 import time
 import warnings
+
+
+def _find_kernel_lib(libname):
+    """Find a kraken kernel .so file by searching known installation paths.
+
+    The standalone C++ kernels (libkraken_*.so) are installed by src/CMakeLists.txt
+    to the Python site-packages kraken_passive_radar directory, which may differ
+    from the OOT module's gnuradio namespace directory.
+
+    Search order:
+    1. Same directory as this file (OOT install dir)
+    2. Python site-packages kraken_passive_radar/ (standalone kernel install dir)
+    3. Source tree build output (development)
+    """
+    candidates = [
+        os.path.join(os.path.dirname(__file__), libname),
+        os.path.join(sysconfig.get_paths()['purelib'], 'kraken_passive_radar', libname),
+        os.path.abspath(os.path.join('src', 'build', 'lib', libname)),
+        os.path.abspath(os.path.join('src', libname)),
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            return path
+    raise FileNotFoundError(
+        f"Cannot find {libname}. Searched:\n" +
+        "\n".join(f"  {p}" for p in candidates)
+    )
 
 class ConditioningBlock(gr.sync_block):
     """
@@ -21,10 +50,7 @@ class ConditioningBlock(gr.sync_block):
         self.obj = self.lib.cond_create(ctypes.c_float(rate))
 
     def _load_lib(self):
-        path = os.path.join(os.path.dirname(__file__), "libkraken_conditioning.so")
-        if not os.path.exists(path):
-             path = os.path.abspath("src/libkraken_conditioning.so")
-
+        path = _find_kernel_lib("libkraken_conditioning.so")
         lib = ctypes.cdll.LoadLibrary(path)
         lib.cond_create.restype = ctypes.c_void_p
         lib.cond_create.argtypes = [ctypes.c_float]
@@ -73,10 +99,14 @@ class CafBlock(gr.basic_block):
         return [req] * ninputs
 
     def _load_lib(self):
-        path = os.path.join(os.path.dirname(__file__), "libkraken_caf_processing.so")
-        if not os.path.exists(path):
-             path = os.path.abspath("src/libkraken_caf_processing.so")
+        # CAF depends on libkraken_fftw_init.so; ensure its directory is on LD path
+        fftw_init_path = _find_kernel_lib("libkraken_fftw_init.so")
+        fftw_init_dir = os.path.dirname(fftw_init_path)
+        if fftw_init_dir not in os.environ.get('LD_LIBRARY_PATH', ''):
+            os.environ['LD_LIBRARY_PATH'] = fftw_init_dir + ':' + os.environ.get('LD_LIBRARY_PATH', '')
+            ctypes.cdll.LoadLibrary(fftw_init_path)  # Pre-load dependency
 
+        path = _find_kernel_lib("libkraken_caf_processing.so")
         lib = ctypes.cdll.LoadLibrary(path)
         lib.caf_create.restype = ctypes.c_void_p
         lib.caf_create.argtypes = [ctypes.c_int]
@@ -142,9 +172,7 @@ class BackendBlock(gr.sync_block):
         self.lib = self._load_lib()
 
     def _load_lib(self):
-        path = os.path.join(os.path.dirname(__file__), "libkraken_backend.so")
-        if not os.path.exists(path):
-             path = os.path.abspath("src/libkraken_backend.so")
+        path = _find_kernel_lib("libkraken_backend.so")
         lib = ctypes.cdll.LoadLibrary(path)
         lib.fusion_process.argtypes = [ctypes.POINTER(ctypes.POINTER(ctypes.c_float)), ctypes.c_int, ctypes.POINTER(ctypes.c_float), ctypes.c_int]
         lib.cfar_2d.argtypes = [ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_float]
@@ -193,9 +221,11 @@ class TimeAlignmentBlock(gr.sync_block):
         self.obj = self.lib.align_create(n_samples)
 
     def _load_lib(self):
-        path = os.path.join(os.path.dirname(__file__), "libkraken_time_alignment.so")
-        if not os.path.exists(path):
-             path = os.path.abspath("src/libkraken_time_alignment.so")
+        # Time alignment depends on libkraken_fftw_init.so
+        fftw_init_path = _find_kernel_lib("libkraken_fftw_init.so")
+        ctypes.cdll.LoadLibrary(fftw_init_path)  # Pre-load dependency
+
+        path = _find_kernel_lib("libkraken_time_alignment.so")
         lib = ctypes.cdll.LoadLibrary(path)
         lib.align_create.restype = ctypes.c_void_p
         lib.align_create.argtypes = [ctypes.c_int]
@@ -263,15 +293,7 @@ class AoAProcessingBlock:
         ]
 
     def _load_lib(self):
-        path = os.path.join(os.path.dirname(__file__), "libkraken_aoa_processing.so")
-        # Try local src/ path if not found (dev mode)
-        if not os.path.exists(path):
-             path = os.path.abspath("src/libkraken_aoa_processing.so")
-        if not os.path.exists(path):
-             # Try system install
-             import sysconfig
-             path = os.path.join(sysconfig.get_paths()['purelib'], "kraken_passive_radar", "libkraken_aoa_processing.so")
-
+        path = _find_kernel_lib("libkraken_aoa_processing.so")
         lib = ctypes.cdll.LoadLibrary(path)
         lib.aoa_create.restype = ctypes.c_void_p
         lib.aoa_create.argtypes = [ctypes.c_int, ctypes.c_float, ctypes.c_int]

@@ -126,6 +126,12 @@ class CalibrationController:
             if self.state != CalibrationState.IDLE:
                 print(f"CalibrationController: Already calibrating, ignoring request")
                 return
+            # Allocate buffers BEFORE setting state to CALIBRATING to
+            # avoid race with process_calibration_samples() seeing
+            # is_calibrating=True but cal_buffers=None
+            self.cal_buffers = [np.zeros(self.cal_samples, dtype=np.complex64)
+                               for _ in range(self.num_channels)]
+            self.cal_sample_count = 0
             self.state = CalibrationState.CALIBRATING
 
         print(f"CalibrationController: Starting calibration (reason: {reason})")
@@ -145,11 +151,6 @@ class CalibrationController:
 
         # Step 2: Wait for switch settling
         time.sleep(self.settle_time_sec)
-
-        # Step 3: Reset calibration buffers
-        self.cal_buffers = [np.zeros(self.cal_samples, dtype=np.complex64)
-                           for _ in range(self.num_channels)]
-        self.cal_sample_count = 0
 
         # Samples will be collected via process_calibration_samples()
         # which should be called by the signal path during CALIBRATING state
