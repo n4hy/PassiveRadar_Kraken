@@ -814,6 +814,14 @@ The `kraken_passive_radar/` package provides Tkinter + matplotlib visualization:
 | `multi_display_dashboard.py` | 5-panel dashboard: live map, max-hold, delay/Doppler/trails over time |
 | `local_processing.py` | Standalone CFAR, clustering, and tracking (no GNU Radio dependency) |
 | `enhanced_remote_display.py` | Remote display with local CFAR/tracking overlay |
+| `five_channel_dashboard.py` | 5-channel KrakenSDR dashboard with per-channel CAF, AOA-PPI, fused view |
+| `five_channel_demo.py` | Simulated 5-channel demo with animated moving targets |
+
+**GNU Radio Integration:**
+
+| Module | Description |
+|--------|-------------|
+| `dashboard_sink` | GNU Radio sink block for direct KrakenSDR flowgraph integration |
 
 The display system automatically selects the `Agg` matplotlib backend when no display server is available (headless operation).
 
@@ -1019,6 +1027,125 @@ dashboard.start(blocking=False)
 dashboard.reset_max_hold()  # Clear max-hold accumulator
 dashboard.clear_history()   # Clear detection history
 dashboard.stop()            # Stop and close
+```
+
+### Five-Channel KrakenSDR Dashboard
+
+Comprehensive 5-channel dashboard for the KrakenSDR's 4 surveillance + 1 reference channel configuration. Provides per-channel CAF views, AOA-enabled PPI display, fused CAF with detection overlay, channel health monitoring, and detection waterfall displays.
+
+**Dashboard Layout:**
+
+```
++-------------------+-------------------+-------------------+
+| Surveillance 1    | Surveillance 2    |                   |
+| CAF (Ch 1)        | CAF (Ch 2)        |   AOA-PPI         |
++-------------------+-------------------+   (polar plot)    |
+| Surveillance 3    | Surveillance 4    |   with targets    |
+| CAF (Ch 3)        | CAF (Ch 4)        |                   |
++-------------------+-------------------+-------------------+
+| Channel Health    | Fused CAF         | Detection         |
+| (SNR/Phase/Corr)  | (all channels)    | Waterfalls        |
+| per-channel bars  | + detections      | (delay/doppler)   |
++-------------------+-------------------+-------------------+
+```
+
+**Features:**
+
+| Panel | Description |
+|-------|-------------|
+| Per-Channel CAF | Individual delay-Doppler maps for each surveillance channel |
+| AOA-PPI Display | Polar plot showing targets with angle-of-arrival estimation |
+| Channel Health | Real-time SNR, phase coherence, and correlation monitoring |
+| Fused CAF | Combined CAF from all channels with CFAR detections |
+| Detection Waterfalls | Time-series views of delay and Doppler history |
+| Control Panel | Separate window with sliders for all processing parameters |
+
+**Interactive Control Panel (Separate Window):**
+
+| Control | Range | Description |
+|---------|-------|-------------|
+| CFAR Threshold | 3-25 dB | Detection threshold above noise floor |
+| Guard Cells | 1-10 | CFAR guard cell count |
+| Reference Cells | 2-20 | CFAR training cell count |
+| AOA Min/Max | -90°/+90° | Angle-of-arrival scan range |
+| Max Range | 10-100 km | PPI display range limit |
+
+**Running the Dashboard:**
+
+```bash
+# Connect to remote KrakenSDR server
+python -m kraken_passive_radar.five_channel_dashboard \
+    --url https://radar3.retnode.com \
+    --interval 1.0
+
+# Custom configuration
+python -m kraken_passive_radar.five_channel_dashboard \
+    --url https://your-krakensdr-server.local \
+    --interval 0.5 \
+    --max-range 50
+```
+
+**Simulated Demo Mode:**
+
+Run a fully-simulated 5-channel radar with animated moving targets - no hardware or network required:
+
+```bash
+# Run simulated demo with moving targets
+python -m kraken_passive_radar.five_channel_demo
+
+# Demo features:
+# - 4 simulated moving targets with realistic motion
+# - Animated CAF responses across all channels
+# - AOA estimation with PPI track display
+# - Detection waterfall history
+# - All control panel interactions functional
+```
+
+**GNU Radio Direct Integration:**
+
+For direct KrakenSDR USB connection (no network), use the `dashboard_sink` GNU Radio block:
+
+```python
+from gnuradio import kraken_passive_radar as kpr
+
+# Create dashboard sink (receives CAF data from flowgraph)
+sink = kpr.dashboard_sink(
+    fft_len=1024,        # Range bins
+    doppler_len=256,     # Doppler bins
+    num_channels=4,      # Surveillance channels
+    sample_rate=2.4e6,   # Sample rate
+    center_freq=100e6    # Transmitter frequency
+)
+
+# Connect to your flowgraph
+tb.connect(caf_block, 0, sink, 0)  # Channel 1 CAF
+tb.connect(caf_block, 1, sink, 1)  # Channel 2 CAF
+tb.connect(caf_block, 2, sink, 2)  # Channel 3 CAF
+tb.connect(caf_block, 3, sink, 3)  # Channel 4 CAF
+```
+
+**Programmatic API:**
+
+```python
+from kraken_passive_radar import FiveChannelDashboard, AOAEstimator
+
+# Create dashboard for remote server
+dashboard = FiveChannelDashboard(
+    base_url='https://radar3.retnode.com',
+    poll_interval=1.0,
+    max_range_km=60.0,
+)
+
+# Start display (blocking)
+dashboard.start()
+
+# AOA estimation utility
+aoa = AOAEstimator(
+    num_elements=4,
+    d_lambda=0.5,
+    array_type='ula'
+)
+angle = aoa.estimate(channel_phases)  # Returns angle in degrees
 ```
 
 ---

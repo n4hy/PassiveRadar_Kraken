@@ -13,6 +13,7 @@ Python blocks:
     TimeAlignmentBlock       - Delay/phase measurement (ctypes kernel)
     vector_zero_pad          - Zero-pad vectors for FFT alignment
     CalibrationController    - Automatic phase calibration
+    dashboard_sink           - 5-channel dashboard sink for direct flowgraph display
 
 C++ blocks (pybind11):
     eca_canceller            - VOLK-accelerated NLMS clutter canceller
@@ -38,6 +39,7 @@ from .calibration_controller import CalibrationController, CalibrationState, Cal
 from .eca_b_clutter_canceller import EcaBClutterCanceller
 from .custom_blocks import ConditioningBlock, CafBlock, BackendBlock, TimeAlignmentBlock
 from .vector_zero_pad import vector_zero_pad
+from .dashboard_sink import dashboard_sink
 
 # Import C++ blocks via pybind11 bindings (may not be available if not built/installed)
 try:
