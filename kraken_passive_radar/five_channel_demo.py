@@ -272,8 +272,17 @@ class FiveChannelDemo:
         self.detection_history.clear()
         self.maxhold_data = None
 
+    def _on_close(self, event):
+        """Handle figure close event."""
+        self.running = False
+        if self.anim is not None:
+            self.anim.event_source.stop()
+            self.anim = None
+
     def _update(self, frame):
         """Animation update."""
+        if not self.running or self.fig is None:
+            return []
         t = (time.time() - self._start_time) * self.speed_slider.val
         now = time.time()
 
@@ -381,8 +390,11 @@ class FiveChannelDemo:
             f'Runtime: {runtime:.0f}s  Targets: {len(self.targets)}  History: {len(self.detection_history)}'
         )
 
-        self.fig.canvas.draw_idle()
-        self.fig.canvas.flush_events()
+        try:
+            self.fig.canvas.draw_idle()
+            self.fig.canvas.flush_events()
+        except Exception:
+            pass
 
         return list(self.artists.values())
 
@@ -395,6 +407,9 @@ class FiveChannelDemo:
 
         self._setup_main_figure()
         self._setup_control_figure()
+
+        self.fig.canvas.mpl_connect('close_event', self._on_close)
+        self.ctrl_fig.canvas.mpl_connect('close_event', self._on_close)
 
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()
