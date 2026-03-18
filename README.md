@@ -22,12 +22,14 @@ GNU Radio Out-of-Tree (OOT) module for passive bistatic radar using the KrakenSD
 - [C++ Kernel Libraries](#c-kernel-libraries)
 - [Export Control Compliance](#export-control-compliance-itar-and-ear)
 - [Prerequisites](#prerequisites)
+  - [OS-Level Tuning (RPi5)](#os-level-tuning-raspberry-pi-5--multi-dongle-sdr)
 - [Building](#building)
 - [Running](#running)
 - [Testing](#testing)
 - [Display System](#display-system)
   - [Remote Delay-Doppler Display](#remote-delay-doppler-display)
   - [Enhanced Remote Display with Local Processing](#enhanced-remote-display-with-local-processing)
+  - [Five-Channel KrakenSDR Dashboard](#five-channel-krakensdr-dashboard)
 - [API Reference](#api-reference)
 - [Troubleshooting](#troubleshooting)
 - [License](#license)
@@ -510,6 +512,28 @@ sudo apt install -y \
 sudo apt install -y gnuradio-dtv gnuradio-filter
 ```
 
+### OS-Level Tuning (Raspberry Pi 5 / Multi-Dongle SDR)
+
+Running 5 RTL-SDR dongles at 2 MHz requires raised USB buffer limits. The default 16 MB `usbfs_memory_mb` causes continuous overruns.
+
+```bash
+# Raise USB buffer pool to 256 MB (required for 5-dongle KrakenSDR)
+sudo sh -c 'echo 256 > /sys/module/usbcore/parameters/usbfs_memory_mb'
+
+# Make persistent across reboots
+echo 'options usbcore usbfs_memory_mb=256' | sudo tee /etc/modprobe.d/usbcore-buffers.conf
+
+# Disable USB autosuspend for RTL-SDR devices
+echo 'ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0bda", ATTR{idProduct}=="2838", TEST=="power/autosuspend", ATTR{power/autosuspend}="-1"' \
+    | sudo tee /etc/udev/rules.d/99-rtlsdr-no-autosuspend.rules
+
+# Raise max memory map count (already set by project install)
+echo 'vm.max_map_count=2097152' | sudo tee /etc/sysctl.d/99-radar.conf
+sudo sysctl -p /etc/sysctl.d/99-radar.conf
+```
+
+**Note:** The RPi5 uses 16 KB kernel pages (vs 4 KB on x86_64), which causes GNU Radio's `buffer_double_mapped` to pad vector buffers to 512-item minimum. This is a kernel-level constraint and does not affect correctness, only memory usage.
+
 ### Optional - CPU Acceleration
 
 ```bash
@@ -652,14 +676,26 @@ print('tracker:', kpr.tracker)
 ### Full processing chain
 
 ```bash
-# Auto-select backend (use GPU if available, otherwise CPU)
-python3 run_passive_radar.py --freq 103.7e6 --gain 30
+# KrakenSDR with live 5-channel dashboard (recommended)
+python3 run_passive_radar.py --freq 103.7e6 --gain 30 --visualize
 
-# With Block B3 reference reconstruction (FM Radio - 10-15 dB improvement)
+# Range-Doppler only mode (lighter processing, no AoA/tracker)
+python3 run_passive_radar.py --freq 103.7e6 --gain 30 --skip-aoa --visualize
+
+# With FM reference reconstruction (10-15 dB sensitivity improvement)
 python3 run_passive_radar.py --freq 100e6 --gain 30 --b3-signal fm --visualize
 
-# With Block B3 (ATSC 3.0 - US urban areas, 15-20 dB improvement)
+# With ATSC 3.0 reference (US urban areas, 15-20 dB improvement)
 python3 run_passive_radar.py --freq 500e6 --gain 30 --b3-signal atsc3 --b3-fft-size 8192 --visualize
+
+# Headless operation (no GUI)
+python3 run_passive_radar.py --freq 103.7e6 --gain 30
+
+# Skip startup calibration (use saved calibration.json)
+python3 run_passive_radar.py --freq 103.7e6 --gain 30 --no-startup-cal --visualize
+
+# Reduce CPI for lower CPU load (fewer range bins, coarser resolution)
+python3 run_passive_radar.py --freq 103.7e6 --gain 30 --cpi-len 1024 --visualize
 
 # Force GPU backend (fail if GPU unavailable)
 export KRAKEN_GPU_BACKEND=gpu
@@ -670,18 +706,37 @@ export KRAKEN_GPU_BACKEND=cpu
 python3 run_passive_radar.py --freq 103.7e6 --gain 30
 ```
 
-Options:
-- `--freq` : Center frequency in Hz (default: 100 MHz)
-- `--gain` : Receiver gain in dB (default: 30)
-- `--geometry` : Array geometry, ULA or URA (default: ULA)
-- `--include-ref` : Include reference antenna in AoA array
-- `--no-startup-cal` : Skip startup calibration
-- `--visualize` : Show GUI display
+**Options:**
 
-**Block B3 Options (NEW):**
-- `--b3-signal` : Signal type: `passthrough`, `fm`, `atsc3`, `dvbt` (default: passthrough)
-- `--b3-fft-size` : OFDM FFT size: 2048, 4096, 8192, 16384, 32768 (default: 8192)
-- `--b3-guard-interval` : Guard interval in samples (default: 192 for ATSC 3.0 8K mode)
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--freq` | 103.7 MHz | Center frequency in Hz |
+| `--gain` | 30 | Receiver gain in dB |
+| `--geometry` | ULA | Array geometry: `ULA` or `URA` |
+| `--cpi-len` | 2048 | CPI length / range bins: 512, 1024, 2048, 4096 |
+| `--skip-aoa` | off | Skip AoA estimator and tracker (range-Doppler only) |
+| `--no-startup-cal` | off | Skip startup calibration (use saved calibration) |
+| `--recal-interval` | 120 | Periodic recalibration interval in seconds |
+| `--visualize` | off | Show live 5-channel dashboard GUI |
+| `--demo` | off | Demo mode with simulated data (no hardware) |
+
+**Block B3 Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--b3-signal` | passthrough | Signal type: `passthrough`, `fm`, `atsc3`, `dvbt` |
+| `--b3-fft-size` | 8192 | OFDM FFT size: 2048, 4096, 8192, 16384, 32768 |
+| `--b3-guard-interval` | 192 | Guard interval in samples (ATSC 3.0 8K default) |
+
+**RSPduo Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--source rspduo` | kraken | Use SDRplay RSPduo dual-tuner mode |
+| `--if-gain` | 40 | RSPduo IF gain in dB (20-59) |
+| `--rf-gain` | 0 | RSPduo RF gain reduction in dB (0-27) |
+| `--bandwidth` | auto | RSPduo analog bandwidth in Hz |
+| `--sample-rate` | 2e6 | Sample rate in Hz (max 2 MHz dual-tuner) |
 
 **GPU Backend Selection:**
 
@@ -1101,27 +1156,41 @@ python -m kraken_passive_radar.five_channel_demo
 # - All control panel interactions functional
 ```
 
-**GNU Radio Direct Integration:**
+**GNU Radio Direct Integration (Live Dashboard):**
 
-For direct KrakenSDR USB connection (no network), use the `dashboard_sink` GNU Radio block:
+For direct KrakenSDR USB connection (no network), use `--visualize` with `run_passive_radar.py`. This wires the `dashboard_sink` GNU Radio block into the flowgraph, receiving per-channel CAF power data directly from the Doppler processors:
+
+```bash
+# Recommended: live dashboard with KrakenSDR hardware
+python3 run_passive_radar.py --freq 103.7e6 --gain 30 --visualize
+
+# Skip AoA for lighter processing load on RPi5
+python3 run_passive_radar.py --freq 103.7e6 --gain 30 --skip-aoa --visualize
+```
+
+The `dashboard_sink` can also be used in custom flowgraphs:
 
 ```python
 from gnuradio import kraken_passive_radar as kpr
 
-# Create dashboard sink (receives CAF data from flowgraph)
+# Create dashboard sink (receives CAF power data from flowgraph)
+# Use external_display=True to run matplotlib in the main thread
 sink = kpr.dashboard_sink(
-    fft_len=1024,        # Range bins
-    doppler_len=256,     # Doppler bins
-    num_channels=4,      # Surveillance channels
-    sample_rate=2.4e6,   # Sample rate
-    center_freq=100e6    # Transmitter frequency
+    fft_len=2048,            # Range bins (CPI length)
+    doppler_len=256,         # Doppler bins
+    num_channels=4,          # Surveillance channels
+    sample_rate=2.0e6,       # Sample rate
+    center_freq=103.7e6,     # Transmitter frequency
+    external_display=True,   # Main-thread display (required for TkAgg/X11)
 )
 
-# Connect to your flowgraph
-tb.connect(caf_block, 0, sink, 0)  # Channel 1 CAF
-tb.connect(caf_block, 1, sink, 1)  # Channel 2 CAF
-tb.connect(caf_block, 2, sink, 2)  # Channel 3 CAF
-tb.connect(caf_block, 3, sink, 3)  # Channel 4 CAF
+# Connect to your flowgraph (power output from Doppler processors)
+for i in range(4):
+    tb.connect((doppler_power[i], 0), (sink, i))
+
+# Start flowgraph, then run display in main thread
+tb.start()
+sink.run_display_blocking()  # Blocks until window closed
 ```
 
 **Programmatic API:**
@@ -1350,6 +1419,47 @@ track_status_t.COASTING    # 2 - predicting, no measurement
 ---
 
 ## Troubleshooting
+
+### Continuous "OOOO" overruns with KrakenSDR
+
+The `O` characters indicate GNU Radio buffer overflows. A brief burst at startup is normal (PLL lock + initial buffer fill), but continuous overruns indicate the system can't keep up.
+
+**Most common cause: USB buffer limit too low.**
+
+```bash
+# Check current USB buffer limit
+cat /sys/module/usbcore/parameters/usbfs_memory_mb
+# If 0 or < 64, that's the problem
+
+# Fix: raise to 256 MB
+sudo sh -c 'echo 256 > /sys/module/usbcore/parameters/usbfs_memory_mb'
+
+# Make persistent
+echo 'options usbcore usbfs_memory_mb=256' | sudo tee /etc/modprobe.d/usbcore-buffers.conf
+```
+
+**Other causes and fixes:**
+
+| Symptom | Fix |
+|---------|-----|
+| Continuous O's from start | Raise `usbfs_memory_mb` to 256+ |
+| O's during processing | Reduce CPI: `--cpi-len 1024` |
+| O's with AoA enabled | Use `--skip-aoa` to halve processing load |
+| O's with FM reconstruction | Use `--b3-signal passthrough` |
+| `buffer_double_mapped` warnings | Harmless on RPi5 (16KB page alignment); ignore |
+
+**Note:** `run_passive_radar.py` performs an automatic preflight check and warns if `usbfs_memory_mb` is too low.
+
+### "usb_claim_interface error -6"
+
+Another process is holding the USB devices. Kill stale processes:
+
+```bash
+# Find and kill stale processes
+fuser /dev/bus/usb/003/* 2>/dev/null
+ps aux | grep run_passive_radar | grep -v grep
+kill -9 <PID>
+```
 
 ### "C++ pybind11 blocks not available"
 
