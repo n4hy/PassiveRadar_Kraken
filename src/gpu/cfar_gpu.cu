@@ -105,8 +105,8 @@ void cfar_gpu_2d(const float* input, float* output, int rows, int cols,
         return;
     }
 
-    // Launch CFAR kernel
-    dim3 threads(16, 16);  // 256 threads per block
+    // Launch CFAR kernel - optimized thread configuration for better occupancy
+    dim3 threads(32, 8);  // 256 threads per block, wider for memory coalescing
     dim3 blocks((cols + threads.x - 1) / threads.x,
                 (rows + threads.y - 1) / threads.y);
 

@@ -41,7 +41,7 @@ GNU Radio Out-of-Tree (OOT) module for passive bistatic radar using the KrakenSD
 
 **Platform**: x86_64 (NVIDIA RTX 5090), Python 3.12.3, GNU Radio 3.10.9
 
-**Date**: 2026-03-17
+**Date**: 2026-03-23
 
 ```
 ========================= test session starts =========================
@@ -130,9 +130,11 @@ PassiveRadar_Kraken now includes **optional GPU acceleration** for compute-inten
 - **Runtime backend selection**: Choose CPU or GPU at runtime via environment variable or Python API
 - **Automatic GPU detection**: Auto-selects GPU when available, gracefully falls back to CPU
 - **Multi-platform binaries**: Single codebase targets all platforms (sm_75/86/87/89)
-- **Validated kernels**: Doppler and CFAR GPU kernels production-ready with 1.0 correlation vs CPU
+- **Validated kernels**: All GPU kernels (CAF, Doppler, ECA, CFAR) production-ready with 1.0 correlation vs CPU
 - **Async execution**: CUDA streams enable overlapped memory transfers and computation
 - **Memory pooling**: Persistent allocations minimize overhead for real-time operation
+- **Comprehensive error handling**: cuFFT error checking, memory transfer validation, kernel launch verification
+- **Optimized thread configurations**: 32x8 thread blocks for improved memory coalescing and GPU occupancy
 
 ### GPU Requirements
 
@@ -474,6 +476,7 @@ Five CUDA libraries provide GPU-accelerated implementations of compute-intensive
 
 **Validation Status:**
 - ✅ **Validated**: 1.0 correlation with CPU reference, production-ready
+- ✅ **Audited (2026-03-23)**: Memory safety, cuFFT error handling, optimized thread blocks
 
 ---
 
@@ -1611,4 +1614,26 @@ MIT License. See [LICENSE](LICENSE).
 
 **Acknowledgments**: Claude (Anthropic) wrote every test, all documentation, the complete GPU acceleration implementation, and the Block B3 reference reconstruction system. It debugged my crappy python. The comprehensive test suite enabled diagnosis and validation of both hand-written code and AI-generated implementations.
 
-Last updated: 2026-03-17
+---
+
+### Recent Changes (2026-03-23)
+
+**GPU Kernel Audit & Fixes:**
+- Fixed critical `cudaMemcpyAsync` bug in `eca_gpu.cu` - invalid host-to-host copy with CUDA stream
+- Added cuFFT error checking to all FFT operations in `caf_gpu.cu` and `doppler_gpu.cu`
+- Optimized thread block configurations (16x16 → 32x8) for better memory coalescing
+
+**Remote Streaming Thread Safety:**
+- Fixed race condition in `remote_display.py` - data access outside lock
+- Replaced boolean stop flag with `threading.Event()` for reliable inter-thread signaling
+- Added thread join in `stop()` method for graceful shutdown
+- Added window close event handler to prevent orphaned polling threads
+- Added exponential backoff for connection retry on failures
+
+**Local Processing Thread Safety:**
+- Added `threading.Lock` to `MultiTargetTracker` for safe multi-threaded access
+- Protected all public methods (`update()`, `get_all_tracks()`, `reset()`, etc.)
+
+**All 251 tests passing** including 32 GPU-specific tests.
+
+Last updated: 2026-03-23

@@ -14,6 +14,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <atomic>
 
 /**
@@ -418,8 +419,9 @@ void eca_gpu_process(void* handle, const float* ref_in, const float* surv_in,
         proc->d_output, proc->h_output_pinned, n_samples
     );
 
-    cudaMemcpyAsync(out_err, proc->h_output_pinned, 2 * n_samples * sizeof(float),
-                    cudaMemcpyHostToHost, proc->stream);
+    // Synchronize before host-to-host copy (streams don't support H2H)
+    cudaStreamSynchronize(proc->stream);
+    memcpy(out_err, proc->h_output_pinned, 2 * n_samples * sizeof(float));
 
     // Update history
     cudaMemcpyAsync(proc->d_ref_history,

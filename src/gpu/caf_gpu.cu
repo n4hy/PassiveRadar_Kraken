@@ -424,15 +424,27 @@ void caf_gpu_process_full(void* handle, const float* ref, const float* surv,
     // Step 3: FFT surveillance (single, unshifted)
     // ========================================================================
 
-    cufftExecC2C(proc->fft_plan_single, proc->d_surveillance,
-                 proc->d_surveillance_fft, CUFFT_FORWARD);
+    {
+        cufftResult fft_result = cufftExecC2C(proc->fft_plan_single, proc->d_surveillance,
+                                              proc->d_surveillance_fft, CUFFT_FORWARD);
+        if (fft_result != CUFFT_SUCCESS) {
+            fprintf(stderr, "cuFFT Error in %s:%d: surveillance FFT failed (code %d)\n",
+                    __FILE__, __LINE__, fft_result);
+        }
+    }
 
     // ========================================================================
     // Step 4: FFT Doppler-shifted reference (batched - all Doppler bins)
     // ========================================================================
 
-    cufftExecC2C(proc->fft_plan_batch, proc->d_ref_doppler_shifted,
-                 proc->d_reference_fft_batch, CUFFT_FORWARD);
+    {
+        cufftResult fft_result = cufftExecC2C(proc->fft_plan_batch, proc->d_ref_doppler_shifted,
+                                              proc->d_reference_fft_batch, CUFFT_FORWARD);
+        if (fft_result != CUFFT_SUCCESS) {
+            fprintf(stderr, "cuFFT Error in %s:%d: reference FFT failed (code %d)\n",
+                    __FILE__, __LINE__, fft_result);
+        }
+    }
 
     // ========================================================================
     // Step 5: Cross-correlation multiply: Surv_FFT * conj(Ref_FFT)
@@ -450,8 +462,14 @@ void caf_gpu_process_full(void* handle, const float* ref, const float* surv,
     // Step 6: IFFT (batched - all Doppler bins)
     // ========================================================================
 
-    cufftExecC2C(proc->ifft_plan_batch, proc->d_cross_corr,
-                 proc->d_cross_corr, CUFFT_INVERSE);
+    {
+        cufftResult fft_result = cufftExecC2C(proc->ifft_plan_batch, proc->d_cross_corr,
+                                              proc->d_cross_corr, CUFFT_INVERSE);
+        if (fft_result != CUFFT_SUCCESS) {
+            fprintf(stderr, "cuFFT Error in %s:%d: IFFT failed (code %d)\n",
+                    __FILE__, __LINE__, fft_result);
+        }
+    }
 
     // ========================================================================
     // Step 7: Extract magnitude (only first n_range samples)

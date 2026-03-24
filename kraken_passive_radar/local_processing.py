@@ -10,6 +10,7 @@ SPDX-License-Identifier: MIT
 """
 
 import ctypes
+import threading
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -566,6 +567,7 @@ class MultiTargetTracker:
         self.measurement_noise = measurement_noise
         self.max_history = max_history
 
+        self._lock = threading.Lock()  # Thread safety for multi-threaded access
         self._tracks: dict = {}  # track_id -> (KalmanFilter, Track)
         self._next_id = 1
 
@@ -576,6 +578,11 @@ class MultiTargetTracker:
         Args:
             detections: List of Detection objects from current frame.
         """
+        with self._lock:
+            self._update_internal(detections)
+
+    def _update_internal(self, detections: List[Detection]) -> None:
+        """Internal update implementation (caller must hold lock)."""
         # Predict all existing tracks
         self._predict_all()
 
@@ -713,23 +720,27 @@ class MultiTargetTracker:
 
     def get_confirmed_tracks(self) -> List[Track]:
         """Get all confirmed tracks."""
-        return [track for kf, track in self._tracks.values()
-                if track.status == TrackStatus.CONFIRMED]
+        with self._lock:
+            return [track for kf, track in self._tracks.values()
+                    if track.status == TrackStatus.CONFIRMED]
 
     def get_all_tracks(self) -> List[Track]:
         """Get all active tracks (not deleted)."""
-        return [track for kf, track in self._tracks.values()
-                if track.status != TrackStatus.DELETED]
+        with self._lock:
+            return [track for kf, track in self._tracks.values()
+                    if track.status != TrackStatus.DELETED]
 
     def get_coasting_tracks(self) -> List[Track]:
         """Get tracks in coasting mode."""
-        return [track for kf, track in self._tracks.values()
-                if track.status == TrackStatus.COASTING]
+        with self._lock:
+            return [track for kf, track in self._tracks.values()
+                    if track.status == TrackStatus.COASTING]
 
     def reset(self) -> None:
         """Clear all tracks."""
-        self._tracks.clear()
-        self._next_id = 1
+        with self._lock:
+            self._tracks.clear()
+            self._next_id = 1
 
 
 # ---------------------------------------------------------------------------

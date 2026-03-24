@@ -63,7 +63,7 @@ class RemoteRadarDisplay:
         self.cursor_text = None
 
         # State
-        self.running = False
+        self._stop_event = threading.Event()
         self._poll_thread = None
 
     # ------------------------------------------------------------------ #
@@ -75,6 +75,10 @@ class RemoteRadarDisplay:
     def _fetch_json(self, endpoint: str, timeout: float = 5.0):
         """Fetch JSON from an API endpoint. Returns dict or None on error."""
         url = f'{self.base_url}{endpoint}'
+        # Exponential backoff on repeated failures (max 3s delay)
+        if self.fetch_errors > 0:
+            backoff = min(0.1 * (2 ** min(self.fetch_errors - 1, 5)), 3.0)
+            time.sleep(backoff)
         try:
             req = urllib.request.Request(url, headers={'User-Agent': self._UA})
             with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -87,7 +91,7 @@ class RemoteRadarDisplay:
 
     def _poll_loop(self):
         """Background thread: fetch map + detections at poll_interval."""
-        while self.running:
+        while not self._stop_event.is_set():
             t0 = time.monotonic()
 
             map_data = self._fetch_json('/api/map')
@@ -117,7 +121,8 @@ class RemoteRadarDisplay:
             elapsed = time.monotonic() - t0
             sleep_time = max(0, self.poll_interval - elapsed)
             if sleep_time > 0:
-                time.sleep(sleep_time)
+                # Use event wait for interruptible sleep
+                self._stop_event.wait(sleep_time)
 
     # ------------------------------------------------------------------ #
     #  Display
@@ -172,11 +177,12 @@ class RemoteRadarDisplay:
         )
 
         self.fig.canvas.mpl_connect('motion_notify_event', self._on_mouse_move)
+        self.fig.canvas.mpl_connect('close_event', lambda evt: self.stop())
         self.fig.tight_layout()
 
     def _on_mouse_move(self, event):
         """Cursor readout."""
-        if event.inaxes != self.ax or self.map_data is None:
+        if event.inaxes != self.ax:
             self.cursor_text.set_text('')
             return
         x, y = event.xdata, event.ydata
@@ -185,10 +191,12 @@ class RemoteRadarDisplay:
 
         with self.lock:
             if self.delay is None or self.doppler is None or self.map_data is None:
+                self.cursor_text.set_text('')
                 return
-            delay = self.delay
+            # Copy data inside lock to prevent race conditions
+            delay = self.delay.copy()
             doppler = np.sort(self.doppler)
-            data = self.map_data[np.argsort(self.doppler), :]
+            data = self.map_data[np.argsort(self.doppler), :].copy()
 
         # Find nearest bin
         ri = np.searchsorted(delay, x)
@@ -273,7 +281,7 @@ class RemoteRadarDisplay:
 
     def start(self, blocking: bool = True):
         """Start polling and display."""
-        self.running = True
+        self._stop_event.clear()
 
         # Start background fetch thread
         self._poll_thread = threading.Thread(target=self._poll_loop, daemon=True)
@@ -295,7 +303,10 @@ class RemoteRadarDisplay:
 
     def stop(self):
         """Stop polling and close display."""
-        self.running = False
+        self._stop_event.set()
+        # Wait for polling thread to finish
+        if self._poll_thread is not None and self._poll_thread.is_alive():
+            self._poll_thread.join(timeout=2.0)
         if hasattr(self, 'anim') and self.anim is not None:
             self.anim.event_source.stop()
             self.anim = None

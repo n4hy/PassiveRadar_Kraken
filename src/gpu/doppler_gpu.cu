@@ -307,7 +307,7 @@ void doppler_gpu_process(void* handle, const float* input, float* output) {
     // ========================================================================
     // Step 2: Apply Hamming window
     // ========================================================================
-    dim3 threads(16, 16);
+    dim3 threads(32, 8);  // Optimized for better occupancy on modern GPUs
     dim3 blocks((proc->fft_len + threads.x - 1) / threads.x,
                 (proc->doppler_len + threads.y - 1) / threads.y);
 
@@ -369,7 +369,7 @@ void doppler_gpu_process_complex(void* handle, const float* input, float* output
     // ========================================================================
     // Step 2: Apply Hamming window
     // ========================================================================
-    dim3 threads(16, 16);
+    dim3 threads(32, 8);  // Optimized for better occupancy on modern GPUs
     dim3 blocks((proc->fft_len + threads.x - 1) / threads.x,
                 (proc->doppler_len + threads.y - 1) / threads.y);
 
@@ -381,7 +381,11 @@ void doppler_gpu_process_complex(void* handle, const float* input, float* output
     // ========================================================================
     // Step 3: Batched FFT (all columns in parallel)
     // ========================================================================
-    cufftExecC2C(proc->fft_plan, proc->d_input, proc->d_output, CUFFT_FORWARD);
+    cufftResult fft_err = cufftExecC2C(proc->fft_plan, proc->d_input, proc->d_output, CUFFT_FORWARD);
+    if (fft_err != CUFFT_SUCCESS) {
+        fprintf(stderr, "cuFFT exec failed in doppler_gpu_process_complex: %d\n", (int)fft_err);
+        return;
+    }
 
     // ========================================================================
     // Step 4: FFT shift for complex output
