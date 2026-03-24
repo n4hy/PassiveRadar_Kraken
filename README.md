@@ -1700,7 +1700,7 @@ MIT License. See [LICENSE](LICENSE).
 
 **All 251 tests passing** including 32 GPU-specific tests.
 
-**2026-03-24 Fixes**: Noise source GPIO now uses direct libusb vendor control transfers (bypasses rtlsdr_open USB interface conflict with osmosdr). Dashboard switched from plt.pause() to FuncAnimation+plt.show() (fixes X11 forwarding timeout after ~2 min). PhaseCorrectorBlock adds 1s settling period (outputs zeros during PLL lock, reduces startup overflow burst). Runtime artifacts added to .gitignore.
+**2026-03-24 Fixes**: Noise source GPIO now uses direct libusb vendor control transfers (bypasses rtlsdr_open USB interface conflict with osmosdr). Dashboard switched from plt.pause() to FuncAnimation+plt.show() (fixes X11 forwarding timeout after ~2 min). PhaseCorrectorBlock adds 1s settling period (outputs zeros during PLL lock, reduces startup overflow burst). Runtime artifacts added to .gitignore. **Remote display shutdown responsiveness**: All dashboard modules (`enhanced_remote_display.py`, `multi_display_dashboard.py`, `five_channel_dashboard.py`) now use interruptible `threading.Event.wait()` instead of blocking `time.sleep()` for immediate stop() response. Added `close_event` handlers to all figure windows for proper cleanup when user closes display.
 
 **Acknowledgments**: Claude (Anthropic) wrote every test, all documentation, the complete GPU acceleration implementation, the Block B3 reference reconstruction system, and the 2026-03-23 comprehensive audit. It debugged my crappy python. The comprehensive test suite enabled diagnosis and validation of both hand-written code and AI-generated implementations.
 
