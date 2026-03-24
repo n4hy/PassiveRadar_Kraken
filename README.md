@@ -912,17 +912,19 @@ Run your own CFAR detection, clustering, and multi-target tracking on delay-Dopp
 
 ```bash
 # Server detections only (default, same as remote_display)
+python3 kraken_passive_radar/enhanced_remote_display.py
+# Or as module:
 python -m kraken_passive_radar.enhanced_remote_display
 
 # Enable local CFAR/clustering/tracking pipeline
-python -m kraken_passive_radar.enhanced_remote_display --local
+python3 kraken_passive_radar/enhanced_remote_display.py --local
 
 # Custom CFAR parameters
-python -m kraken_passive_radar.enhanced_remote_display --local \
+python3 kraken_passive_radar/enhanced_remote_display.py --local \
     --cfar-guard 2 --cfar-train 8 --cfar-threshold 10
 
 # Custom tracker parameters
-python -m kraken_passive_radar.enhanced_remote_display --local \
+python3 kraken_passive_radar/enhanced_remote_display.py --local \
     --track-confirm 2 --track-delete 3 --track-gate 150
 ```
 
