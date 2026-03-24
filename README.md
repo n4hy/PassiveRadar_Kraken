@@ -267,6 +267,8 @@ KrakenSDR 5-Channel Coherent SDR
 
 The KrakenSDR has an internal wideband noise source with a high-isolation silicon switch. When the noise source is enabled, the switch physically disconnects all antennas and routes only the internal noise to all 5 receivers. This provides a common reference signal for measuring inter-channel phase offsets. The `CalibrationController` automates this cycle and the `coherence_monitor` block triggers it when phase drift is detected.
 
+**Noise source control** uses direct libusb vendor control transfers to the RTL2832U GPIO registers (endpoint 0), bypassing `rtlsdr_open()` which would conflict with osmosdr's claimed bulk transfer interface. This allows noise source toggling during live streaming for periodic recalibration.
+
 ---
 
 ## Project Structure
@@ -364,7 +366,7 @@ Source -> PhaseCorr -> AGC -> Block B3 (NEW!) -> ECA(C++) -> CAF -> Doppler(C++)
 | Stage | Block | Language | Description |
 |-------|-------|----------|-------------|
 | 1 | `krakensdr_source` | Python | 5-channel osmosdr source wrapper |
-| 2 | `PhaseCorrectorBlock` | Python | Applies calibration phase + drift rate correction (sample-count-based timing) |
+| 2 | `PhaseCorrectorBlock` | Python | Applies calibration phase + drift rate correction (sample-count-based timing, 1s settling period) |
 | 3 | `ConditioningBlock` | Python+ctypes | AGC / signal conditioning (gain-limited, silence-safe) |
 | **3b** | **`dvbt_reconstructor`** | **C++ (FFTW/Eigen3)** | **Reference signal reconstruction (10-20 dB improvement)** |
 | 4 | `eca_canceller` | C++ (VOLK) | NLMS adaptive clutter cancellation |
@@ -932,9 +934,9 @@ The `kraken_passive_radar/` package provides Tkinter + matplotlib visualization:
 
 | Module | Description |
 |--------|-------------|
-| `dashboard_sink` | GNU Radio sink block for direct KrakenSDR flowgraph integration |
+| `dashboard_sink` | GNU Radio sink block for direct KrakenSDR flowgraph integration (FuncAnimation + Tk mainloop) |
 
-The display system automatically selects the `Agg` matplotlib backend when no display server is available (headless operation).
+The `dashboard_sink` uses `FuncAnimation` with matplotlib's native Tk event loop for reliable operation over X11 forwarding. The display system automatically selects the `Agg` matplotlib backend when no display server is available (headless operation).
 
 ### Remote Delay-Doppler Display
 
@@ -1480,7 +1482,7 @@ track_status_t.COASTING    # 2 - predicting, no measurement
 
 ### Continuous "OOOO" overruns with KrakenSDR
 
-The `O` characters indicate GNU Radio buffer overflows. A brief burst at startup is normal (PLL lock + initial buffer fill), but continuous overruns indicate the system can't keep up.
+The `O` characters indicate GNU Radio buffer overflows. A brief burst at startup is normal (PLL lock + initial buffer fill) and is mitigated by the 1-second settling period in `PhaseCorrectorBlock` which outputs zeros while R820T PLLs lock. Continuous overruns indicate the system can't keep up.
 
 **Most common cause: USB buffer limit too low.**
 
@@ -1510,7 +1512,7 @@ echo 'options usbcore usbfs_memory_mb=256' | sudo tee /etc/modprobe.d/usbcore-bu
 
 ### "usb_claim_interface error -6"
 
-Another process is holding the USB devices. Kill stale processes:
+Another process is holding the USB devices. This can happen if a stale `run_passive_radar.py` or `rtl_sdr` process is still running:
 
 ```bash
 # Find and kill stale processes
@@ -1518,6 +1520,8 @@ fuser /dev/bus/usb/003/* 2>/dev/null
 ps aux | grep run_passive_radar | grep -v grep
 kill -9 <PID>
 ```
+
+**Note:** The noise source GPIO control no longer causes this error during periodic recalibration. It now uses direct libusb vendor control transfers to endpoint 0, which bypass interface claiming entirely.
 
 ### "C++ pybind11 blocks not available"
 
@@ -1696,6 +1700,8 @@ MIT License. See [LICENSE](LICENSE).
 
 **All 251 tests passing** including 32 GPU-specific tests.
 
+**2026-03-24 Fixes**: Noise source GPIO now uses direct libusb vendor control transfers (bypasses rtlsdr_open USB interface conflict with osmosdr). Dashboard switched from plt.pause() to FuncAnimation+plt.show() (fixes X11 forwarding timeout after ~2 min). PhaseCorrectorBlock adds 1s settling period (outputs zeros during PLL lock, reduces startup overflow burst). Runtime artifacts added to .gitignore.
+
 **Acknowledgments**: Claude (Anthropic) wrote every test, all documentation, the complete GPU acceleration implementation, the Block B3 reference reconstruction system, and the 2026-03-23 comprehensive audit. It debugged my crappy python. The comprehensive test suite enabled diagnosis and validation of both hand-written code and AI-generated implementations.
 
-Last updated: 2026-03-23
+Last updated: 2026-03-24
