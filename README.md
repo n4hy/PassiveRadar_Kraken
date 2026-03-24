@@ -1620,6 +1620,11 @@ MIT License. See [LICENSE](LICENSE).
 
 ### Recent Changes (2026-03-23)
 
+**EnhancedRemoteRadarDisplay Fix:**
+- Fixed `AttributeError: 'EnhancedRemoteRadarDisplay' object has no attribute 'running'`
+- Child class `_poll_loop()` was using `self.running` but parent class uses `self._stop_event`
+- Changed to `not self._stop_event.is_set()` to match parent class pattern
+
 **GPU Kernel Audit & Fixes:**
 - Fixed critical `cudaMemcpyAsync` bug in `eca_gpu.cu` - invalid host-to-host copy with CUDA stream
 - Added cuFFT error checking to all FFT operations in `caf_gpu.cu` and `doppler_gpu.cu`

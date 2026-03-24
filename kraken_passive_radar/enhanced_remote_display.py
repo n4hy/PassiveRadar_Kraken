@@ -134,7 +134,7 @@ class EnhancedRemoteRadarDisplay(RemoteRadarDisplay):
 
     def _poll_loop(self):
         """Background thread: fetch map + detections and run local processing."""
-        while self.running:
+        while not self._stop_event.is_set():
             t0 = time.monotonic()
 
             # Fetch map data
