@@ -243,13 +243,22 @@ class dashboard_sink(gr.sync_block):
     def _on_close(self, event):
         """Handle figure close event gracefully."""
         self._running = False
-        if self.anim is not None and self.anim.event_source is not None:
-            self.anim.event_source.stop()
+        if self.anim is not None:
+            try:
+                if self.anim.event_source is not None:
+                    self.anim.event_source.stop()
+            except Exception:
+                pass
             self.anim = None
 
     def _run_display(self):
-        """Run display - uses manual update loop for X11 robustness."""
-        plt.ion()
+        """Run display using FuncAnimation for proper X11 event loop handling.
+
+        The previous plt.pause() loop timed out over X11 forwarding after ~2 min.
+        FuncAnimation uses the backend's native timer (Tk mainloop) which properly
+        handles X11 events and keep-alive without idle timeouts.
+        """
+        plt.ioff()
 
         self._setup_main_figure()
         self._setup_control_figure()
@@ -257,30 +266,16 @@ class dashboard_sink(gr.sync_block):
         self.fig.canvas.mpl_connect('close_event', self._on_close)
         self.ctrl_fig.canvas.mpl_connect('close_event', self._on_close)
 
-        self.fig.canvas.draw()
-        self.fig.canvas.flush_events()
-        self.ctrl_fig.canvas.draw()
-        self.ctrl_fig.canvas.flush_events()
+        interval_ms = max(1, int(1000.0 / self.update_rate))
+        self.anim = FuncAnimation(
+            self.fig,
+            self._update_display,
+            interval=interval_ms,
+            repeat=True,
+            cache_frame_data=False,
+        )
 
-        # Manual update loop instead of FuncAnimation for X11 stability
-        interval = 1.0 / self.update_rate
-        frame = 0
-        while self._running:
-            try:
-                if self.fig is None:
-                    break
-                self._update_display(frame)
-                self.fig.canvas.draw_idle()
-                self.fig.canvas.flush_events()
-                if self.ctrl_fig is not None:
-                    self.ctrl_fig.canvas.flush_events()
-                frame += 1
-                plt.pause(interval)
-            except Exception as e:
-                if not self._running:
-                    break
-                print(f"Display error: {e}")
-                break
+        plt.show()  # Blocking - uses backend's native event loop (Tk mainloop)
 
     def _setup_main_figure(self):
         """Setup main display figure."""

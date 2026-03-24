@@ -142,6 +142,17 @@ secrets/
 .env.*
 
 ############################################
+# Runtime artifacts (calibration, screenshots, test outputs)
+############################################
+calibration.json
+drift_log.json
+periodic_cal_log.json
+offline_test_map.ppm
+DelayDoppler.png
+dashboard_screenshot.png
+live_dashboard.png
+
+############################################
 # Non-project files
 ############################################
 get-docker.sh

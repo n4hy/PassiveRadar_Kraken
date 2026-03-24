@@ -121,7 +121,8 @@ class PhaseCorrectorBlock(gr.sync_block):
 
     def __init__(self, cal_controller: CalibrationController, channel: int,
                  initial_phase: float = 0.0, drift_rate: float = 0.0,
-                 cal_timestamp: float = 0.0, sample_rate: float = 2.4e6):
+                 cal_timestamp: float = 0.0, sample_rate: float = 2.4e6,
+                 settling_samples: int = 0):
         gr.sync_block.__init__(
             self,
             name=f"Phase Corrector Ch{channel}",
@@ -140,6 +141,11 @@ class PhaseCorrectorBlock(gr.sync_block):
         self._cached_phasor = np.complex64(1.0)
         self._cached_correction = 0.0
 
+        # Settling period: output zeros while R820T PLLs lock and USB buffers
+        # stabilize. Downstream blocks process zeros trivially, reducing the
+        # startup overflow burst from ~5-10s to ~1-2s.
+        self._settling_remaining = settling_samples
+
     def update_calibration(self, phase_rad: float, drift_rate_rad: float, timestamp: float):
         """Update phase correction parameters after a recalibration."""
         self.initial_phase = phase_rad
@@ -150,6 +156,12 @@ class PhaseCorrectorBlock(gr.sync_block):
     def work(self, input_items, output_items):
         samples = input_items[0]
         n_samples = len(samples)
+
+        # Settling period: output zeros while PLLs lock
+        if self._settling_remaining > 0:
+            self._settling_remaining -= n_samples
+            output_items[0][:n_samples] = 0
+            return n_samples
 
         if self.cal_controller.is_calibrating:
             # During calibration: feed samples to controller and output zeros
@@ -257,6 +269,8 @@ class PassiveRadarTopBlock(gr.top_block):
 
             # 1c. Phase Corrector Blocks (one per channel)
             # Pass initial calibration (phase + drift rate) from startup cal
+            # 1 second settling period for R820T PLL lock + USB buffer fill
+            settling_samples = int(1.0 * self.sample_rate)
             self.phase_correctors = []
             for i in range(5):
                 blk = PhaseCorrectorBlock(
@@ -266,6 +280,7 @@ class PassiveRadarTopBlock(gr.top_block):
                     drift_rate=float(self.drift_rates[i]),
                     cal_timestamp=self.cal_timestamp,
                     sample_rate=self.sample_rate,
+                    settling_samples=settling_samples,
                 )
                 self.phase_correctors.append(blk)
                 self.connect((self.source, i), (blk, 0))
