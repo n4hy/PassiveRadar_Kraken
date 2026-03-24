@@ -321,6 +321,7 @@ class FiveChannelDashboard:
 
         # State
         self.running = False
+        self._stop_event = threading.Event()
         self._poll_thread = None
         self._start_time = None
 
@@ -489,7 +490,8 @@ class FiveChannelDashboard:
             elapsed = time.monotonic() - t0
             sleep_time = max(0, self.poll_interval - elapsed)
             if sleep_time > 0:
-                time.sleep(sleep_time)
+                # Use event wait for interruptible sleep
+                self._stop_event.wait(sleep_time)
 
     def _simulate_per_channel_cafs(self, fused: np.ndarray) -> List[np.ndarray]:
         """
@@ -615,6 +617,9 @@ class FiveChannelDashboard:
         )
 
         self.fig.tight_layout()
+
+        # Handle window close events
+        self.fig.canvas.mpl_connect('close_event', lambda evt: self.stop())
 
         # Separate control panel window
         self._setup_control_window()
@@ -1060,6 +1065,9 @@ class FiveChannelDashboard:
         self.widgets['btn_clear'] = Button(ax_clear, 'Clear History')
         self.widgets['btn_clear'].on_clicked(self._on_clear)
 
+        # Handle control window close event
+        self.ctrl_fig.canvas.mpl_connect('close_event', lambda evt: self.stop())
+
     def _on_cfar_type_changed(self, label):
         """Handle CFAR type radio button change."""
         self.params.cfar_type = label.lower()
@@ -1450,6 +1458,7 @@ class FiveChannelDashboard:
     def stop(self):
         """Stop polling and close displays."""
         self.running = False
+        self._stop_event.set()  # Interrupt any blocking wait
         if hasattr(self, 'anim') and self.anim is not None:
             self.anim.event_source.stop()
             self.anim = None

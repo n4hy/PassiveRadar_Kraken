@@ -198,7 +198,8 @@ class EnhancedRemoteRadarDisplay(RemoteRadarDisplay):
             elapsed = time.monotonic() - t0
             sleep_time = max(0, self.poll_interval - elapsed)
             if sleep_time > 0:
-                time.sleep(sleep_time)
+                # Use event wait for interruptible sleep (matches parent class)
+                self._stop_event.wait(sleep_time)
 
     def _setup_plot(self):
         """Create the matplotlib figure with enhanced overlays."""
@@ -266,6 +267,7 @@ class EnhancedRemoteRadarDisplay(RemoteRadarDisplay):
             self.ax.legend(loc='upper right', fontsize=8)
 
         self.fig.canvas.mpl_connect('motion_notify_event', self._on_mouse_move)
+        self.fig.canvas.mpl_connect('close_event', lambda evt: self.stop())
         self.fig.tight_layout()
 
     def _update_frame(self, frame_num):

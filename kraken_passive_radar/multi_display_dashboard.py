@@ -153,6 +153,7 @@ class MultiDisplayDashboard:
 
         # State
         self.running = False
+        self._stop_event = threading.Event()
         self._poll_thread = None
         self._start_time = None
 
@@ -312,7 +313,8 @@ class MultiDisplayDashboard:
             elapsed = time.monotonic() - t0
             sleep_time = max(0, self.poll_interval - elapsed)
             if sleep_time > 0:
-                time.sleep(sleep_time)
+                # Use event wait for interruptible sleep
+                self._stop_event.wait(sleep_time)
 
     def _run_local_processing(
         self, data: np.ndarray, delay: np.ndarray, doppler: np.ndarray
@@ -405,6 +407,9 @@ class MultiDisplayDashboard:
             fontfamily='monospace', color='black',
             bbox=dict(boxstyle='round,pad=0.3', facecolor='lightyellow', alpha=0.9),
         )
+
+        # Handle window close event
+        self.fig.canvas.mpl_connect('close_event', lambda evt: self.stop())
 
     def _setup_delay_doppler_panel(self, ax, title: str):
         """Setup a delay-Doppler heatmap panel."""
@@ -975,6 +980,7 @@ class MultiDisplayDashboard:
     def stop(self):
         """Stop polling and close display."""
         self.running = False
+        self._stop_event.set()  # Interrupt any blocking wait
         if hasattr(self, 'anim') and self.anim is not None:
             self.anim.event_source.stop()
             self.anim = None
