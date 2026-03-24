@@ -29,15 +29,26 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
-from .remote_display import RemoteRadarDisplay
-from .local_processing import (
-    CfarDetector,
-    DetectionClusterer,
-    MultiTargetTracker,
-    Detection,
-    Track,
-    TrackStatus,
-)
+try:
+    from .remote_display import RemoteRadarDisplay
+    from .local_processing import (
+        CfarDetector,
+        DetectionClusterer,
+        MultiTargetTracker,
+        Detection,
+        Track,
+        TrackStatus,
+    )
+except ImportError:
+    from remote_display import RemoteRadarDisplay
+    from local_processing import (
+        CfarDetector,
+        DetectionClusterer,
+        MultiTargetTracker,
+        Detection,
+        Track,
+        TrackStatus,
+    )
 
 
 class EnhancedRemoteRadarDisplay(RemoteRadarDisplay):
