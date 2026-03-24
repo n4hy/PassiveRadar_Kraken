@@ -12,6 +12,10 @@
 #include <cstring>
 #include <cmath>
 
+#ifdef HAVE_OPTMATHKERNELS
+#include <optmath/neon_kernels.hpp>
+#endif
+
 namespace gr {
 namespace kraken_passive_radar {
 
@@ -144,8 +148,13 @@ void eca_canceller_impl::nlms_filter_complex(
             const float* ref_window_im = &ref_im[n - d_num_taps + 1];
 
             float power_re, power_im;
+#ifdef HAVE_OPTMATHKERNELS
+            power_re = optmath::neon::neon_dot_f32(ref_window_re, ref_window_re, d_num_taps);
+            power_im = optmath::neon::neon_dot_f32(ref_window_im, ref_window_im, d_num_taps);
+#else
             volk_32f_x2_dot_prod_32f(&power_re, ref_window_re, ref_window_re, d_num_taps);
             volk_32f_x2_dot_prod_32f(&power_im, ref_window_im, ref_window_im, d_num_taps);
+#endif
             ref_power += power_re + power_im;
         } else {
             // Startup transient: manual loop with bounds checking

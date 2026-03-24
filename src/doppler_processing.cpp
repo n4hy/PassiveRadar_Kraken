@@ -87,20 +87,38 @@ public:
     void process_column(const Complex* input, int r, std::vector<Complex>& result) {
         result.resize(doppler_len);
 
-        // 1. Extract and Window -> Copy to FFTW input
+        // 1. Extract column and apply window -> Copy to FFTW input
         for (int d = 0; d < doppler_len; ++d) {
-            Complex val = input[d * fft_len + r] * window[d];
-            in_buf[d][0] = val.real();
-            in_buf[d][1] = val.imag();
+            in_buf[d][0] = input[d * fft_len + r].real();
+            in_buf[d][1] = input[d * fft_len + r].imag();
         }
+        // Apply window function to extracted column
+#if HAVE_OPTMATHKERNELS
+        {
+            // in_buf is fftwf_complex (interleaved float[2]), treat as separate re/im
+            // Extract re/im, apply window, put back
+            std::vector<float> col_re(doppler_len), col_im(doppler_len);
+            for (int d = 0; d < doppler_len; ++d) {
+                col_re[d] = in_buf[d][0];
+                col_im[d] = in_buf[d][1];
+            }
+            optmath::radar::apply_window_complex_f32(col_re.data(), col_im.data(), window.data(), doppler_len);
+            for (int d = 0; d < doppler_len; ++d) {
+                in_buf[d][0] = col_re[d];
+                in_buf[d][1] = col_im[d];
+            }
+        }
+#else
+        for (int d = 0; d < doppler_len; ++d) {
+            in_buf[d][0] *= window[d];
+            in_buf[d][1] *= window[d];
+        }
+#endif
 
         // 2. FFT
         fftwf_execute(plan);
 
-        // 3. FFT Shift and Copy to result
-        // Shift: Swap first half and second half
-        int half = doppler_len / 2;
-        int odd = doppler_len % 2; // Usually 0 for powers of 2, but FFTW handles any size
+        // 3. FFT Shift: swap halves to center DC
 
         // If even: 0..half-1 -> half..end; half..end -> 0..half-1
         // If odd (N=3): half=1. 0(1) -> 2; 1(2) -> 0; 2(3) -> 1?
@@ -110,21 +128,16 @@ public:
         // Let's stick to even/simple logic or use a helper.
         // Using (i + half) % N for destination index works for even N.
 
-        // Copy out_buf to result with shift
-        for (int i = 0; i < doppler_len; ++i) {
-            int dest_idx = (i + (doppler_len + 1) / 2) % doppler_len; // General shift formula?
-            // NumPy: [0, 1, 2] -> [2, 0, 1].
-            // i=0 -> dest=2. (0 + 2)%3 = 2.
-            // i=1 -> dest=0. (1 + 2)%3 = 0.
-            // i=2 -> dest=1. (2 + 2)%3 = 1.
-            // Correct.
-
-            // Wait, usually we read FROM shifted index?
-            // We want result[0] to be the most negative frequency.
-            // That corresponds to index (N+1)/2 in the FFT output.
-
-            int src_idx = (i + (doppler_len + 1) / 2) % doppler_len;
-            result[i] = Complex(out_buf[src_idx][0], out_buf[src_idx][1]);
+        // FFT shift: swap halves to center DC (NumPy fftshift convention)
+        // For N elements, second half starts at index (N+1)/2
+        const int shift = (doppler_len + 1) / 2;
+        // First half of output: read from [shift..doppler_len-1]
+        for (int i = 0; i < doppler_len - shift; ++i) {
+            result[i] = Complex(out_buf[shift + i][0], out_buf[shift + i][1]);
+        }
+        // Second half of output: read from [0..shift-1]
+        for (int i = 0; i < shift; ++i) {
+            result[doppler_len - shift + i] = Complex(out_buf[i][0], out_buf[i][1]);
         }
     }
 

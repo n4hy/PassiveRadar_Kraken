@@ -114,12 +114,26 @@ public:
         float max_mag = 0.0f;
         Complex best_val = Complex(buf_prod[0][0], buf_prod[0][1]);
 
-        // Search full range?
-        // Correlation lag 0 is at 0.
-        // Lag 1 is at 1.
-        // Lag -1 is at fft_len - 1.
-        // We assume delay is small relative to n_samples?
-        // Let's search all.
+#if HAVE_OPTMATHKERNELS
+        // Batch magnitude-squared computation, then find argmax
+        std::vector<float> mag_sq(fft_len);
+        const float* prod_ptr = reinterpret_cast<const float*>(buf_prod);
+        // Deinterleave for magnitude_squared (buf_prod is interleaved re/im)
+        std::vector<float> prod_re(fft_len), prod_im(fft_len);
+        for (int i = 0; i < fft_len; ++i) {
+            prod_re[i] = buf_prod[i][0];
+            prod_im[i] = buf_prod[i][1];
+        }
+        optmath::neon::neon_complex_magnitude_squared_f32(mag_sq.data(), prod_re.data(), prod_im.data(), fft_len);
+        // Find argmax (no NEON argmax available, use scalar scan over magnitudes)
+        for (int i = 0; i < fft_len; ++i) {
+            if (mag_sq[i] > max_mag) {
+                max_mag = mag_sq[i];
+                best_idx = i;
+            }
+        }
+        best_val = Complex(buf_prod[best_idx][0], buf_prod[best_idx][1]);
+#else
         for(int i=0; i<fft_len; ++i) {
             float re = buf_prod[i][0];
             float im = buf_prod[i][1];
@@ -130,6 +144,7 @@ public:
                 best_val = Complex(re, im);
             }
         }
+#endif
 
         // Convert index to signed delay
         if (best_idx > fft_len/2) {

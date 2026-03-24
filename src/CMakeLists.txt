@@ -157,9 +157,13 @@ if(OptMathKernels_FOUND)
 endif()
 install(TARGETS kraken_eca_b_clutter_canceller LIBRARY DESTINATION ${GR_PYTHON_DIR}/kraken_passive_radar)
 
-# 2. Conditioning
+# 2. Conditioning (with optional OptMathKernels NEON for batch magnitude)
 add_library(kraken_conditioning SHARED conditioning.cpp)
 target_link_libraries(kraken_conditioning m)
+if(OptMathKernels_FOUND)
+    target_compile_definitions(kraken_conditioning PRIVATE HAVE_OPTMATHKERNELS=1)
+    target_link_libraries(kraken_conditioning OptMathKernels::OptMathKernels)
+endif()
 install(TARGETS kraken_conditioning LIBRARY DESTINATION ${GR_PYTHON_DIR}/kraken_passive_radar)
 
 # Shared FFTW init library (ensures fftwf_init_threads called once per process)
@@ -230,8 +234,12 @@ if(OptMathKernels_FOUND)
 endif()
 install(TARGETS kraken_resampler LIBRARY DESTINATION ${GR_PYTHON_DIR}/kraken_passive_radar)
 
-# 9. NLMS Clutter Canceller
+# 9. NLMS Clutter Canceller (with optional OptMathKernels NEON)
 add_library(kraken_nlms_clutter_canceller SHARED nlms_clutter_canceller.cpp)
 target_compile_definitions(kraken_nlms_clutter_canceller PRIVATE LIBRARY_BUILD)
 target_link_libraries(kraken_nlms_clutter_canceller m)
+if(OptMathKernels_FOUND)
+    target_compile_definitions(kraken_nlms_clutter_canceller PRIVATE HAVE_OPTMATHKERNELS=1)
+    target_link_libraries(kraken_nlms_clutter_canceller OptMathKernels::OptMathKernels)
+endif()
 install(TARGETS kraken_nlms_clutter_canceller LIBRARY DESTINATION ${GR_PYTHON_DIR}/kraken_passive_radar)

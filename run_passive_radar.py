@@ -136,16 +136,16 @@ class PhaseCorrectorBlock(gr.sync_block):
         self.initial_phase = initial_phase    # radians at cal_timestamp
         self.drift_rate = drift_rate          # radians per second
         self.cal_timestamp = cal_timestamp    # absolute time of calibration
-        self._start_time = time.time()        # flowgraph start time
-        self._sample_count = 0                # samples processed since start
+        self._sample_count = 0                # samples processed since calibration
+        self._cached_phasor = np.complex64(1.0)
+        self._cached_correction = 0.0
 
     def update_calibration(self, phase_rad: float, drift_rate_rad: float, timestamp: float):
         """Update phase correction parameters after a recalibration."""
         self.initial_phase = phase_rad
         self.drift_rate = drift_rate_rad
         self.cal_timestamp = timestamp
-        self._start_time = time.time()
-        self._sample_count = 0
+        self._sample_count = 0  # Reset sample count; dt computed from samples, not wall clock
 
     def work(self, input_items, output_items):
         samples = input_items[0]
@@ -162,13 +162,14 @@ class PhaseCorrectorBlock(gr.sync_block):
             if self.channel == 0 or (self.initial_phase == 0.0 and self.drift_rate == 0.0):
                 output_items[0][:n_samples] = samples
             else:
-                # Compute time since calibration
-                t_now = time.time()
-                dt = t_now - self.cal_timestamp if self.cal_timestamp > 0 else 0.0
-                # Total correction = initial_phase + drift_rate * elapsed_time
+                # Compute time since calibration using sample count (deterministic, no wall-clock jitter)
+                dt = self._sample_count / self.sample_rate
                 correction = self.initial_phase + self.drift_rate * dt
-                phasor = np.complex64(np.exp(1j * correction))
-                output_items[0][:n_samples] = samples * phasor
+                # Recompute phasor only when correction changes significantly (> 0.01 rad)
+                if abs(correction - self._cached_correction) > 0.01:
+                    self._cached_phasor = np.complex64(np.exp(1j * correction))
+                    self._cached_correction = correction
+                output_items[0][:n_samples] = samples * self._cached_phasor
 
         self._sample_count += n_samples
         return n_samples

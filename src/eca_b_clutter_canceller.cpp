@@ -202,9 +202,13 @@ public:
         // Copy history (long)
         std::copy(ref_history.begin(), ref_history.end(), full_ref.begin());
 
-        // Copy new input after history, with space for delay offset
-        // ref_in[0] maps to full_ref[history_len], extending to history_len + current_delay + n_samples - 1
-        std::copy(ref_in, ref_in + current_delay + n_samples, full_ref.begin() + history_len);
+        // Copy new input after history (ref_in has exactly n_samples elements)
+        // ref_in[0] maps to full_ref[history_len]
+        std::copy(ref_in, ref_in + n_samples, full_ref.begin() + history_len);
+        // Zero-fill the delay gap beyond actual input data
+        if (current_delay > 0) {
+            std::fill(full_ref.begin() + history_len + n_samples, full_ref.end(), Complex(0.0f, 0.0f));
+        }
 
         ref_re.resize(full_ref_len);
         ref_im.resize(full_ref_len);
@@ -355,8 +359,8 @@ public:
             out_err[n] = surv_in[n] - Complex(y_re, y_im);
         }
 
-        // 6. Update History (keep last history_len samples of full_ref)
-        std::copy(full_ref.end() - history_len, full_ref.end(), ref_history.begin());
+        // 6. Update History (keep last history_len ACTUAL samples, not zero-padded region)
+        std::copy(full_ref.begin() + n_samples, full_ref.begin() + history_len + n_samples, ref_history.begin());
     }
 };
 

@@ -2,9 +2,11 @@
 #include <complex>
 #include <cmath>
 #include <algorithm>
+#include <cstdint>
 
 #ifdef HAVE_OPTMATHKERNELS
 #include <optmath/neon_kernels.hpp>
+#include <optmath/radar_kernels.hpp>
 #else
 #define HAVE_OPTMATHKERNELS 0
 #endif
@@ -19,36 +21,48 @@ public:
     // input: log magnitude buffer (rows x cols)
     // output: detection mask (1.0 or 0.0)
     static void cfar_1d(const float* input, float* output, int rows, int cols, int guard, int train, float threshold) {
-        // Iterate over each row (Range bins often, or Doppler bins)
-        // Let's assume input is [Doppler x Range] or [Range x Doppler].
-        // Usually CFAR is done in both dimensions or 2D.
-        // Let's do 2D CFAR.
-
+        // Input is Log Mag (dB), threshold is additive dB.
+        // cfar_2d_f32 uses multiplicative threshold on linear data, so we use
+        // a 2D sliding-window approach optimized with row/column prefix sums.
         for (int i = 0; i < rows * cols; ++i) output[i] = 0.0f;
 
-        for (int r = guard + train; r < rows - (guard + train); ++r) {
-            for (int c = guard + train; c < cols - (guard + train); ++c) {
-                float sum = 0.0f;
-                int count = 0;
+        const int window = guard + train;
+        const int outer = 2 * window + 1;
+        const int inner = 2 * guard + 1;
+        const int n_train = outer * outer - inner * inner;
+        if (n_train <= 0) return;
 
-                // Training cells
-                for (int dr = -(train + guard); dr <= (train + guard); ++dr) {
-                    for (int dc = -(train + guard); dc <= (train + guard); ++dc) {
-                        if (std::abs(dr) <= guard && std::abs(dc) <= guard) continue; // Guard
-                        sum += input[(r + dr) * cols + (c + dc)];
-                        count++;
-                    }
-                }
+        // Compute 2D prefix sum for O(1) rectangle queries
+        const int R = rows, C = cols;
+        std::vector<double> psum((R + 1) * (C + 1), 0.0);
+        for (int r = 0; r < R; ++r) {
+            for (int c = 0; c < C; ++c) {
+                psum[(r + 1) * (C + 1) + (c + 1)] =
+                    input[r * C + c]
+                    + psum[r * (C + 1) + (c + 1)]
+                    + psum[(r + 1) * (C + 1) + c]
+                    - psum[r * (C + 1) + c];
+            }
+        }
 
-                if (count == 0) continue; // Avoid division by zero
-                float noise = sum / count;
-                float cell = input[r * cols + c];
+        // Lambda for rectangle sum [r1..r2, c1..c2] inclusive
+        auto rect_sum = [&](int r1, int c1, int r2, int c2) -> double {
+            return psum[(r2 + 1) * (C + 1) + (c2 + 1)]
+                 - psum[r1 * (C + 1) + (c2 + 1)]
+                 - psum[(r2 + 1) * (C + 1) + c1]
+                 + psum[r1 * (C + 1) + c1];
+        };
 
-                // Input is Log Mag (dB). Threshold is dB.
-                // If linear: cell > threshold * noise
-                // If dB: cell > noise + threshold
+        for (int r = window; r < R - window; ++r) {
+            for (int c = window; c < C - window; ++c) {
+                double outer_sum = rect_sum(r - window, c - window, r + window, c + window);
+                double inner_sum = rect_sum(r - guard, c - guard, r + guard, c + guard);
+                float noise = static_cast<float>((outer_sum - inner_sum) / n_train);
+                float cell = input[r * C + c];
+
+                // dB domain: additive threshold
                 if (cell > noise + threshold) {
-                    output[r * cols + c] = 1.0f;
+                    output[r * C + c] = 1.0f;
                 }
             }
         }

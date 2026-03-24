@@ -188,10 +188,9 @@ int doppler_processor_impl::work(int noutput_items,
             // Compute Doppler FFT
             fftwf_execute(d_fft_plan);
 
-            // FFT shift and store output
-            int half = d_num_doppler_bins / 2;
+            // FFT shift and store output (NumPy fftshift convention)
             for (int d = 0; d < d_num_doppler_bins; d++) {
-                int shifted_d = (d + half) % d_num_doppler_bins;
+                int shifted_d = (d + (d_num_doppler_bins + 1) / 2) % d_num_doppler_bins;
                 int out_idx = shifted_d * d_num_range_bins + r;
 
                 if (d_output_power) {

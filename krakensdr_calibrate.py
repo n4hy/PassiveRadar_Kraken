@@ -137,8 +137,22 @@ def find_sample_delay(ref, surv, max_delay=20000):
         delays.append(delay)
         snrs.append(snr)
 
-    delay = int(np.median(delays))
-    snr = float(np.median(snrs))
+    if not delays:
+        print("  WARNING: No valid segments for delay estimation")
+        return 0, 0.0
+
+    # Filter out low-SNR segments before taking median
+    min_snr = 5.0
+    valid = [(d, s) for d, s in zip(delays, snrs) if s >= min_snr]
+    if not valid:
+        print(f"  WARNING: All {len(delays)} segments below SNR threshold "
+              f"({min_snr}), max SNR={max(snrs):.1f}")
+        # Fall back to all segments but warn
+        valid = list(zip(delays, snrs))
+
+    valid_delays, valid_snrs = zip(*valid)
+    delay = int(np.median(valid_delays))
+    snr = float(np.median(valid_snrs))
     return delay, snr
 
 
@@ -204,6 +218,16 @@ def estimate_phase_offset(reference, surveillance, sample_rate, block_size=1024)
         sp = np.vdot(s, s).real
         if rp > 0 and sp > 0:
             block_xcorrs[b] = np.vdot(r, s) / np.sqrt(rp * sp)
+
+    # Validate correlation quality before phase estimation
+    corr_magnitudes = np.abs(block_xcorrs)
+    mean_corr_mag = float(np.mean(corr_magnitudes))
+    if mean_corr_mag < 0.1:
+        print(f"  WARNING: Low correlation magnitude ({mean_corr_mag:.4f}), "
+              f"frequency offset estimation unreliable")
+        # Fall back to zero offset with reported correlation
+        avg_corr = np.mean(block_xcorrs)
+        return -np.angle(avg_corr), float(np.abs(avg_corr)), 0.0
 
     # Estimate frequency offset from phase progression
     phases = np.angle(block_xcorrs)

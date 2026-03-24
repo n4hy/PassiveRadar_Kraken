@@ -183,14 +183,17 @@ class dashboard_sink(gr.sync_block):
             # Compute fused CAF (average of all channels)
             valid_cafs = [c for c in self.channel_cafs if c is not None]
             if valid_cafs:
-                self.fused_caf = np.mean(valid_cafs, axis=0)
+                if self.fused_caf is None:
+                    self.fused_caf = np.mean(valid_cafs, axis=0)
+                else:
+                    np.mean(valid_cafs, axis=0, out=self.fused_caf)
 
-                # Update max-hold
+                # Update max-hold (in-place to avoid allocation)
                 if self.max_hold_caf is None:
                     self.max_hold_caf = self.fused_caf.copy()
                 else:
                     self.max_hold_caf *= self.max_hold_decay
-                    self.max_hold_caf = np.maximum(self.max_hold_caf, self.fused_caf)
+                    np.maximum(self.max_hold_caf, self.fused_caf, out=self.max_hold_caf)
 
                 # Simple peak detection for detections
                 self._detect_peaks(self.fused_caf, now)

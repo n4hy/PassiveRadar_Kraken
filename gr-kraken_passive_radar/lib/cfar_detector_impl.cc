@@ -10,6 +10,10 @@
 #include <cmath>
 #include <numeric>
 
+#ifdef HAVE_OPTMATHKERNELS
+#include <optmath/radar_kernels.hpp>
+#endif
+
 namespace gr {
 namespace kraken_passive_radar {
 
@@ -180,21 +184,37 @@ float cfar_detector_impl::estimate_noise_level(const float *data, int r, int d)
 
         case 1: // GO-CFAR: Greatest-Of (range-based leading/lagging split)
         {
-            float leading_avg = d_leading_samples.empty() ? 0.0f :
-                std::accumulate(d_leading_samples.begin(), d_leading_samples.end(), 0.0f) / d_leading_samples.size();
-            float lagging_avg = d_lagging_samples.empty() ? 0.0f :
-                std::accumulate(d_lagging_samples.begin(), d_lagging_samples.end(), 0.0f) / d_lagging_samples.size();
-            noise_estimate = std::max(leading_avg, lagging_avg);
+            bool have_leading = !d_leading_samples.empty();
+            bool have_lagging = !d_lagging_samples.empty();
+            float leading_avg = have_leading ?
+                std::accumulate(d_leading_samples.begin(), d_leading_samples.end(), 0.0f) / d_leading_samples.size() : 0.0f;
+            float lagging_avg = have_lagging ?
+                std::accumulate(d_lagging_samples.begin(), d_lagging_samples.end(), 0.0f) / d_lagging_samples.size() : 0.0f;
+            // If only one half is available, use it directly instead of max with 0
+            if (have_leading && have_lagging)
+                noise_estimate = std::max(leading_avg, lagging_avg);
+            else if (have_leading)
+                noise_estimate = leading_avg;
+            else
+                noise_estimate = lagging_avg;
             break;
         }
 
         case 2: // SO-CFAR: Smallest-Of (range-based leading/lagging split)
         {
-            float leading_avg = d_leading_samples.empty() ? std::numeric_limits<float>::max() :
-                std::accumulate(d_leading_samples.begin(), d_leading_samples.end(), 0.0f) / d_leading_samples.size();
-            float lagging_avg = d_lagging_samples.empty() ? std::numeric_limits<float>::max() :
-                std::accumulate(d_lagging_samples.begin(), d_lagging_samples.end(), 0.0f) / d_lagging_samples.size();
-            noise_estimate = std::min(leading_avg, lagging_avg);
+            bool have_leading = !d_leading_samples.empty();
+            bool have_lagging = !d_lagging_samples.empty();
+            float leading_avg = have_leading ?
+                std::accumulate(d_leading_samples.begin(), d_leading_samples.end(), 0.0f) / d_leading_samples.size() : 0.0f;
+            float lagging_avg = have_lagging ?
+                std::accumulate(d_lagging_samples.begin(), d_lagging_samples.end(), 0.0f) / d_lagging_samples.size() : 0.0f;
+            // If only one half is available, use it directly instead of min with max_float
+            if (have_leading && have_lagging)
+                noise_estimate = std::min(leading_avg, lagging_avg);
+            else if (have_leading)
+                noise_estimate = leading_avg;
+            else
+                noise_estimate = lagging_avg;
             break;
         }
 
@@ -228,31 +248,49 @@ int cfar_detector_impl::work(int noutput_items,
     for (int i = 0; i < noutput_items; i++) {
         const float *frame_in = &in[i * frame_size];
         float *frame_out = &out[i * frame_size];
-        
+
         int detections = 0;
-        
-        // Process each cell
-        for (int d = 0; d < d_num_doppler_bins; d++) {
-            for (int r = 0; r < d_num_range_bins; r++) {
-                int idx = d * d_num_range_bins + r;
-                float cut_value = frame_in[idx];
-                
-                // Estimate noise level from reference cells
-                float noise_level = estimate_noise_level(frame_in, r, d);
-                
-                // Compute threshold
-                float threshold = d_threshold_factor * noise_level;
-                
-                // Detection decision
-                if (cut_value > threshold) {
-                    frame_out[idx] = 1.0f;
-                    detections++;
-                } else {
-                    frame_out[idx] = 0.0f;
+
+#ifdef HAVE_OPTMATHKERNELS
+        // Fast O(n) CFAR using integral-image approach (CA-CFAR only)
+        if (d_cfar_type == 0) {
+            std::vector<std::uint8_t> det_mask(frame_size);
+            optmath::radar::cfar_2d_f32(
+                det_mask.data(), frame_in,
+                static_cast<std::size_t>(d_num_doppler_bins),
+                static_cast<std::size_t>(d_num_range_bins),
+                static_cast<std::size_t>(d_guard_cells_range),
+                static_cast<std::size_t>(d_guard_cells_doppler),
+                static_cast<std::size_t>(d_ref_cells_range),
+                static_cast<std::size_t>(d_ref_cells_doppler),
+                d_threshold_factor);
+
+            for (int idx = 0; idx < frame_size; idx++) {
+                frame_out[idx] = det_mask[idx] ? 1.0f : 0.0f;
+                detections += det_mask[idx];
+            }
+        } else
+#endif
+        {
+            // Fallback: per-cell noise estimation (supports all CFAR types)
+            for (int d = 0; d < d_num_doppler_bins; d++) {
+                for (int r = 0; r < d_num_range_bins; r++) {
+                    int idx = d * d_num_range_bins + r;
+                    float cut_value = frame_in[idx];
+
+                    float noise_level = estimate_noise_level(frame_in, r, d);
+                    float threshold = d_threshold_factor * noise_level;
+
+                    if (cut_value > threshold) {
+                        frame_out[idx] = 1.0f;
+                        detections++;
+                    } else {
+                        frame_out[idx] = 0.0f;
+                    }
                 }
             }
         }
-        
+
         d_num_detections = detections;
     }
     

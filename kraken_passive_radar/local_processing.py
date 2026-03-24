@@ -190,48 +190,60 @@ class CfarDetector:
         return output
 
     def _cfar_python(self, power_db: np.ndarray) -> np.ndarray:
-        """Pure Python CA-CFAR implementation (fallback)."""
+        """Vectorized CA-CFAR using scipy (O(n) via uniform_filter)."""
+        try:
+            from scipy.ndimage import uniform_filter
+        except ImportError:
+            return self._cfar_python_loops(power_db)
+
+        rows, cols = power_db.shape
+        output = np.zeros_like(power_db)
+        window_size = self.guard + self.train
+
+        # Compute noise estimate using box filters: outer_mean - guard_mean
+        outer_sz = 2 * window_size + 1
+        guard_sz = 2 * self.guard + 1
+
+        outer_sum = uniform_filter(power_db, size=outer_sz, mode='constant') * (outer_sz ** 2)
+        guard_sum = uniform_filter(power_db, size=guard_sz, mode='constant') * (guard_sz ** 2)
+
+        n_train = outer_sz ** 2 - guard_sz ** 2
+        if n_train > 0:
+            noise_estimate = (outer_sum - guard_sum) / n_train
+        else:
+            noise_estimate = np.zeros_like(power_db)
+
+        # Detection: cell > noise + threshold_db (both in dB domain)
+        detection_mask = power_db > (noise_estimate + self.threshold_db)
+        # Zero out border cells that lack full training windows
+        detection_mask[:window_size, :] = False
+        detection_mask[-window_size:, :] = False
+        detection_mask[:, :window_size] = False
+        detection_mask[:, -window_size:] = False
+
+        output[detection_mask] = 1.0
+        return output
+
+    def _cfar_python_loops(self, power_db: np.ndarray) -> np.ndarray:
+        """Loop-based CA-CFAR fallback when scipy is unavailable."""
         rows, cols = power_db.shape
         output = np.zeros_like(power_db)
         window_size = self.guard + self.train
 
         for i in range(window_size, rows - window_size):
             for j in range(window_size, cols - window_size):
-                # Extract training cells (exclude guard cells)
                 cell_under_test = power_db[i, j]
-
-                # Get training window excluding guard and CUT
                 train_cells = []
                 for di in range(-window_size, window_size + 1):
                     for dj in range(-window_size, window_size + 1):
-                        # Skip guard cells and CUT
                         if abs(di) <= self.guard and abs(dj) <= self.guard:
                             continue
                         train_cells.append(power_db[i + di, j + dj])
 
                 if not train_cells:
                     continue
-
-                # Noise estimate based on CFAR type
-                train_cells = np.array(train_cells)
-                if self.cfar_type == 'ca':
-                    noise_estimate = np.mean(train_cells)
-                elif self.cfar_type == 'go':
-                    # Greatest-of: use maximum of leading/lagging
-                    mid = len(train_cells) // 2
-                    noise_estimate = max(np.mean(train_cells[:mid]),
-                                         np.mean(train_cells[mid:]))
-                elif self.cfar_type == 'so':
-                    # Smallest-of: use minimum of leading/lagging
-                    mid = len(train_cells) // 2
-                    noise_estimate = min(np.mean(train_cells[:mid]),
-                                         np.mean(train_cells[mid:]))
-                else:
-                    noise_estimate = np.mean(train_cells)
-
-                # Detection threshold
-                threshold = noise_estimate + self.threshold_db
-                if cell_under_test > threshold:
+                noise_estimate = np.mean(train_cells)
+                if cell_under_test > noise_estimate + self.threshold_db:
                     output[i, j] = 1.0
 
         return output
@@ -362,39 +374,46 @@ class DetectionClusterer:
         range_axis_m: np.ndarray,
         doppler_axis_hz: np.ndarray,
     ) -> List[Detection]:
-        """Fallback clustering without scipy (simple peak finding)."""
+        """Fallback clustering without scipy.ndimage.label (vectorized peak finding)."""
         detections = []
         mask = detection_mask > 0
 
-        # Find local maxima in detection mask
-        for i in range(1, mask.shape[0] - 1):
-            for j in range(1, mask.shape[1] - 1):
-                if not mask[i, j]:
-                    continue
+        try:
+            from scipy.ndimage import maximum_filter
+            local_max = (power_db == maximum_filter(power_db, size=3)) & mask
+        except ImportError:
+            # Manual local-max: vectorized with shifted comparisons
+            padded = np.pad(power_db, 1, mode='constant', constant_values=-np.inf)
+            local_max = mask.copy()
+            for di in range(-1, 2):
+                for dj in range(-1, 2):
+                    if di == 0 and dj == 0:
+                        continue
+                    local_max &= (power_db >= padded[1+di:1+di+mask.shape[0],
+                                                      1+dj:1+dj+mask.shape[1]])
 
-                # Check if this is local maximum in power
-                window = power_db[max(0, i-1):i+2, max(0, j-1):j+2]
-                if power_db[i, j] < np.max(window):
-                    continue
+        # Extract detection coordinates
+        peaks = np.argwhere(local_max)
+        bg_median = np.median(power_db)
 
-                # Count cluster size (simple 3x3)
-                cluster_size = int(np.sum(mask[max(0, i-1):i+2, max(0, j-1):j+2]))
+        for (i, j) in peaks:
+            cluster_size = int(np.sum(mask[max(0, i-1):i+2, max(0, j-1):j+2]))
 
-                if cluster_size < self.min_cluster_size:
-                    continue
-                if cluster_size > self.max_cluster_size:
-                    continue
+            if cluster_size < self.min_cluster_size:
+                continue
+            if cluster_size > self.max_cluster_size:
+                continue
 
-                range_m = range_axis_m[j] if j < len(range_axis_m) else 0
-                doppler_hz = doppler_axis_hz[i] if i < len(doppler_axis_hz) else 0
-                snr_db = power_db[i, j] - np.median(power_db)
+            range_m = range_axis_m[j] if j < len(range_axis_m) else 0
+            doppler_hz = doppler_axis_hz[i] if i < len(doppler_axis_hz) else 0
+            snr_db = power_db[i, j] - bg_median
 
-                detections.append(Detection(
-                    range_m=float(range_m),
-                    doppler_hz=float(doppler_hz),
-                    snr_db=float(snr_db),
-                    cluster_size=cluster_size,
-                ))
+            detections.append(Detection(
+                range_m=float(range_m),
+                doppler_hz=float(doppler_hz),
+                snr_db=float(snr_db),
+                cluster_size=cluster_size,
+            ))
 
         return detections
 

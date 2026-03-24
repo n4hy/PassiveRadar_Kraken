@@ -63,13 +63,14 @@ class ConditioningBlock(gr.sync_block):
         out0 = output_items[0]
         n = len(in0)
 
-        np.copyto(out0, in0)
-
+        # Ensure contiguous buffer for ctypes (GNU Radio buffers may be strided)
+        buf = np.ascontiguousarray(in0, dtype=np.complex64)
         self.lib.cond_process(
             self.obj,
-            out0.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
+            buf.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
             n
         )
+        np.copyto(out0[:n], buf)
         return n
 
     def __del__(self):
@@ -99,12 +100,9 @@ class CafBlock(gr.basic_block):
         return [req] * ninputs
 
     def _load_lib(self):
-        # CAF depends on libkraken_fftw_init.so; ensure its directory is on LD path
+        # CAF depends on libkraken_fftw_init.so; pre-load with explicit path
         fftw_init_path = _find_kernel_lib("libkraken_fftw_init.so")
-        fftw_init_dir = os.path.dirname(fftw_init_path)
-        if fftw_init_dir not in os.environ.get('LD_LIBRARY_PATH', ''):
-            os.environ['LD_LIBRARY_PATH'] = fftw_init_dir + ':' + os.environ.get('LD_LIBRARY_PATH', '')
-            ctypes.cdll.LoadLibrary(fftw_init_path)  # Pre-load dependency
+        ctypes.cdll.LoadLibrary(fftw_init_path)
 
         path = _find_kernel_lib("libkraken_caf_processing.so")
         lib = ctypes.cdll.LoadLibrary(path)

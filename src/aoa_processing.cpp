@@ -9,6 +9,7 @@
 
 #ifdef HAVE_OPTMATHKERNELS
 #include <optmath/neon_kernels.hpp>
+#include <optmath/radar_kernels.hpp>
 #else
 #define HAVE_OPTMATHKERNELS 0
 #endif
@@ -301,36 +302,32 @@ extern "C" {
         int n_elem = 5 - start_idx; // Ch1..4 = 4 elements
 
 #if HAVE_OPTMATHKERNELS
-        // Batch precompute steering phases for all angles x elements
-        int total_phases = n_angles * n_elem;
-        std::vector<float> phases(total_phases);
-        std::vector<float> sv_re(total_phases);
-        std::vector<float> sv_im(total_phases);
+        // Use OptMathKernels ULA steering vectors and batch dot products
+        float d_lambda = d / lambda;  // Element spacing in wavelengths
 
+        // Pre-extract antenna data as deinterleaved arrays
+        std::vector<float> ant_re(n_elem), ant_im(n_elem);
+        for (int m = 0; m < n_elem; ++m) {
+            ant_re[m] = antenna_data[start_idx + m].real();
+            ant_im[m] = antenna_data[start_idx + m].imag();
+        }
+
+        // Per-angle steering vector + dot product
+        std::vector<float> steer_re(n_elem), steer_im(n_elem);
+        float inv_count_sq = 1.0f / (n_elem * n_elem);
         for (int i = 0; i < n_angles; ++i) {
             float theta_deg = (n_angles > 1) ? -90.0f + (180.0f * i / (n_angles - 1)) : 0.0f;
             float theta_rad = theta_deg * PI / 180.0f;
-            float ux = std::sin(theta_rad);
-            for (int m = 0; m < n_elem; ++m) {
-                float px = (float)m * d;
-                phases[i * n_elem + m] = -(k * px * ux);
-            }
-        }
-        optmath::neon::neon_complex_exp_f32(sv_re.data(), sv_im.data(), phases.data(), total_phases);
 
-        float inv_count_sq = 1.0f / (n_elem * n_elem);
-        for (int i = 0; i < n_angles; ++i) {
-            float sum_re = 0.0f, sum_im = 0.0f;
-            for (int m = 0; m < n_elem; ++m) {
-                int ch = start_idx + m;
-                float w_re = sv_re[i * n_elem + m];
-                float w_im = sv_im[i * n_elem + m];
-                float a_re = antenna_data[ch].real();
-                float a_im = antenna_data[ch].imag();
-                sum_re += a_re * w_re - a_im * w_im;
-                sum_im += a_re * w_im + a_im * w_re;
-            }
-            float p = (sum_re * sum_re + sum_im * sum_im) * inv_count_sq;
+            optmath::radar::steering_vector_ula_f32(steer_re.data(), steer_im.data(),
+                                                     n_elem, d_lambda, theta_rad);
+
+            // Bartlett: P = |a^H * x|^2 using complex dot product
+            float dot_re, dot_im;
+            optmath::neon::neon_complex_dot_f32(&dot_re, &dot_im,
+                                                 ant_re.data(), ant_im.data(),
+                                                 steer_re.data(), steer_im.data(), n_elem);
+            float p = (dot_re * dot_re + dot_im * dot_im) * inv_count_sq;
             output[i] = 10.0f * std::log10(p + 1e-12f);
         }
 #else

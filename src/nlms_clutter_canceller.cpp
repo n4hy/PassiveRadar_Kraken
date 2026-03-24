@@ -7,6 +7,10 @@
 #include <algorithm>
 #include <iomanip>
 
+#ifdef HAVE_OPTMATHKERNELS
+#include <optmath/neon_kernels.hpp>
+#endif
+
 // Use float for compatibility with np.complex64 (GNU Radio standard)
 using Complex = std::complex<float>;
 
@@ -68,6 +72,7 @@ public:
     // New method for C interface: Single channel, returns Error (e)
     // out_err must be pre-allocated with size n_samples
     void process_cancellation_single(const Complex* ref_in, const Complex* surv_in, Complex* out_err, size_t n_samples) {
+         if (n_samples == 0) return;
          if (weights.empty()) {
              weights.assign(1, std::vector<Complex>(filter_length, Complex(0.0f, 0.0f)));
          }
@@ -100,19 +105,53 @@ private:
     }
 
     float get_history_energy() {
+#ifdef HAVE_OPTMATHKERNELS
+        // r_history is contiguous; treat as interleaved re/im pairs
+        // |z|^2 = re^2 + im^2, sum over all elements
+        const float* data = reinterpret_cast<const float*>(r_history.data());
+        return optmath::neon::neon_dot_f32(data, data, filter_length * 2);
+#else
         float r_energy = 0.0f;
         for (const auto& val : r_history) {
             r_energy += std::norm(val);
         }
         return r_energy;
+#endif
+    }
+
+    // Linearize circular buffer into contiguous scratch for NEON operations
+    void linearize_history(std::vector<Complex>& scratch) const {
+        scratch.resize(filter_length);
+        for (size_t k = 0; k < filter_length; ++k) {
+            scratch[k] = r_history[(r_history_pos + k) % filter_length];
+        }
     }
 
     Complex filter(size_t ch) {
+#ifdef HAVE_OPTMATHKERNELS
+        // Linearize history for vectorized dot product
+        linearize_history(scratch_buf);
+        // sum(conj(w) * h) = conj(sum(w * conj(h))) = conj of neon_complex_dot(w, h)
+        // neon_complex_dot computes sum(a * conj(b)), so dot(h, w) = sum(h * conj(w))
+        float dot_re, dot_im;
+        const float* h_re = reinterpret_cast<const float*>(scratch_buf.data());
+        const float* w_re = reinterpret_cast<const float*>(weights[ch].data());
+        // Deinterleave for neon_complex_dot_f32
+        std::vector<float> hr(filter_length), hi(filter_length), wr(filter_length), wi(filter_length);
+        for (size_t k = 0; k < filter_length; ++k) {
+            hr[k] = scratch_buf[k].real(); hi[k] = scratch_buf[k].imag();
+            wr[k] = weights[ch][k].real(); wi[k] = weights[ch][k].imag();
+        }
+        optmath::neon::neon_complex_dot_f32(&dot_re, &dot_im, hr.data(), hi.data(), wr.data(), wi.data(), filter_length);
+        // neon_complex_dot computes sum(a * conj(b)) = sum(h * conj(w))
+        return Complex(dot_re, dot_im);
+#else
         Complex y = 0.0f;
         for (size_t k = 0; k < filter_length; ++k) {
             y += std::conj(weights[ch][k]) * history_at(k);
         }
         return y;
+#endif
     }
 
     void update_weights(size_t ch, Complex e, float r_energy) {
@@ -121,10 +160,26 @@ private:
         Complex step_scale = (mu * std::conj(e)) / (r_energy + epsilon);
         // Check for NaN/Inf before applying
         if (!std::isfinite(step_scale.real()) || !std::isfinite(step_scale.imag())) return;
+#ifdef HAVE_OPTMATHKERNELS
+        // Linearize history, scale, and add to weights
+        linearize_history(scratch_buf);
+        std::vector<float> hr(filter_length), hi(filter_length), sr(filter_length), si(filter_length);
+        for (size_t k = 0; k < filter_length; ++k) {
+            hr[k] = scratch_buf[k].real(); hi[k] = scratch_buf[k].imag();
+        }
+        optmath::neon::neon_complex_scale_f32(sr.data(), si.data(), hr.data(), hi.data(),
+                                               step_scale.real(), step_scale.imag(), filter_length);
+        for (size_t k = 0; k < filter_length; ++k) {
+            weights[ch][k] += Complex(sr[k], si[k]);
+        }
+#else
         for (size_t k = 0; k < filter_length; ++k) {
             weights[ch][k] += step_scale * history_at(k);
         }
+#endif
     }
+
+    mutable std::vector<Complex> scratch_buf; // Scratch for linearized history
 };
 
 extern "C" {
