@@ -129,6 +129,36 @@ class krakensdr_source(gr.hier_block2):
                 ('bNumConfigurations', ctypes.c_uint8),
             ]
 
+        # argtypes/restype required on 64-bit: without them ctypes passes
+        # pointer-valued integers as c_int (32-bit), truncating addresses
+        # above 4 GB and causing segfaults under memory pressure.
+        libusb.libusb_init.argtypes = [ctypes.POINTER(ctypes.c_void_p)]
+        libusb.libusb_init.restype = ctypes.c_int
+        libusb.libusb_exit.argtypes = [ctypes.c_void_p]
+        libusb.libusb_exit.restype = None
+        libusb.libusb_get_device_list.argtypes = [
+            ctypes.c_void_p, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))]
+        libusb.libusb_get_device_list.restype = ctypes.c_ssize_t
+        libusb.libusb_free_device_list.argtypes = [
+            ctypes.POINTER(ctypes.c_void_p), ctypes.c_int]
+        libusb.libusb_free_device_list.restype = None
+        libusb.libusb_get_device_descriptor.argtypes = [
+            ctypes.c_void_p, ctypes.POINTER(DevDesc)]
+        libusb.libusb_get_device_descriptor.restype = ctypes.c_int
+        libusb.libusb_open.argtypes = [
+            ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p)]
+        libusb.libusb_open.restype = ctypes.c_int
+        libusb.libusb_close.argtypes = [ctypes.c_void_p]
+        libusb.libusb_close.restype = None
+        libusb.libusb_get_string_descriptor_ascii.argtypes = [
+            ctypes.c_void_p, ctypes.c_uint8, ctypes.c_char_p, ctypes.c_int]
+        libusb.libusb_get_string_descriptor_ascii.restype = ctypes.c_int
+        libusb.libusb_control_transfer.argtypes = [
+            ctypes.c_void_p, ctypes.c_uint8, ctypes.c_uint8,
+            ctypes.c_uint16, ctypes.c_uint16,
+            ctypes.POINTER(ctypes.c_uint8), ctypes.c_uint16, ctypes.c_uint]
+        libusb.libusb_control_transfer.restype = ctypes.c_int
+
         CTRL_OUT = 0x40
         CTRL_IN = 0xC0
         BLOCK_SYS = 1
@@ -156,13 +186,14 @@ class krakensdr_source(gr.hier_block2):
                         break
                     desc = DevDesc()
                     if libusb.libusb_get_device_descriptor(
-                            dev, ctypes.byref(desc)) != 0:
+                            ctypes.c_void_p(dev), ctypes.byref(desc)) != 0:
                         continue
                     if desc.idVendor != 0x0bda or desc.iSerialNumber == 0:
                         continue
 
                     h = ctypes.c_void_p()
-                    if libusb.libusb_open(dev, ctypes.byref(h)) != 0:
+                    if libusb.libusb_open(
+                            ctypes.c_void_p(dev), ctypes.byref(h)) != 0:
                         continue
 
                     buf = ctypes.create_string_buffer(256)
@@ -182,9 +213,9 @@ class krakensdr_source(gr.hier_block2):
                 def read_reg(addr, block):
                     data = (ctypes.c_uint8 * 1)()
                     r = libusb.libusb_control_transfer(
-                        handle, ctypes.c_uint8(CTRL_IN), ctypes.c_uint8(0),
-                        ctypes.c_uint16(addr), ctypes.c_uint16(block << 8),
-                        data, ctypes.c_uint16(1), ctypes.c_uint(TIMEOUT))
+                        handle, CTRL_IN, 0,
+                        addr, block << 8,
+                        data, 1, TIMEOUT)
                     if r < 0:
                         raise RuntimeError(f"USB read reg 0x{addr:02x} failed: {r}")
                     return data[0]
@@ -192,17 +223,17 @@ class krakensdr_source(gr.hier_block2):
                 def write_reg(addr, block, val):
                     data = (ctypes.c_uint8 * 1)(val & 0xFF)
                     r = libusb.libusb_control_transfer(
-                        handle, ctypes.c_uint8(CTRL_OUT), ctypes.c_uint8(0),
-                        ctypes.c_uint16(addr), ctypes.c_uint16(block << 8),
-                        data, ctypes.c_uint16(1), ctypes.c_uint(TIMEOUT))
+                        handle, CTRL_OUT, 0,
+                        addr, block << 8,
+                        data, 1, TIMEOUT)
                     if r < 0:
                         raise RuntimeError(f"USB write reg 0x{addr:02x} failed: {r}")
                     # Dummy read to flush (RTL2832U demod quirk)
                     dummy = (ctypes.c_uint8 * 1)()
                     libusb.libusb_control_transfer(
-                        handle, ctypes.c_uint8(CTRL_IN), ctypes.c_uint8(0),
-                        ctypes.c_uint16(0x01), ctypes.c_uint16(0x0A << 8),
-                        dummy, ctypes.c_uint16(1), ctypes.c_uint(TIMEOUT))
+                        handle, CTRL_IN, 0,
+                        0x01, 0x0A << 8,
+                        dummy, 1, TIMEOUT)
 
                 # Set GPIO as output
                 gpo = read_reg(GPO, BLOCK_SYS)
