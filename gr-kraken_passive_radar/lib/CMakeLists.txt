@@ -17,6 +17,8 @@ pkg_check_modules(FFTW3F REQUIRED fftw3f)
 # Build shared library
 add_library(gnuradio-kraken_passive_radar SHARED ${kraken_passive_radar_sources})
 
+find_package(Threads REQUIRED)
+
 target_link_libraries(gnuradio-kraken_passive_radar PUBLIC
     gnuradio::gnuradio-runtime
     gnuradio::gnuradio-blocks
@@ -25,6 +27,7 @@ target_link_libraries(gnuradio-kraken_passive_radar PUBLIC
     gnuradio::gnuradio-dtv
     Volk::volk
     ${FFTW3F_LIBRARIES}
+    Threads::Threads
 )
 
 target_include_directories(gnuradio-kraken_passive_radar PRIVATE

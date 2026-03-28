@@ -35,7 +35,7 @@ private:
     std::vector<float> d_leading_samples;   // GO/SO-CFAR: range-leading cells
     std::vector<float> d_lagging_samples;   // GO/SO-CFAR: range-lagging cells
     
-    gr::thread::mutex d_mutex;
+    mutable gr::thread::mutex d_mutex;
     
     void compute_threshold_factor();
     float estimate_noise_level(const float *data, int range_idx, int doppler_idx);

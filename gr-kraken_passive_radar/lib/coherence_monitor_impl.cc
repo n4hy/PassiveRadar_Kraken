@@ -85,11 +85,13 @@ void coherence_monitor_impl::handle_cal_complete(const pmt::pmt_t& msg)
 
 bool coherence_monitor_impl::is_calibration_needed() const
 {
+    gr::thread::scoped_lock lock(d_mutex);
     return d_calibration_needed;
 }
 
 float coherence_monitor_impl::get_correlation(int channel) const
 {
+    gr::thread::scoped_lock lock(d_mutex);
     if (channel >= 0 && channel < d_num_channels) {
         return d_correlation[channel];
     }
@@ -98,6 +100,7 @@ float coherence_monitor_impl::get_correlation(int channel) const
 
 float coherence_monitor_impl::get_phase_offset(int channel) const
 {
+    gr::thread::scoped_lock lock(d_mutex);
     if (channel >= 0 && channel < d_num_channels) {
         return d_phase_offset[channel];
     }
@@ -106,6 +109,7 @@ float coherence_monitor_impl::get_phase_offset(int channel) const
 
 float coherence_monitor_impl::get_phase_variance(int channel) const
 {
+    gr::thread::scoped_lock lock(d_mutex);
     if (channel >= 0 && channel < d_num_channels) {
         return d_phase_variance[channel];
     }
@@ -181,7 +185,7 @@ float coherence_monitor_impl::compute_correlation(const gr_complex* ref,
                      + optmath::neon::neon_dot_f32(t_surv_im.data(), t_surv_im.data(), length);
 
     float denom = std::sqrt(ref_power * surv_power);
-    if (denom < 1e-10f) {
+    if (!std::isfinite(denom) || denom < 1e-10f) {
         phase_out = 0.0f;
         return 0.0f;
     }
@@ -201,7 +205,7 @@ float coherence_monitor_impl::compute_correlation(const gr_complex* ref,
     }
 
     float denom = std::sqrt(ref_power * surv_power);
-    if (denom < 1e-10f) {
+    if (!std::isfinite(denom) || denom < 1e-10f) {
         phase_out = 0.0f;
         return 0.0f;
     }

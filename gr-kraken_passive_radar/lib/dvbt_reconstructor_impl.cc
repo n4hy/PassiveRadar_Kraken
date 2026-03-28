@@ -301,6 +301,10 @@ void dvbt_reconstructor_impl::init_fft_plans()
     d_fft_out = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * d_fft_size);
 
     if (!d_fft_in || !d_fft_out) {
+        if (d_fft_in) fftwf_free(d_fft_in);
+        if (d_fft_out) fftwf_free(d_fft_out);
+        d_fft_in = nullptr;
+        d_fft_out = nullptr;
         throw std::runtime_error("Failed to allocate FFTW buffers");
     }
 

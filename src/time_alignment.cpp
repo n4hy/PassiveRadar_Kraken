@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstring>
 #include <mutex>
+#include <stdexcept>
 
 // Centralized FFTW init (shared across all .so files in this project)
 #include "fftw_init.h"
@@ -50,10 +51,25 @@ public:
         buf_ref = fftwf_alloc_complex(fft_len);
         buf_surv = fftwf_alloc_complex(fft_len);
         buf_prod = fftwf_alloc_complex(fft_len);
+        if (!buf_ref || !buf_surv || !buf_prod) {
+            if (buf_ref) fftwf_free(buf_ref);
+            if (buf_surv) fftwf_free(buf_surv);
+            if (buf_prod) fftwf_free(buf_prod);
+            throw std::runtime_error("TimeAligner: FFTW buffer allocation failed");
+        }
 
         fwd_ref = fftwf_plan_dft_1d(fft_len, buf_ref, buf_ref, FFTW_FORWARD, FFTW_ESTIMATE);
         fwd_surv = fftwf_plan_dft_1d(fft_len, buf_surv, buf_surv, FFTW_FORWARD, FFTW_ESTIMATE);
         inv_out = fftwf_plan_dft_1d(fft_len, buf_prod, buf_prod, FFTW_BACKWARD, FFTW_ESTIMATE);
+        if (!fwd_ref || !fwd_surv || !inv_out) {
+            if (fwd_ref) fftwf_destroy_plan(fwd_ref);
+            if (fwd_surv) fftwf_destroy_plan(fwd_surv);
+            if (inv_out) fftwf_destroy_plan(inv_out);
+            fftwf_free(buf_ref);
+            fftwf_free(buf_surv);
+            fftwf_free(buf_prod);
+            throw std::runtime_error("TimeAligner: FFTW plan creation failed");
+        }
         interleaved_prod.resize(2 * fft_len);
     }
 

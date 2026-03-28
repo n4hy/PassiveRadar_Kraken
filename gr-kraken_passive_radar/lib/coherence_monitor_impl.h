@@ -40,7 +40,7 @@ private:
     std::vector<gr_complex> d_ref_buffer;
     std::vector<gr_complex> d_surv_buffer;
     
-    gr::thread::mutex d_mutex;
+    mutable gr::thread::mutex d_mutex;
     
     float compute_correlation(const gr_complex* ref, const gr_complex* surv, 
                               int length, float& phase_out);

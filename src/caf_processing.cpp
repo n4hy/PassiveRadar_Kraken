@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <mutex>
+#include <stdexcept>
 
 // Centralized FFTW init (shared across all .so files in this project)
 #include "fftw_init.h"
@@ -63,7 +64,6 @@ private:
     std::vector<float> ref_re, ref_im;
     std::vector<float> surv_re, surv_im;
     std::vector<float> shifted_re, shifted_im;
-    std::vector<float> caf_out;
 
     // Cached buffers for compute_range_profile (avoid allocation in hot path)
     std::vector<float> fft_surv_re, fft_surv_im;
@@ -153,15 +153,30 @@ public:
         while (fft_len < 2 * n_samples && fft_len > 0) fft_len <<= 1;
         if (fft_len <= 0) fft_len = 1 << 20; // Cap at 1M on overflow
 
-        // FFTW buffers
+        // FFTW buffers (null-checked for robustness)
         buf_ref = fftwf_alloc_complex(fft_len);
         buf_surv = fftwf_alloc_complex(fft_len);
         buf_prod = fftwf_alloc_complex(fft_len);
+        if (!buf_ref || !buf_surv || !buf_prod) {
+            if (buf_ref) fftwf_free(buf_ref);
+            if (buf_surv) fftwf_free(buf_surv);
+            if (buf_prod) fftwf_free(buf_prod);
+            throw std::runtime_error("CafProcessor: FFTW buffer allocation failed");
+        }
 
-        // FFTW plans
+        // FFTW plans (null-checked for robustness)
         fwd_ref = fftwf_plan_dft_1d(fft_len, buf_ref, buf_ref, FFTW_FORWARD, FFTW_ESTIMATE);
         fwd_surv = fftwf_plan_dft_1d(fft_len, buf_surv, buf_surv, FFTW_FORWARD, FFTW_ESTIMATE);
         inv_out = fftwf_plan_dft_1d(fft_len, buf_prod, buf_prod, FFTW_BACKWARD, FFTW_ESTIMATE);
+        if (!fwd_ref || !fwd_surv || !inv_out) {
+            if (fwd_ref) fftwf_destroy_plan(fwd_ref);
+            if (fwd_surv) fftwf_destroy_plan(fwd_surv);
+            if (inv_out) fftwf_destroy_plan(inv_out);
+            fftwf_free(buf_ref);
+            fftwf_free(buf_surv);
+            fftwf_free(buf_prod);
+            throw std::runtime_error("CafProcessor: FFTW plan creation failed");
+        }
 
         // Deinterleaved buffers
         ref_re.resize(n_samples);
@@ -170,7 +185,6 @@ public:
         surv_im.resize(n_samples);
         shifted_re.resize(n_samples);
         shifted_im.resize(n_samples);
-        caf_out.resize(n_doppler * n_range);
 
         // Pre-allocate buffers for compute_range_profile
         fft_surv_re.resize(fft_len);
@@ -423,6 +437,9 @@ extern "C" {
 
     void* caf_create_full(int n_samples, int n_doppler, int n_range,
                           float doppler_start, float doppler_step, float sample_rate) {
+        if (n_samples <= 0 || n_doppler <= 0 || n_range <= 0 || sample_rate <= 0.0f) {
+            return nullptr;
+        }
         return new CafProcessor(n_samples, n_doppler, n_range,
                                 doppler_start, doppler_step, sample_rate);
     }

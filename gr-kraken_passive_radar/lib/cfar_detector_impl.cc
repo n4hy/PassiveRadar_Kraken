@@ -124,6 +124,7 @@ void cfar_detector_impl::set_ref_cells(int range, int doppler)
 
 int cfar_detector_impl::get_num_detections() const
 {
+    gr::thread::scoped_lock lock(d_mutex);
     return d_num_detections;
 }
 
@@ -141,7 +142,7 @@ float cfar_detector_impl::estimate_noise_level(const float *data, int r, int d)
     for (int dr = -window_range; dr <= window_range; dr++) {
         for (int dd = -window_doppler; dd <= window_doppler; dd++) {
             // Skip guard region and CUT
-            if (abs(dr) <= d_guard_cells_range && abs(dd) <= d_guard_cells_doppler) {
+            if (std::abs(dr) <= d_guard_cells_range && std::abs(dd) <= d_guard_cells_doppler) {
                 continue;
             }
 

@@ -14,6 +14,9 @@ install(FILES
     kraken_passive_radar_detection_cluster.block.yml
     kraken_passive_radar_aoa_estimator.block.yml
     kraken_passive_radar_tracker.block.yml
+    kraken_passive_radar_caf.block.yml
+    kraken_passive_radar_conditioning.block.yml
+    kraken_passive_radar_dvbt_reconstructor.block.yml
     DESTINATION ${GRC_BLOCKS_DIR}
 )
 

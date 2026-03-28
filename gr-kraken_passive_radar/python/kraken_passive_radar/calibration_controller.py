@@ -170,22 +170,27 @@ class CalibrationController:
         with self.state_lock:
             if self.state != CalibrationState.CALIBRATING:
                 return
+            if self.cal_buffers[channel] is None:
+                return
 
-        # Append samples to buffer
-        n_needed = self.cal_samples - self.cal_sample_count
-        n_copy = min(len(samples), n_needed)
+            # Append samples to buffer (under lock to prevent races
+            # between channels running on different GNU Radio threads)
+            n_needed = self.cal_samples - self.cal_sample_count
+            n_copy = min(len(samples), n_needed)
 
-        if n_copy > 0:
-            start = self.cal_sample_count
-            self.cal_buffers[channel][start:start + n_copy] = samples[:n_copy]
+            if n_copy > 0:
+                start = self.cal_sample_count
+                self.cal_buffers[channel][start:start + n_copy] = samples[:n_copy]
 
-        # Check if we have enough samples on channel 0 (reference)
-        if channel == 0:
-            self.cal_sample_count += n_copy
+            # Check if we have enough samples on channel 0 (reference)
+            should_compute = False
+            if channel == 0:
+                self.cal_sample_count += n_copy
+                if self.cal_sample_count >= self.cal_samples:
+                    should_compute = True
 
-            if self.cal_sample_count >= self.cal_samples:
-                # We have enough samples, compute corrections
-                self._compute_corrections()
+        if should_compute:
+            self._compute_corrections()
 
     def _compute_corrections(self):
         """Compute phase corrections from calibration samples."""

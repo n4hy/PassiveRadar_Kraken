@@ -5,6 +5,7 @@
 #include <iostream>
 #include <fftw3.h>
 #include <mutex>
+#include <stdexcept>
 
 // Centralized FFTW init (shared across all .so files in this project)
 #include "fftw_init.h"
@@ -70,10 +71,20 @@ public:
         // We will process one column at a time
         in_buf = fftwf_alloc_complex(doppler_len);
         out_buf = fftwf_alloc_complex(doppler_len);
+        if (!in_buf || !out_buf) {
+            if (in_buf) fftwf_free(in_buf);
+            if (out_buf) fftwf_free(out_buf);
+            throw std::runtime_error("DopplerProcessor: FFTW buffer allocation failed");
+        }
 
         // Create plan
         // FFTW_ESTIMATE is faster to plan, FFTW_MEASURE provides faster execution but slower startup
         plan = fftwf_plan_dft_1d(doppler_len, in_buf, out_buf, FFTW_FORWARD, FFTW_ESTIMATE);
+        if (!plan) {
+            fftwf_free(in_buf);
+            fftwf_free(out_buf);
+            throw std::runtime_error("DopplerProcessor: FFTW plan creation failed");
+        }
     }
 
     ~DopplerProcessor() {
