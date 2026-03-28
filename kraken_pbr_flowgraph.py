@@ -219,7 +219,7 @@ class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
         self.fft_size = fft_size = 2048
 
         # ECA parameters
-        self.eca_taps = eca_taps = 256
+        self.eca_taps = eca_taps = 128
         self.eca_reg = eca_reg = 0.0001
 
         # Doppler parameters
