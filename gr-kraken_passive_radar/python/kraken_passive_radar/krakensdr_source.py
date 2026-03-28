@@ -222,18 +222,14 @@ class krakensdr_source(gr.hier_block2):
 
                 def write_reg(addr, block, val):
                     data = (ctypes.c_uint8 * 1)(val & 0xFF)
+                    # RTL2832U requires 0x10 flag in wIndex for writes
+                    # (see rtlsdr_write_reg in librtlsdr.c line 494)
                     r = libusb.libusb_control_transfer(
                         handle, CTRL_OUT, 0,
-                        addr, block << 8,
+                        addr, (block << 8) | 0x10,
                         data, 1, TIMEOUT)
                     if r < 0:
                         raise RuntimeError(f"USB write reg 0x{addr:04x} failed: {r}")
-                    # Dummy read to flush (RTL2832U demod quirk)
-                    dummy = (ctypes.c_uint8 * 1)()
-                    libusb.libusb_control_transfer(
-                        handle, CTRL_IN, 0,
-                        0x01, 0x0A << 8,
-                        dummy, 1, TIMEOUT)
 
                 # Set GPIO as output (matches rtlsdr_set_gpio_output)
                 gpd = read_reg(GPD, SYSB)
