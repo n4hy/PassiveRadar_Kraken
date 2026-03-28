@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PassiveRadar_Kraken Documentation</title>
+    <style>
+        :root {
+            --bg-primary: #1a1a2e;
+            --bg-secondary: #16213e;
+            --bg-card: #0f3460;
+            --accent: #e94560;
+            --text-primary: #eee;
+            --text-secondary: #aaa;
+            --border: #333;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+        header {
+            background: linear-gradient(135deg, var(--bg-secondary), var(--bg-card));
+            padding: 3rem 2rem;
+            text-align: center;
+            border-bottom: 3px solid var(--accent);
+        }
+        header h1 { font-size: 2.5rem; margin-bottom: 0.5rem; }
+        header .subtitle { color: var(--text-secondary); font-size: 1.2rem; }
+        nav {
+            background: var(--bg-secondary);
+            padding: 1rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+        nav ul {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            list-style: none;
+            flex-wrap: wrap;
+        }
+        nav a {
+            color: var(--text-primary);
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+        nav a:hover { background: var(--accent); }
+        main { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+        section { margin-bottom: 3rem; }
+        h2 {
+            color: var(--accent);
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 0.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+        .card {
+            background: var(--bg-card);
+            border-radius: 8px;
+            padding: 1.5rem;
+            transition: transform 0.2s, box-shadow 0.2s;
+            border: 1px solid var(--border);
+        }
+        .card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 25px rgba(233, 69, 96, 0.2);
+        }
+        .card h3 { color: var(--accent); margin-bottom: 0.5rem; }
+        .card p { color: var(--text-secondary); font-size: 0.95rem; }
+        .card a {
+            display: inline-block;
+            margin-top: 1rem;
+            color: var(--accent);
+            text-decoration: none;
+        }
+        .card a:hover { text-decoration: underline; }
+        code {
+            background: var(--bg-secondary);
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.9em;
+        }
+        pre {
+            background: var(--bg-secondary);
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+        pre code { background: none; padding: 0; }
+        .highlight { color: var(--accent); font-weight: bold; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+        th, td {
+            border: 1px solid var(--border);
+            padding: 0.75rem;
+            text-align: left;
+        }
+        th { background: var(--bg-card); color: var(--accent); }
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+        .badge-gpu { background: #22c55e; color: #000; }
+        .badge-cpu { background: #3b82f6; color: #fff; }
+        .badge-new { background: var(--accent); color: #fff; }
+        footer {
+            background: var(--bg-secondary);
+            padding: 2rem;
+            text-align: center;
+            color: var(--text-secondary);
+            margin-top: 3rem;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>PassiveRadar_Kraken</h1>
+        <p class="subtitle">5-Channel Passive Bistatic Radar System for KrakenSDR & RSPduo</p>
+    </header>
+
+    <nav>
+        <ul>
+            <li><a href="#quickstart">Quick Start</a></li>
+            <li><a href="#architecture">Architecture</a></li>
+            <li><a href="#blocks">Signal Blocks</a></li>
+            <li><a href="#gpu">GPU Acceleration</a></li>
+            <li><a href="#tutorials">Tutorials</a></li>
+            <li><a href="#api">API Reference</a></li>
+        </ul>
+    </nav>
+
+    <main>
+        <section id="quickstart">
+            <h2>Quick Start</h2>
+            <div class="card-grid">
+                <div class="card">
+                    <h3>KrakenSDR Setup</h3>
+                    <p>5-channel coherent SDR with phase calibration, noise source control, and AoA estimation.</p>
+                    <a href="QUICKSTART_KRAKENSDR.md">Read Tutorial &rarr;</a>
+                </div>
+                <div class="card">
+                    <h3>RSPduo Setup</h3>
+                    <p>Dual-tuner configuration for reference/surveillance with high dynamic range.</p>
+                    <a href="QUICKSTART_RSPDUO.md">Read Tutorial &rarr;</a>
+                </div>
+                <div class="card">
+                    <h3>Dashboard Guide</h3>
+                    <p>Multi-panel visualization: Range-Doppler, PPI, health monitoring, remote display.</p>
+                    <a href="DASHBOARD_GUIDE.md">Read Tutorial &rarr;</a>
+                </div>
+            </div>
+        </section>
+
+        <section id="architecture">
+            <h2>System Architecture</h2>
+            <pre><code>Hardware: KrakenSDR 5-Channel SDR / RSPduo Dual-Tuner
+         ├─ Ch0: Reference (illuminator-facing antenna)
+         └─ Ch1-4: Surveillance (target-facing array)
+                   │
+         Phase Calibration (noise source GPIO control)
+                   │
+         Conditioning (AGC with decay-only mode)
+                   │
+         Block B3 Reconstructor (FM/ATSC3/DVB-T) ← 10-20 dB improvement
+                   │
+         ECA-B Clutter Canceller (NLMS adaptive)
+                   │
+         CAF Processing (2D FFT cross-ambiguity)
+                   │
+         Doppler Processing (slow-time FFT)
+                   │
+         CFAR Detection (CA/GO/SO/OS, O(n) prefix-sum)
+                   │
+         Detection Clustering (8-connected components)
+                   │
+         AoA Estimation (Bartlett/MUSIC)
+                   │
+         Multi-Target Tracker (Kalman + GNN)
+                   │
+         Display System (Tkinter + matplotlib)</code></pre>
+        </section>
+
+        <section id="blocks">
+            <h2>Signal Processing Blocks</h2>
+            <div class="card-grid">
+                <div class="card">
+                    <h3>krakensdr_source</h3>
+                    <p>5-channel coherent SDR source with direct libusb GPIO noise source control for calibration.</p>
+                    <a href="BLOCKS.md#krakensdr-source">Details &rarr;</a>
+                </div>
+                <div class="card">
+                    <h3>rspduo_source</h3>
+                    <p>SDRplay RSPduo in dual-tuner mode. High dynamic range, IF gain 20-59 dB.</p>
+                    <a href="BLOCKS.md#rspduo-source">Details &rarr;</a>
+                </div>
+                <div class="card">
+                    <h3>conditioning</h3>
+                    <p>AGC with decay-only mode, clamped gain (max 1000), handles silence gracefully.</p>
+                    <span class="badge badge-cpu">CPU</span> <span class="badge badge-gpu">GPU</span>
+                    <a href="BLOCKS.md#conditioning">Details &rarr;</a>
+                </div>
+                <div class="card">
+                    <h3>dvbt_reconstructor <span class="badge badge-new">Block B3</span></h3>
+                    <p>Reference signal reconstruction: FM demod-remod, ATSC3 OFDM with SVD pilot enhancement.</p>
+                    <a href="BLOCKS.md#dvbt-reconstructor">Details &rarr;</a>
+                </div>
+                <div class="card">
+                    <h3>eca_canceller</h3>
+                    <p>NLMS adaptive clutter cancellation. Removes direct path and multipath interference.</p>
+                    <span class="badge badge-cpu">CPU</span> <span class="badge badge-gpu">GPU 10x</span>
+                    <a href="BLOCKS.md#eca-canceller">Details &rarr;</a>
+                </div>
+                <div class="card">
+                    <h3>caf_processing</h3>
+                    <p>Cross-Ambiguity Function via 2D FFT. Generates range profiles.</p>
+                    <span class="badge badge-cpu">CPU</span> <span class="badge badge-gpu">GPU 23x</span>
+                    <a href="BLOCKS.md#caf-processing">Details &rarr;</a>
+                </div>
+                <div class="card">
+                    <h3>doppler_processor</h3>
+                    <p>Slow-time FFT for Doppler extraction. Windowing: Hamming/Hann/Blackman.</p>
+                    <span class="badge badge-cpu">CPU</span> <span class="badge badge-gpu">GPU 1.2x</span>
+                    <a href="BLOCKS.md#doppler-processor">Details &rarr;</a>
+                </div>
+                <div class="card">
+                    <h3>cfar_detector</h3>
+                    <p>2D CA/GO/SO/OS-CFAR with O(n) prefix-sum optimization. Pfa-calibrated threshold.</p>
+                    <span class="badge badge-cpu">CPU</span> <span class="badge badge-gpu">GPU 305x</span>
+                    <a href="BLOCKS.md#cfar-detector">Details &rarr;</a>
+                </div>
+                <div class="card">
+                    <h3>detection_cluster</h3>
+                    <p>8-connected component clustering for grouping adjacent detections.</p>
+                    <a href="BLOCKS.md#detection-cluster">Details &rarr;</a>
+                </div>
+                <div class="card">
+                    <h3>aoa_estimator</h3>
+                    <p>Angle-of-Arrival estimation: Bartlett beamforming or MUSIC (Eigen3 SVD).</p>
+                    <a href="BLOCKS.md#aoa-estimator">Details &rarr;</a>
+                </div>
+                <div class="card">
+                    <h3>tracker</h3>
+                    <p>Multi-target Kalman tracker with Global Nearest Neighbor (GNN) association.</p>
+                    <a href="BLOCKS.md#tracker">Details &rarr;</a>
+                </div>
+                <div class="card">
+                    <h3>coherence_monitor</h3>
+                    <p>Phase coherence tracking across channels. Triggers calibration when drift detected.</p>
+                    <a href="BLOCKS.md#coherence-monitor">Details &rarr;</a>
+                </div>
+            </div>
+        </section>
+
+        <section id="gpu">
+            <h2>GPU Acceleration</h2>
+            <p>Optional NVIDIA CUDA acceleration with <span class="highlight">zero-impact CPU fallback</span>.</p>
+            <table>
+                <tr>
+                    <th>Kernel</th>
+                    <th>CPU Baseline</th>
+                    <th>GPU (RTX 5090)</th>
+                    <th>Speedup</th>
+                </tr>
+                <tr>
+                    <td>ECA-B Clutter Canceller</td>
+                    <td>~5 ms</td>
+                    <td>&lt;1 ms</td>
+                    <td class="highlight">10x+</td>
+                </tr>
+                <tr>
+                    <td>CAF Processing</td>
+                    <td>46.7 ms</td>
+                    <td>2.03 ms</td>
+                    <td class="highlight">23x</td>
+                </tr>
+                <tr>
+                    <td>Doppler Processing</td>
+                    <td>~1.5 ms</td>
+                    <td>1.27 ms</td>
+                    <td>1.2x</td>
+                </tr>
+                <tr>
+                    <td>CFAR Detection</td>
+                    <td>592 ms</td>
+                    <td>1.94 ms</td>
+                    <td class="highlight">305x</td>
+                </tr>
+            </table>
+            <p>Supported architectures: sm_75 (Turing), sm_86 (Ampere), sm_87 (Jetson Orin), sm_89 (Ada), sm_120 (Blackwell)</p>
+            <a href="GPU_USER_GUIDE.md">GPU User Guide &rarr;</a>
+        </section>
+
+        <section id="tutorials">
+            <h2>Tutorials</h2>
+            <div class="card-grid">
+                <div class="card">
+                    <h3>KrakenSDR Quick Start</h3>
+                    <p>Hardware setup, phase calibration, 5-channel dashboard, local and remote display.</p>
+                    <a href="QUICKSTART_KRAKENSDR.md">View Tutorial &rarr;</a>
+                </div>
+                <div class="card">
+                    <h3>RSPduo Quick Start</h3>
+                    <p>Dual-tuner configuration, gr-sdrplay3 setup, dashboard usage.</p>
+                    <a href="QUICKSTART_RSPDUO.md">View Tutorial &rarr;</a>
+                </div>
+                <div class="card">
+                    <h3>Dashboard Guide</h3>
+                    <p>FuncAnimation displays, remote server, multi-panel views.</p>
+                    <a href="DASHBOARD_GUIDE.md">View Tutorial &rarr;</a>
+                </div>
+                <div class="card">
+                    <h3>GPU Deployment</h3>
+                    <p>CUDA installation, backend selection, performance tuning.</p>
+                    <a href="GPU_DEPLOYMENT.md">View Guide &rarr;</a>
+                </div>
+            </div>
+        </section>
+
+        <section id="api">
+            <h2>API Reference</h2>
+            <div class="card-grid">
+                <div class="card">
+                    <h3>Block Reference</h3>
+                    <p>Complete API documentation for all signal processing blocks.</p>
+                    <a href="BLOCKS.md">View Documentation &rarr;</a>
+                </div>
+                <div class="card">
+                    <h3>GPU API</h3>
+                    <p>C/Python API for GPU kernels, backend selection, memory management.</p>
+                    <a href="GPU_API_REFERENCE.md">View Documentation &rarr;</a>
+                </div>
+                <div class="card">
+                    <h3>Configuration</h3>
+                    <p>Environment variables, build options, runtime settings.</p>
+                    <a href="CONFIGURATION.md">View Documentation &rarr;</a>
+                </div>
+            </div>
+        </section>
+
+        <section>
+            <h2>Build & Install</h2>
+            <pre><code># Install dependencies
+sudo apt install cmake libfftw3-dev libeigen3-dev gnuradio-dev python3-pybind11
+
+# Build with GPU support
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release -DENABLE_GPU=ON
+make -j$(nproc)
+sudo make install && sudo ldconfig
+
+# Run tests
+pytest tests/ -v</code></pre>
+        </section>
+    </main>
+
+    <footer>
+        <p>PassiveRadar_Kraken &copy; 2026 Dr Robert W McGwier, PhD | MIT License</p>
+        <p>169 tests passing | GPU acceleration optional | ITAR/EAR compliant</p>
+    </footer>
+</body>
+</html>
