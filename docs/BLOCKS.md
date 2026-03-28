@@ -225,7 +225,7 @@ e[n] = surv[n] - sum(w[k] * ref[n - k]) for k = 0 to num_taps-1
    ```
 3. Add diagonal loading for stability:
    ```
-   R_reg = R + lambda * I  (lambda = 1e-6)
+   R_reg = R + lambda * I  (lambda = reg_factor, default 0.001)
    ```
 4. Solve for optimal weights:
    ```
@@ -239,16 +239,15 @@ e[n] = surv[n] - sum(w[k] * ref[n - k]) for k = 0 to num_taps-1
 **Key Features**:
 - **Batch processing**: Entire CPI processed at once for optimal weights
 - **Diagonal loading**: Prevents ill-conditioning of R matrix
-- **Delay compensation**: Configurable delay between reference and surveillance
 - **NEON optimization**: Uses OptMathKernels for complex dot products
 
-**Parameters**:
+**Parameters** (OOT block: `eca_canceller`):
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `num_taps` | int | 128 | Filter length (clutter delay spread) |
-| `delay` | int | 0 | Reference delay (samples) |
-| `diagonal_loading` | float | 1e-6 | Regularization factor |
+| `reg_factor` | float | 0.001 | Tikhonov/diagonal loading regularization |
+| `num_surv` | int | 4 | Number of surveillance channels |
 
 **GPU Acceleration**: 10x speedup with CUDA (cuBLAS for matrix operations)
 
@@ -294,20 +293,23 @@ fft_len = next_power_of_2(2 * n_samples)
 Zero-padding ensures linear (not circular) convolution.
 
 **Key Features**:
-- **Batched FFT**: All Doppler bins processed in parallel
 - **Precomputed phasors**: Doppler shift phasors computed once at initialization
 - **FFTW/cuFFT**: Uses optimized FFT libraries
+- **Linear correlation**: Zero-padded to next power-of-2 to avoid circular artifacts
 
-**Parameters**:
+**Parameters** (GRC block: `caf`):
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `n_samples` | int | 65536 | CPI length |
-| `n_doppler` | int | 256 | Number of Doppler bins |
-| `n_range` | int | 4096 | Number of range bins |
-| `doppler_start` | float | -500 | Start Doppler (Hz) |
-| `doppler_step` | float | 4 | Doppler step (Hz) |
-| `sample_rate` | float | 2.4e6 | Sample rate (Hz) |
+| `n_samples` | int | 4096 | CPI length (samples per processing interval) |
+
+The CAF block computes the range profile (cross-correlation) only. Doppler processing
+is handled by the separate `doppler_processor` block, which applies windowing and
+slow-time FFT across multiple CPI outputs.
+
+The standalone C++ kernel (`caf_create_full()`) additionally accepts `n_doppler`,
+`n_range`, `doppler_start`, `doppler_step`, and `sample_rate` for full range-Doppler
+map computation, but these are not exposed in the GRC block.
 
 **GPU Acceleration**: 23x speedup with CUDA (cuFFT batched)
 

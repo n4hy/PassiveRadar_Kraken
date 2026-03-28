@@ -62,16 +62,19 @@ pip install numpy matplotlib scipy pytest
 
 ```bash
 cd PassiveRadar_Kraken
-mkdir build && cd build
 
-# CPU-only build
+# Step 1: Build C++ signal processing kernels
+cd src && mkdir -p build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
+cd ../..
 
-# GPU-accelerated build
-cmake .. -DCMAKE_BUILD_TYPE=Release -DENABLE_GPU=ON
-
+# Step 2: Build and install the GNU Radio OOT module
+cd gr-kraken_passive_radar && mkdir -p build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
 make -j$(nproc)
 sudo make install && sudo ldconfig
+cd ../..
 ```
 
 ## RSPduo Configuration
@@ -100,25 +103,27 @@ In dual-tuner mode, the RSPduo has specific sample rate constraints:
 ### Running the RSPduo Flowgraph
 
 ```bash
-# Start passive radar with RSPduo
-python3 rspduo_pbr_flowgraph.py --freq 98.1e6 --sample-rate 2e6
+# Start passive radar with RSPduo source
+python3 run_passive_radar.py --source rspduo --freq 98.1e6 --sample-rate 2e6 --visualize
 
 # With specific gain settings
-python3 rspduo_pbr_flowgraph.py --freq 98.1e6 --sample-rate 2e6 \
-    --if-gain 40 --lna-state 3
+python3 run_passive_radar.py --source rspduo --freq 98.1e6 \
+    --if-gain 40 --rf-gain 0 --sample-rate 2e6 --visualize
 ```
 
 ### Command-Line Options
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--freq` | 98.1e6 | Center frequency (Hz) |
+| `--source` | kraken | Source type: `kraken` or `rspduo` |
+| `--freq` | 103.7e6 | Center frequency (Hz) |
+| `--gain` | 30 | RF gain (dB, KrakenSDR) |
+| `--if-gain` | 40 | IF gain (dB, RSPduo) |
+| `--rf-gain` | 0 | RF gain (dB, RSPduo) |
 | `--sample-rate` | 2e6 | Sample rate (Hz, max 2 MHz dual-tuner) |
-| `--if-gain` | 40 | IF gain (20-59 dB) |
-| `--lna-state` | 3 | LNA attenuation state (0-9) |
-| `--cpi-size` | 32768 | Coherent processing interval |
-| `--num-doppler` | 128 | Doppler FFT bins |
-| `--num-range` | 2048 | Range bins |
+| `--bandwidth` | 0 | IF bandwidth (0 = auto) |
+| `--cpi-len` | 2048 | CPI length / range bins: 512, 1024, 2048, 4096 |
+| `--visualize` | off | Show live dashboard GUI |
 
 ## Dashboard Usage
 
@@ -126,7 +131,7 @@ python3 rspduo_pbr_flowgraph.py --freq 98.1e6 --sample-rate 2e6 \
 
 ```bash
 # Start with integrated dashboard
-python3 rspduo_pbr_flowgraph.py --freq 98.1e6 --dashboard
+python3 run_passive_radar.py --source rspduo --freq 98.1e6 --visualize
 
 # Or use standalone display
 python3 kraken_passive_radar/multi_display_dashboard.py
@@ -146,7 +151,7 @@ The RSPduo dashboard provides 5 panels:
 
 **On the RSPduo host (server):**
 ```bash
-python3 rspduo_pbr_flowgraph.py --freq 98.1e6 --server --port 5556
+python3 run_passive_radar.py --source rspduo --freq 98.1e6 --visualize
 ```
 
 **On the display computer (client):**
@@ -203,24 +208,15 @@ RSPduo Dual-Tuner
 
 **CPU-Only (RPi5):**
 ```bash
-python3 rspduo_pbr_flowgraph.py --freq 98.1e6 \
-    --sample-rate 1e6 \
-    --cpi-size 16384 \
-    --num-doppler 64 \
-    --num-range 1024
+python3 run_passive_radar.py --source rspduo --freq 98.1e6 \
+    --sample-rate 1e6 --cpi-len 1024 --skip-aoa --visualize
 ```
-Expected: ~15 Hz update rate
 
-**GPU-Accelerated:**
+**GPU-Accelerated (x86_64 with CUDA):**
 ```bash
-export KRAKEN_GPU_BACKEND=gpu
-python3 rspduo_pbr_flowgraph.py --freq 98.1e6 \
-    --sample-rate 2e6 \
-    --cpi-size 32768 \
-    --num-doppler 128 \
-    --num-range 2048
+python3 run_passive_radar.py --source rspduo --freq 98.1e6 \
+    --sample-rate 2e6 --cpi-len 4096 --visualize
 ```
-Expected: ~50-100 Hz update rate
 
 ## Troubleshooting
 
@@ -253,7 +249,7 @@ The RSPduo in dual-tuner mode requires sample rates <= 2 MHz:
 ```bash
 # Error: "Sample rate too high for dual-tuner mode"
 # Solution: Reduce sample rate
-python3 rspduo_pbr_flowgraph.py --freq 98.1e6 --sample-rate 2e6
+python3 run_passive_radar.py --source rspduo --freq 98.1e6 --sample-rate 2e6
 ```
 
 ### Phase Alignment Issues

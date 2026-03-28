@@ -20,7 +20,7 @@ The dashboard system provides real-time visualization of passive radar processin
 
 ```bash
 # With hardware
-python3 run_passive_radar.py --freq 98.1e6 --dashboard
+python3 run_passive_radar.py --freq 103.7e6 --visualize
 
 # Demo mode (simulated targets)
 python3 kraken_passive_radar/five_channel_demo.py
@@ -122,14 +122,8 @@ python3 kraken_passive_radar/multi_display_dashboard.py
 ### Server Setup (Radar Host)
 
 ```bash
-# Start radar with network server
-python3 run_passive_radar.py --freq 98.1e6 --server --port 5555
-
-# Or explicitly configure server
-python3 run_passive_radar.py --freq 98.1e6 \
-    --server \
-    --server-bind 0.0.0.0 \
-    --server-port 5555
+# Start radar with dashboard (data is streamed for remote display)
+python3 run_passive_radar.py --freq 103.7e6 --visualize
 ```
 
 ### Client Connection
@@ -179,8 +173,7 @@ For low-bandwidth connections, use detection-only mode:
 ```bash
 python3 kraken_passive_radar/remote_display.py \
     --host 192.168.1.100 \
-    --port 5555 \
-    --detections-only
+    --port 5555
 ```
 
 ## GNU Radio Dashboard Sink
@@ -243,7 +236,7 @@ If running headless:
 # Use virtual framebuffer
 Xvfb :99 -screen 0 1920x1080x24 &
 export DISPLAY=:99
-python3 run_passive_radar.py --dashboard
+python3 run_passive_radar.py --visualize
 ```
 
 ## Customization
@@ -294,7 +287,7 @@ VELOCITY_ARROW_SCALE = 0.1  # Arrow length = velocity * scale
 ### Reduce Update Rate for Slow Connections
 
 ```bash
-python3 run_passive_radar.py --dashboard --update-rate 5
+python3 run_passive_radar.py --visualize
 ```
 
 ### Disable Unused Panels
@@ -314,7 +307,7 @@ For systems with NVIDIA GPU and proper drivers:
 ```bash
 # Enable GPU-accelerated matplotlib backend
 export MPLBACKEND=module://matplotlib.backends.backend_agg
-python3 run_passive_radar.py --dashboard
+python3 run_passive_radar.py --visualize
 ```
 
 ## Troubleshooting
@@ -333,15 +326,14 @@ python3 run_passive_radar.py --dashboard
 
 ### High CPU Usage
 
-1. Reduce update rate: `--update-rate 5`
-2. Disable waterfall panel
-3. Reduce range-Doppler map resolution
+1. Use smaller CPI: `--cpi-len 1024`
+2. Skip AoA: `--skip-aoa`
+3. Disable waterfall panel in dashboard configuration
 
 ### Remote Display Lag
 
-1. Reduce data rate: `--detections-only`
-2. Use detection-only mode
-3. Check network bandwidth
+1. Check network bandwidth
+2. Use `enhanced_remote_display.py` with `--local` for local post-processing
 4. Consider local post-processing with `enhanced_remote_display.py`
 
 ## Screenshots

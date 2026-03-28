@@ -34,26 +34,29 @@ pip install numpy matplotlib scipy pytest
 
 ```bash
 cd PassiveRadar_Kraken
-mkdir build && cd build
 
-# CPU-only build (RPi5)
+# Step 1: Build C++ signal processing kernels
+cd src && mkdir -p build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
+cd ../..
 
-# GPU-accelerated build (desktop with NVIDIA GPU)
-cmake .. -DCMAKE_BUILD_TYPE=Release -DENABLE_GPU=ON
-
+# Step 2: Build and install the GNU Radio OOT module
+cd gr-kraken_passive_radar && mkdir -p build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
 make -j$(nproc)
 sudo make install && sudo ldconfig
+cd ../..
 ```
 
 ### 3. Verify Installation
 
 ```bash
-# Test kernel libraries
-python3 -c "from kraken_passive_radar.custom_blocks import CAFBlock; print('OK')"
+# Test kernel libraries (requires OOT module installed)
+python3 -c "from gnuradio.kraken_passive_radar.custom_blocks import CafBlock; print('OK')"
 
-# Test GPU (if enabled)
-python3 -c "from kraken_passive_radar.gpu_backend import is_gpu_available; print(is_gpu_available())"
+# Test C++ blocks
+python3 -c "from gnuradio import kraken_passive_radar; print('OOT module OK')"
 ```
 
 ## Basic Usage
@@ -61,27 +64,30 @@ python3 -c "from kraken_passive_radar.gpu_backend import is_gpu_available; print
 ### Running the Main Application
 
 ```bash
-# Default configuration (FM broadcast band)
-python3 run_passive_radar.py --freq 98.1e6 --sample-rate 2.4e6
+# Default configuration (FM broadcast at 103.7 MHz)
+python3 run_passive_radar.py --freq 103.7e6 --visualize
 
-# With specific illuminator frequency
-python3 run_passive_radar.py --freq 101.9e6 --sample-rate 2.4e6 --gain 40
+# With specific illuminator frequency and gain
+python3 run_passive_radar.py --freq 101.9e6 --gain 40 --visualize
 ```
 
 ### Command-Line Options
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--freq` | 98.1e6 | Illuminator frequency (Hz) |
-| `--sample-rate` | 2.4e6 | Sample rate (Hz) |
-| `--gain` | 40 | RF gain (dB) |
-| `--cpi-size` | 65536 | Coherent processing interval |
-| `--num-doppler` | 256 | Doppler FFT bins |
-| `--num-range` | 4096 | Range bins |
-| `--eca-taps` | 128 | ECA filter taps |
-| `--cfar-guard` | 2 | CFAR guard cells |
-| `--cfar-train` | 8 | CFAR training cells |
-| `--cfar-threshold` | 10.0 | CFAR threshold (dB) |
+| `--freq` | 103.7e6 | Illuminator frequency (Hz) |
+| `--gain` | 30 | RF gain (dB) |
+| `--geometry` | ULA | Array geometry: ULA or URA |
+| `--cpi-len` | 2048 | CPI length / range bins: 512, 1024, 2048, 4096 |
+| `--sample-rate` | 2e6 | Sample rate (Hz) |
+| `--recal-interval` | 120 | Recalibration interval (seconds) |
+| `--no-startup-cal` | off | Skip initial phase calibration |
+| `--skip-aoa` | off | Skip AoA estimation (range-Doppler only) |
+| `--visualize` | off | Show live 5-channel dashboard GUI |
+| `--demo` | off | Demo mode with simulated data (no hardware) |
+| `--b3-signal` | passthrough | Reference reconstruction: passthrough, fm, atsc3, dvbt |
+| `--b3-fft-size` | 8192 | DVB-T FFT size: 2048, 4096, 8192, 16384, 32768 |
+| `--b3-guard-interval` | 192 | DVB-T guard interval samples |
 
 ## Phase Calibration
 
@@ -98,10 +104,10 @@ The system performs automatic phase calibration using the internal noise source:
 
 ```bash
 # Run dedicated calibration script
-python3 krakensdr_calibrate.py --freq 98.1e6 --duration 10
+python3 krakensdr_calibrate.py --freq 103.7e6
 
 # View calibration results
-cat calibration_results.json
+cat calibration.json
 ```
 
 ### Calibration Tips
@@ -117,7 +123,7 @@ cat calibration_results.json
 
 ```bash
 # Start with local dashboard
-python3 run_passive_radar.py --freq 98.1e6 --dashboard
+python3 run_passive_radar.py --freq 103.7e6 --visualize
 
 # Or use the dedicated dashboard script
 python3 kraken_passive_radar/five_channel_dashboard.py
@@ -137,8 +143,8 @@ The dashboard supports remote viewing for headless deployments:
 
 **On the KrakenSDR host (server):**
 ```bash
-# Start radar processing with network server
-python3 run_passive_radar.py --freq 98.1e6 --server --port 5555
+# Start radar processing (dashboard streams data for remote display)
+python3 run_passive_radar.py --freq 103.7e6 --visualize
 ```
 
 **On the display computer (client):**
@@ -180,28 +186,19 @@ Dashboard         (Kalman+GNN)     (MUSIC)      (8-connected)    (CA/GO/SO)
 ### CPU-Only (RPi5)
 
 ```bash
-# Optimize for real-time on RPi5
-python3 run_passive_radar.py --freq 98.1e6 \
-    --cpi-size 32768 \
-    --num-doppler 128 \
-    --num-range 2048
+# Smaller CPI for real-time on RPi5
+python3 run_passive_radar.py --freq 103.7e6 --cpi-len 1024 --visualize
+
+# Range-Doppler only (skip AoA for lower CPU load)
+python3 run_passive_radar.py --freq 103.7e6 --cpi-len 1024 --skip-aoa --visualize
 ```
 
-Expected: ~10 Hz update rate
-
-### GPU-Accelerated (RTX 5090)
+### GPU-Accelerated (x86_64 with CUDA)
 
 ```bash
-# Enable GPU backend
-export KRAKEN_GPU_BACKEND=gpu
-
-python3 run_passive_radar.py --freq 98.1e6 \
-    --cpi-size 65536 \
-    --num-doppler 256 \
-    --num-range 4096
+# Larger CPI for higher resolution (GPU handles the load)
+python3 run_passive_radar.py --freq 103.7e6 --cpi-len 4096 --visualize
 ```
-
-Expected: 100-200 Hz update rate
 
 ## Troubleshooting
 
@@ -249,7 +246,7 @@ ssh -X user@krakensdr-host
 # Or use virtual framebuffer
 Xvfb :99 -screen 0 1920x1080x24 &
 export DISPLAY=:99
-python3 run_passive_radar.py --dashboard
+python3 run_passive_radar.py --visualize
 ```
 
 ## Next Steps
