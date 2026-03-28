@@ -91,12 +91,9 @@ class krakensdr_source(gr.hier_block2):
         Args:
             enable (bool): True to enable, False to disable.
         """
-        try:
-            self._gpio_control_libusb(gpio=0, value=1 if enable else 0)
-            state = "ENABLED" if enable else "DISABLED"
-            print(f"Noise source {state} via direct USB control transfer")
-        except Exception as e:
-            print(f"Warning: Failed to set noise source: {e}", file=sys.stderr)
+        self._gpio_control_libusb(gpio=0, value=1 if enable else 0)
+        state = "ENABLED" if enable else "DISABLED"
+        print(f"Noise source {state} via direct USB control transfer")
 
     def _gpio_control_libusb(self, gpio, value):
         """
@@ -105,8 +102,10 @@ class krakensdr_source(gr.hier_block2):
         RTL2832U register access uses vendor control transfers (endpoint 0):
           - CTRL_OUT (0x40): write register
           - CTRL_IN  (0xC0): read register
-          - Block SYS (1), GPO (0x01): GPIO direction
-          - Block SYS (1), GPD (0x02): GPIO data
+          - Block SYSB (2): system registers (GPO, GPOE, GPD)
+          - GPO (0x3001): GPIO output value
+          - GPOE (0x3003): GPIO output enable
+          - GPD (0x3004): GPIO direction
         """
         libusb = ctypes.CDLL(
             ctypes.util.find_library('usb-1.0') or 'libusb-1.0.so.0')
@@ -161,9 +160,10 @@ class krakensdr_source(gr.hier_block2):
 
         CTRL_OUT = 0x40
         CTRL_IN = 0xC0
-        BLOCK_SYS = 1
-        GPO = 0x01
-        GPD = 0x02
+        SYSB = 2          # System block (block enum: DEMODB=0, USBB=1, SYSB=2)
+        GPO = 0x3001       # GPIO output value
+        GPOE = 0x3003      # GPIO output enable
+        GPD = 0x3004       # GPIO direction
         TIMEOUT = 1000
         gpio_bit = 1 << gpio
 
@@ -217,7 +217,7 @@ class krakensdr_source(gr.hier_block2):
                         addr, block << 8,
                         data, 1, TIMEOUT)
                     if r < 0:
-                        raise RuntimeError(f"USB read reg 0x{addr:02x} failed: {r}")
+                        raise RuntimeError(f"USB read reg 0x{addr:04x} failed: {r}")
                     return data[0]
 
                 def write_reg(addr, block, val):
@@ -227,7 +227,7 @@ class krakensdr_source(gr.hier_block2):
                         addr, block << 8,
                         data, 1, TIMEOUT)
                     if r < 0:
-                        raise RuntimeError(f"USB write reg 0x{addr:02x} failed: {r}")
+                        raise RuntimeError(f"USB write reg 0x{addr:04x} failed: {r}")
                     # Dummy read to flush (RTL2832U demod quirk)
                     dummy = (ctypes.c_uint8 * 1)()
                     libusb.libusb_control_transfer(
@@ -235,16 +235,18 @@ class krakensdr_source(gr.hier_block2):
                         0x01, 0x0A << 8,
                         dummy, 1, TIMEOUT)
 
-                # Set GPIO as output
-                gpo = read_reg(GPO, BLOCK_SYS)
-                write_reg(GPO, BLOCK_SYS, gpo | gpio_bit)
+                # Set GPIO as output (matches rtlsdr_set_gpio_output)
+                gpd = read_reg(GPD, SYSB)
+                write_reg(GPD, SYSB, gpd & ~gpio_bit)
+                gpoe = read_reg(GPOE, SYSB)
+                write_reg(GPOE, SYSB, gpoe | gpio_bit)
 
-                # Set GPIO value
-                gpd = read_reg(GPD, BLOCK_SYS)
+                # Set GPIO value (matches rtlsdr_set_gpio_bit)
+                gpo = read_reg(GPO, SYSB)
                 if value:
-                    write_reg(GPD, BLOCK_SYS, gpd | gpio_bit)
+                    write_reg(GPO, SYSB, gpo | gpio_bit)
                 else:
-                    write_reg(GPD, BLOCK_SYS, gpd & ~gpio_bit)
+                    write_reg(GPO, SYSB, gpo & ~gpio_bit)
             finally:
                 libusb.libusb_close(handle)
         finally:

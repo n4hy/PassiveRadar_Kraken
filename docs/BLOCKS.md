@@ -57,13 +57,15 @@ The KrakenSDR consists of 5 RTL-SDR tuners sharing a common clock for phase cohe
 
 **Noise Source GPIO Control**:
 ```python
-# Direct vendor control transfer (RTL2832U GPIO)
-dev.ctrl_transfer(
-    bmRequestType=0x40,  # Vendor, host-to-device
-    bRequest=0x01,       # RTL2832U register write
-    wValue=gpio_reg,     # GPIO register address
-    wIndex=gpio_value,   # GPIO bit pattern
-    data_or_wLength=None
+# Direct libusb vendor control transfer to RTL2832U system registers
+# Block SYSB=2, registers: GPO=0x3001, GPOE=0x3003, GPD=0x3004
+# Matches rtlsdr_set_gpio_output() + rtlsdr_set_gpio_bit() from librtlsdr
+libusb_control_transfer(
+    handle, 0x40,    # bmRequestType: vendor, host-to-device
+    0,               # bRequest: register access
+    addr,            # wValue: register address (e.g. 0x3001 for GPO)
+    block << 8,      # wIndex: block selector (SYSB=2 → 0x0200)
+    data, 1, 1000    # 1 byte data, 1000ms timeout
 )
 ```
 
