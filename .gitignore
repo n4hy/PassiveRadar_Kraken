@@ -137,6 +137,7 @@ Desktop.ini
 ############################################
 .local/
 secrets/
+.claude/
 .env
 .env.local
 .env.*
