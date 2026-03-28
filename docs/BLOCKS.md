@@ -99,6 +99,50 @@ The RSPduo operates in dual-tuner (diversity) mode with Tuner A as reference and
 
 ## Preprocessing Blocks
 
+### phase_corrector
+
+**Purpose**: Per-sample phase and drift compensation for surveillance channels.
+
+**Technical Description**:
+
+Applied to each of the 4 surveillance channels independently. Multiplies every sample
+by a complex exponential that cancels the measured phase offset and linear drift rate
+relative to the reference channel. Updated every calibration cycle (default 60s).
+
+**Algorithm** (NCO-based):
+```
+# On calibration update:
+phi0 = -measured_phase_offset        (radians)
+omega = -measured_drift_rate         (radians/sec)
+sample_count = 0
+
+# Per work() call (N samples):
+start_phase = phi0 + omega * sample_count / fs
+phase_inc = omega / fs
+phasors[0] = exp(j * start_phase)
+phasors[1:N] = cumprod(exp(j * phase_inc))    # only 2 exp() calls total
+output[n] = input[n] * phasors[n]
+sample_count += N
+```
+
+**Key Features**:
+- **Thread-safe**: Lock protects shared state between calibration and GR scheduler threads
+- **NCO optimization**: `np.cumprod()` replaces per-sample `np.exp()` (3.6x faster on RPi5)
+- **Static fast path**: Single-phasor multiply when drift rate is zero
+- **4-channel**: One independent instance per surveillance channel
+
+**Parameters**:
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `sample_rate` | float | 250000 | Decimated sample rate (Hz) |
+
+**Runtime Methods**:
+
+| Method | Description |
+|--------|-------------|
+| `set_correction(phase_rad, drift_rad_per_sec)` | Update from calibration measurement |
+
 ### conditioning
 
 **Purpose**: Automatic Gain Control (AGC) with configurable time constants.

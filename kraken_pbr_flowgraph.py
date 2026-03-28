@@ -112,23 +112,59 @@ from matplotlib.figure import Figure
 
 class phase_corrector(gr.sync_block):
     """
-    Applies phase correction to surveillance channel.
-    Correction phasor updated by calibration routine.
+    Applies time-varying phase correction to surveillance channel.
+
+    Corrects both the static phase offset and the linear drift rate
+    measured during calibration.  Each sample is multiplied by
+    exp(-j*(phi0 + omega*n/fs)) where omega is the drift in rad/s
+    and n counts samples since the last calibration.
     """
-    def __init__(self):
+    def __init__(self, sample_rate=250000):
         gr.sync_block.__init__(
             self, name="Phase Corrector",
             in_sig=[np.complex64],
             out_sig=[np.complex64]
         )
-        self.correction = np.complex64(1.0 + 0j)  # No correction initially
+        self._fs = float(sample_rate)
+        self._phi0 = 0.0          # initial phase offset (radians)
+        self._omega = 0.0         # drift rate (radians/sec)
+        self._sample_count = 0    # samples since last calibration
+        self._lock = threading.Lock()
 
-    def set_correction(self, phasor):
-        self.correction = np.complex64(phasor)
+    def set_correction(self, phase_rad, drift_rad_per_sec=0.0):
+        """Update correction from calibration measurement.
+
+        Args:
+            phase_rad: measured phase offset in radians (will be negated)
+            drift_rad_per_sec: measured drift rate in radians/sec (negated)
+        """
+        with self._lock:
+            self._phi0 = -phase_rad
+            self._omega = -drift_rad_per_sec
+            self._sample_count = 0
 
     def work(self, input_items, output_items):
-        output_items[0][:] = input_items[0] * self.correction
-        return len(output_items[0])
+        n = len(input_items[0])
+        with self._lock:
+            phi0 = self._phi0
+            omega = self._omega
+            count = self._sample_count
+            self._sample_count = count + n
+
+        if omega == 0.0:
+            # Static correction — single complex multiply
+            output_items[0][:] = input_items[0] * np.complex64(np.exp(1j * phi0))
+            return n
+
+        # NCO: 2 exp() calls + N complex multiplies via cumprod
+        start_phase = phi0 + omega * count / self._fs
+        phase_inc = omega / self._fs
+        phasors = np.empty(n, dtype=np.complex128)
+        phasors[0] = np.exp(1j * start_phase)
+        phasors[1:] = np.exp(1j * phase_inc)
+        np.cumprod(phasors, out=phasors)
+        output_items[0][:] = input_items[0] * phasors.astype(np.complex64)
+        return n
 
 
 class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
@@ -191,10 +227,12 @@ class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
         self.rd_size = rd_size = num_doppler_bins * fft_size  # 131072
 
         # Phase calibration state (thread-safe via cal_lock)
-        self.phase_history = []       # list of (elapsed_sec, phase_deg)
-        self.drift_coeffs = np.zeros(3)  # [a, b, c] for a*t^2 + b*t + c (parabolic fit)
-        self.coeffs_history = []      # list of (t, a, b, c) — model snapshot at each cal point
-        self.drift_tau = 10.0             # exponential weight time constant (seconds)
+        # Per-channel: 4 surveillance channels (indices 0-3 = sdr outputs 1-4)
+        self.n_surv = 4
+        self.phase_history = [[] for _ in range(self.n_surv)]
+        self.drift_coeffs = [np.zeros(3) for _ in range(self.n_surv)]
+        self.coeffs_history = [[] for _ in range(self.n_surv)]
+        self.drift_tau = 10.0
         self.start_time = time.time()
         self.cal_lock = threading.Lock()
         self._cal_stop = threading.Event()
@@ -205,18 +243,26 @@ class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
         self._frozen_trend_t = []  # accumulated frozen red curve t-values (NaN-separated)
         self._frozen_trend_p = []  # accumulated frozen red curve phase-values
         self._n_frozen_segs = 0    # number of coeffs_history entries already frozen
-        self.recal_interval = 10.0  # seconds between recalibrations
+        self.recal_interval = 60.0  # seconds between recalibrations
 
         ##################################################
-        # Blocks — 2-channel with Doppler (ch0=ref, ch1=surv)
+        # Blocks — 5-channel: ch0=ref, ch1-4=surv with phase correction
         ##################################################
 
-        # Phase corrector on surveillance channel (applied before ECA)
-        self.phase_corr = phase_corrector()
+        # Per-channel phase correctors (one per surv channel)
+        self.phase_corrs = [phase_corrector(sample_rate=decimated_rate)
+                            for _ in range(self.n_surv)]
+        self.phase_corr = self.phase_corrs[0]  # alias for RD processing chain
 
-        # Probes for calibration (grab raw samples after LPF/decimate, before phase_corr)
-        self.cal_probe_ref = blocks.probe_signal_c()
-        self.cal_probe_surv = blocks.probe_signal_c()
+        # Vector probes for calibration: contiguous sample blocks allow FFT
+        # cross-correlation to find inter-channel delay from GR scheduling.
+        self.cal_vec_size = 2**16  # 65536 samples ≈ 245ms at decimated rate
+        self.s2v_cal_ref = blocks.stream_to_vector(gr.sizeof_gr_complex, self.cal_vec_size)
+        self.cal_probe_ref = blocks.probe_signal_vc(self.cal_vec_size)
+        self.s2v_cals = [blocks.stream_to_vector(gr.sizeof_gr_complex, self.cal_vec_size)
+                         for _ in range(self.n_surv)]
+        self.cal_probes = [blocks.probe_signal_vc(self.cal_vec_size)
+                           for _ in range(self.n_surv)]
 
         # Stream-to-vector for cross-correlation input
         self.s2v_surv0 = blocks.stream_to_vector(gr.sizeof_gr_complex*1, cpi_samples)
@@ -389,50 +435,60 @@ class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
             # Keep legacy alias for calibration code
             self.kraken_src = self.sdr_src
 
+        # Reference channel conditioning
         self.dc_blocker_ref = filter.dc_blocker_cc(32, True)
-        self.dc_blocker_surv0 = filter.dc_blocker_cc(32, True)
         self.freq_xlating_fir_ref = filter.freq_xlating_fir_filter_ccc(decimation, lpf_taps, 0, samp_rate)
-        self.freq_xlating_fir_surv0 = filter.freq_xlating_fir_filter_ccc(decimation, lpf_taps, 0, samp_rate)
         self.agc_ref = analog.agc2_cc(0.01, 0.001, 1.0, 1.0, 65536)
-        self.agc_surv0 = analog.agc2_cc(0.01, 0.001, 1.0, 1.0, 65536)
+
+        # Surveillance channels conditioning (4 channels)
+        self.dc_blockers = [filter.dc_blocker_cc(32, True) for _ in range(self.n_surv)]
+        self.fir_filters = [filter.freq_xlating_fir_filter_ccc(decimation, lpf_taps, 0, samp_rate)
+                            for _ in range(self.n_surv)]
+        self.agcs = [analog.agc2_cc(0.01, 0.001, 1.0, 1.0, 65536) for _ in range(self.n_surv)]
+
+        # ECA on surv0 (ch1) for range-Doppler processing
         self.eca_canceller = kraken_passive_radar.eca_canceller(eca_taps, eca_reg, 1)
 
         ##################################################
-        # Connections
+        # Connections — 5-channel: ch0=ref, ch1-4=surv
         ##################################################
-        if self.source_type == 'rspduo':
-            # RSPduo: output 0 = ref (Tuner 1), output 1 = surv (Tuner 2)
-            self.connect((self.sdr_src, 0), (self.dc_blocker_ref, 0))
-            self.connect((self.sdr_src, 0), (self.qtgui_freq_sink_ref, 0))
-            self.connect((self.sdr_src, 1), (self.dc_blocker_surv0, 0))
-            self.connect((self.sdr_src, 1), (self.qtgui_freq_sink_surv, 0))
-        else:
-            # KrakenSDR: ch0=ref, ch1=surv, ch2-4 to null
-            self.null_sink_ch2 = blocks.null_sink(gr.sizeof_gr_complex*1)
-            self.null_sink_ch3 = blocks.null_sink(gr.sizeof_gr_complex*1)
-            self.null_sink_ch4 = blocks.null_sink(gr.sizeof_gr_complex*1)
-            self.connect((self.sdr_src, 0), (self.dc_blocker_ref, 0))
-            self.connect((self.sdr_src, 0), (self.qtgui_freq_sink_ref, 0))
-            self.connect((self.sdr_src, 1), (self.dc_blocker_surv0, 0))
-            self.connect((self.sdr_src, 1), (self.qtgui_freq_sink_surv, 0))
-            self.connect((self.sdr_src, 2), (self.null_sink_ch2, 0))
-            self.connect((self.sdr_src, 3), (self.null_sink_ch3, 0))
-            self.connect((self.sdr_src, 4), (self.null_sink_ch4, 0))
+        # Reference channel: source -> DC block -> freq sink
+        self.connect((self.sdr_src, 0), (self.dc_blocker_ref, 0))
+        self.connect((self.sdr_src, 0), (self.qtgui_freq_sink_ref, 0))
 
-        # Conditioning: DC block -> LPF/decimate -> Phase correction (surv only) -> AGC
+        # Surveillance channels: source -> DC block
+        for i in range(self.n_surv):
+            self.connect((self.sdr_src, i + 1), (self.dc_blockers[i], 0))
+        # Freq sink on ch1 (surv0) only
+        self.connect((self.sdr_src, 1), (self.qtgui_freq_sink_surv, 0))
+
+        # Reference conditioning: DC block -> LPF/decimate -> AGC + cal probe
         self.connect((self.dc_blocker_ref, 0), (self.freq_xlating_fir_ref, 0))
-        self.connect((self.dc_blocker_surv0, 0), (self.freq_xlating_fir_surv0, 0))
         self.connect((self.freq_xlating_fir_ref, 0), (self.agc_ref, 0))
-        self.connect((self.freq_xlating_fir_ref, 0), (self.cal_probe_ref, 0))
-        self.connect((self.freq_xlating_fir_surv0, 0), (self.phase_corr, 0))
-        self.connect((self.freq_xlating_fir_surv0, 0), (self.cal_probe_surv, 0))
-        self.connect((self.phase_corr, 0), (self.agc_surv0, 0))
+        self.connect((self.freq_xlating_fir_ref, 0), (self.s2v_cal_ref, 0))
+        self.connect((self.s2v_cal_ref, 0), (self.cal_probe_ref, 0))
 
-        # ECA clutter cancellation (1 ref + 1 surv -> 1 cleaned surv)
+        # Surveillance conditioning: DC block -> LPF -> phase_corr -> AGC + cal probe
+        for i in range(self.n_surv):
+            self.connect((self.dc_blockers[i], 0), (self.fir_filters[i], 0))
+            # Cal probe taps BEFORE phase corrector (measures raw offset)
+            self.connect((self.fir_filters[i], 0), (self.s2v_cals[i], 0))
+            self.connect((self.s2v_cals[i], 0), (self.cal_probes[i], 0))
+            # Phase corrector -> AGC
+            self.connect((self.fir_filters[i], 0), (self.phase_corrs[i], 0))
+            self.connect((self.phase_corrs[i], 0), (self.agcs[i], 0))
+
+        # ECA clutter cancellation on surv0 (ch1) for range-Doppler
         self.connect((self.agc_ref, 0), (self.eca_canceller, 0))
         self.connect((self.agc_ref, 0), (self.s2v_ref, 0))
-        self.connect((self.agc_surv0, 0), (self.eca_canceller, 1))
+        self.connect((self.agcs[0], 0), (self.eca_canceller, 1))
         self.connect((self.eca_canceller, 0), (self.s2v_surv0, 0))
+
+        # Surv channels 1-3 (ch2-ch4): AGC outputs to null sinks for now
+        # (future: feed into AoA processing)
+        self.surv_null_sinks = [blocks.null_sink(gr.sizeof_gr_complex) for _ in range(self.n_surv - 1)]
+        for i in range(self.n_surv - 1):
+            self.connect((self.agcs[i + 1], 0), (self.surv_null_sinks[i], 0))
 
         # Stream -> Vector -> FFT (ref and surv)
         self.connect((self.s2v_ref, 0), (self.fft_ref, 0))
@@ -451,14 +507,46 @@ class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
         self.connect((self.doppler_proc, 0), (self.nlog10_rd, 0))
         self.connect((self.nlog10_rd, 0), (self.rd_probe, 0))
 
+    def _xcorr_phase(self, ref_vec, surv_vec):
+        """FFT cross-correlation with correct alignment.
+        Returns (phase_rad, correlation, delay_samples).
+
+        Convention: IFFT(R * conj(S)) gives xcorr[k] = sum(r[n+k] * conj(s[n])).
+        Peak at k=delay means ref leads surv by 'delay' samples.
+        Alignment: ref[delay:] matches surv[:N-delay] for delay>0.
+        """
+        N = len(ref_vec)
+        Xr = np.fft.fft(ref_vec)
+        Xs = np.fft.fft(surv_vec)
+        xc_full = np.fft.ifft(Xr * np.conj(Xs))
+        peak = int(np.argmax(np.abs(xc_full)))
+        delay = peak if peak <= N // 2 else peak - N
+
+        overlap = N - abs(delay)
+        if overlap < 256:
+            return 0.0, 0.0, delay
+
+        if delay >= 0:
+            ra = ref_vec[delay:delay + overlap]
+            sa = surv_vec[:overlap]
+        else:
+            ra = ref_vec[:overlap]
+            sa = surv_vec[-delay:-delay + overlap]
+
+        xc = np.vdot(ra, sa)
+        rp = np.sqrt(np.vdot(ra, ra).real)
+        sp = np.sqrt(np.vdot(sa, sa).real)
+        if rp > 0 and sp > 0:
+            return float(np.angle(xc)), float(np.abs(xc) / (rp * sp)), delay
+        return 0.0, 0.0, delay
+
     def run_calibration(self):
         """
-        Run one phase calibration using KrakenSDR noise source.
-        Thread-safe: only updates shared data under cal_lock.
-        UI updates happen in the timer callback.
+        Run one phase calibration cycle for all 4 surveillance channels.
+        Uses noise source + FFT cross-correlation with drift compensation.
         """
         if self.source_type == 'rspduo':
-            return  # No calibration for RSPduo (coherent clock)
+            return
         print("=== Phase Calibration Starting ===")
         with self.cal_lock:
             self._cal_status = "Noise source ON -- calibrating..."
@@ -468,79 +556,81 @@ class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
         self.kraken_src.set_noise_source(True)
         print("Noise source ENABLED")
 
-        # Step 2: Wait for switch settling + data pipeline to flush
-        time.sleep(0.2)
+        # Step 2: Wait for noise data to flush through GNU Radio pipeline
+        time.sleep(1.5)
 
-        # Step 3: Grab samples from probes (after LPF/decimation)
-        N = 2048
-        ref_samples = np.zeros(N, dtype=np.complex64)
-        surv_samples = np.zeros(N, dtype=np.complex64)
+        # Step 3: Read all vectors. Retry up to 3 times if any channel's
+        # vector doesn't overlap with the ref (different s2v phase).
+        elapsed = time.time() - self.start_time
+        status_parts = []
+        cal_results = [None] * self.n_surv  # (phase, corr, delay) per ch
 
-        for i in range(N):
-            ref_samples[i] = self.cal_probe_ref.level()
-            surv_samples[i] = self.cal_probe_surv.level()
-            time.sleep(1.0 / self.decimated_rate)
+        for attempt in range(3):
+            ref_vec = np.array(self.cal_probe_ref.level(), dtype=np.complex64)
+            for ch in range(self.n_surv):
+                if cal_results[ch] is not None:
+                    continue  # already got a good read
+                surv_vec = np.array(self.cal_probes[ch].level(), dtype=np.complex64)
+                phase_offset, correlation, delay = self._xcorr_phase(ref_vec, surv_vec)
+                if correlation >= 0.3:
+                    cal_results[ch] = (phase_offset, correlation, delay)
+            if all(r is not None for r in cal_results):
+                break
+            time.sleep(0.3)  # Wait for probes to advance to overlapping window
 
-        # Step 4: Compute phase offset via cross-correlation
-        xcorr = np.vdot(ref_samples, surv_samples)  # conjugate(ref) . surv
-        ref_power = np.sqrt(np.vdot(ref_samples, ref_samples).real)
-        surv_power = np.sqrt(np.vdot(surv_samples, surv_samples).real)
-
-        if ref_power > 0 and surv_power > 0:
-            correlation = np.abs(xcorr) / (ref_power * surv_power)
-            phase_offset = np.angle(xcorr)
+        for ch in range(self.n_surv):
+            if cal_results[ch] is None:
+                print(f"  ch{ch+1}: no overlap after retries, skipping")
+                continue
+            phase_offset, correlation, delay = cal_results[ch]
             phase_deg = np.degrees(phase_offset)
-            correction_phasor = np.exp(-1j * phase_offset)
-            elapsed = time.time() - self.start_time
 
-            print(f"Phase offset: {phase_deg:.1f} deg  (correlation: {correlation:.4f})")
+            if correlation < 0.1:
+                print(f"  ch{ch+1}: corr={correlation:.4f} (too low, skipping)")
+                continue
 
-            # Step 5: Apply correction
-            self.phase_corr.set_correction(correction_phasor)
-
-            # Step 6: Record measurement and compute drift rate
+            # Step 5: Compute drift rate from history
+            drift_rad_per_sec = 0.0
+            drift_str = "measuring..."
             with self.cal_lock:
-                self.phase_history.append((elapsed, phase_deg))
+                self.phase_history[ch].append((elapsed, phase_deg))
+                hist = self.phase_history[ch]
 
-                if len(self.phase_history) >= 3:
-                    times = np.array([p[0] for p in self.phase_history])
-                    phases_deg = np.array([p[1] for p in self.phase_history])
-                    phases_unwrapped = np.degrees(np.unwrap(np.radians(phases_deg)))
-                    # Exponential weights: recent data weighted more heavily
-                    # w_i = exp(-(t_now - t_i) / tau)
-                    weights = np.exp(-(times[-1] - times) / self.drift_tau)
-                    # Parabolic fit: phase(t) = a*t^2 + b*t + c
-                    self.drift_coeffs = np.polyfit(times, phases_unwrapped, 2, w=weights)
-                    self.coeffs_history.append((elapsed, self.drift_coeffs[0],
-                                                self.drift_coeffs[1], self.drift_coeffs[2]))
-                    # Instantaneous drift rate = derivative at current time = 2*a*t + b
-                    inst_drift = 2.0 * self.drift_coeffs[0] * elapsed + self.drift_coeffs[1]
-                    drift_str = f"{inst_drift:+.3f} deg/s (a={self.drift_coeffs[0]:+.4f})"
-                elif len(self.phase_history) == 2:
-                    times = np.array([p[0] for p in self.phase_history])
-                    phases_deg = np.array([p[1] for p in self.phase_history])
-                    phases_unwrapped = np.degrees(np.unwrap(np.radians(phases_deg)))
-                    # Only 2 points: fall back to linear (set quadratic coeff to 0)
-                    lin = np.polyfit(times, phases_unwrapped, 1)
-                    self.drift_coeffs = np.array([0.0, lin[0], lin[1]])
-                    self.coeffs_history.append((elapsed, 0.0, lin[0], lin[1]))
-                    drift_str = f"{lin[0]:+.3f} deg/s (linear, need 3+ pts)"
-                else:
-                    drift_str = "measuring..."
+                if len(hist) >= 2:
+                    times = np.array([p[0] for p in hist])
+                    ph = np.degrees(np.unwrap(np.radians([p[1] for p in hist])))
 
-                self._cal_status = (f"offset={phase_deg:+.1f} deg, "
-                                    f"corr={correlation:.3f}, "
-                                    f"drift={drift_str}")
-                self._cal_status_color = "green"
-                self._phase_plot_dirty = True
-        else:
-            print("WARNING: Zero power during calibration!")
-            with self.cal_lock:
-                self._cal_status = "FAILED (zero power)"
-                self._cal_status_color = "red"
+                    if len(hist) >= 3:
+                        w = np.exp(-(times[-1] - times) / self.drift_tau)
+                        c = np.polyfit(times, ph, 2, w=w)
+                        self.drift_coeffs[ch] = c
+                        self.coeffs_history[ch].append((elapsed, c[0], c[1], c[2]))
+                        inst_drift = 2.0 * c[0] * elapsed + c[1]
+                        drift_str = f"{inst_drift:+.3f} deg/s"
+                    else:
+                        lin = np.polyfit(times, ph, 1)
+                        self.drift_coeffs[ch] = np.array([0.0, lin[0], lin[1]])
+                        self.coeffs_history[ch].append((elapsed, 0.0, lin[0], lin[1]))
+                        inst_drift = lin[0]
+                        drift_str = f"{lin[0]:+.3f} deg/s (linear)"
 
-        # Step 7: Disable noise source (hardware reconnects antennas)
+                    drift_rad_per_sec = np.radians(inst_drift)
+
+            # Step 6: Apply correction to this channel's phase corrector
+            self.phase_corrs[ch].set_correction(phase_offset, drift_rad_per_sec)
+
+            print(f"  ch{ch+1}: phase={phase_deg:+.1f}°  corr={correlation:.3f}"
+                  f"  delay={delay:+d}  drift={drift_str}")
+            status_parts.append(f"ch{ch+1}={phase_deg:+.0f}°/{correlation:.2f}")
+
+        # Step 7: Disable noise source
         self.kraken_src.set_noise_source(False)
+
+        with self.cal_lock:
+            self._cal_status = "  ".join(status_parts) if status_parts else "FAILED"
+            self._cal_status_color = "green" if status_parts else "red"
+            self._phase_plot_dirty = True
+
         print(f"Noise source DISABLED  |  {self._cal_status}")
         print("=== Phase Calibration Complete ===")
 
@@ -608,14 +698,15 @@ class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
         # --- Update phase offset plot (only when new data) ---
         if dirty:
             with self.cal_lock:
-                if not self.phase_history:
+                # Display surv0 (ch1) phase history on the plot
+                if not self.phase_history[0]:
                     return
-                times = [p[0] for p in self.phase_history]
-                phases_deg = [p[1] for p in self.phase_history]
+                times = [p[0] for p in self.phase_history[0]]
+                phases_deg = [p[1] for p in self.phase_history[0]]
                 phases_unwrapped = np.degrees(np.unwrap(np.radians(phases_deg)))
-                n_pts = len(self.phase_history)
-                coeffs = self.drift_coeffs.copy()
-                ch = list(self.coeffs_history)  # snapshot of (t, a, b, c) list
+                n_pts = len(self.phase_history[0])
+                coeffs = self.drift_coeffs[0].copy()
+                ch = list(self.coeffs_history[0])
 
             # Plot measured points (unwrapped)
             self.phase_line.set_data(times, phases_unwrapped)
@@ -715,7 +806,8 @@ class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
     def set_lpf_taps(self, lpf_taps):
         self.lpf_taps = lpf_taps
         self.freq_xlating_fir_ref.set_taps(self.lpf_taps)
-        self.freq_xlating_fir_surv0.set_taps(self.lpf_taps)
+        for fir in self.fir_filters:
+            fir.set_taps(self.lpf_taps)
 
     def get_fft_size(self):
         return self.fft_size

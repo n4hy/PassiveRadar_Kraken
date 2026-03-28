@@ -3,6 +3,11 @@ Calibration Controller for KrakenSDR Phase Coherence
 Copyright (c) 2026 Dr Robert W McGwier, PhD
 SPDX-License-Identifier: MIT
 
+DEPRECATED: This module is used by run_passive_radar.py (legacy headless pipeline).
+The primary calibration system is now the inline calibrator in kraken_pbr_flowgraph.py,
+which uses vector probes, FFT cross-correlation, and NCO-based drift compensation
+across all 4 surveillance channels.
+
 Handles automatic phase calibration when coherence drift is detected.
 
 The KrakenSDR has an internal noise source with a high-isolation silicon switch.

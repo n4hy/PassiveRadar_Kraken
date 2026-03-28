@@ -265,9 +265,20 @@ KrakenSDR 5-Channel Coherent SDR
 
 ### Calibration
 
-The KrakenSDR has an internal wideband noise source with a high-isolation silicon switch. When the noise source is enabled, the switch physically disconnects all antennas and routes only the internal noise to all 5 receivers. This provides a common reference signal for measuring inter-channel phase offsets. The `CalibrationController` automates this cycle and the `coherence_monitor` block triggers it when phase drift is detected.
+The KrakenSDR has an internal wideband noise source with a high-isolation silicon switch. When the noise source is enabled, the switch physically disconnects all antennas and routes only the internal noise to all 5 receivers. This provides a common reference signal for measuring inter-channel phase offsets.
+
+The primary calibration system is built into `kraken_pbr_flowgraph.py` and calibrates all 4 surveillance channels (ch1-ch4) against the reference channel (ch0) every 60 seconds. It uses:
+
+- **Vector probes** (65536-sample contiguous blocks) for time-aligned capture
+- **FFT cross-correlation** to find inter-channel delays up to +/-123ms
+- **Linear drift compensation** via per-sample NCO (numerically controlled oscillator)
+- **Thread-safe phase correction** with 3.6x speedup over naive exp() implementation
+
+Measured performance: <1 degree phase deviation over 60 seconds with drift compensation, correlations 0.59-0.95 across channels. See [docs/CALIBRATION.md](docs/CALIBRATION.md) for full details.
 
 **Noise source control** uses direct libusb vendor control transfers to the RTL2832U GPIO registers (endpoint 0), bypassing `rtlsdr_open()` which would conflict with osmosdr's claimed bulk transfer interface. This allows noise source toggling during live streaming for periodic recalibration.
+
+> **Legacy**: `CalibrationController` in `calibration_controller.py` is used by `run_passive_radar.py` (headless pipeline). Superseded by the inline flowgraph calibrator for GUI operation.
 
 ---
 
@@ -366,7 +377,7 @@ Source -> PhaseCorr -> AGC -> Block B3 (NEW!) -> ECA(C++) -> CAF -> Doppler(C++)
 | Stage | Block | Language | Description |
 |-------|-------|----------|-------------|
 | 1 | `krakensdr_source` | Python | 5-channel osmosdr source wrapper |
-| 2 | `PhaseCorrectorBlock` | Python | Applies calibration phase + drift rate correction (sample-count-based timing, 1s settling period) |
+| 2 | `phase_corrector` | Python | Per-sample NCO phase + drift correction for all 4 surv channels (thread-safe, 3.6x NCO speedup) |
 | 3 | `ConditioningBlock` | Python+ctypes | AGC / signal conditioning (gain-limited, silence-safe) |
 | **3b** | **`dvbt_reconstructor`** | **C++ (FFTW/Eigen3)** | **Reference signal reconstruction (10-20 dB improvement)** |
 | 4 | `eca_canceller` | C++ (VOLK) | NLMS adaptive clutter cancellation |
@@ -465,7 +476,7 @@ The single OOT module `gr-kraken_passive_radar` provides 15 blocks: 8 C++ (pybin
 | Block | Description | Status |
 |-------|-------------|--------|
 | `krakensdr_source` | 5-channel coherent SDR source (osmosdr) | Active |
-| `CalibrationController` | Automatic phase calibration manager | Active |
+| `CalibrationController` | Automatic phase calibration manager | Legacy (superseded by inline flowgraph calibrator) |
 | `ConditioningBlock` | AGC / signal conditioning (ctypes) | Active |
 | `CafBlock` | Cross-ambiguity function (ctypes) | Active |
 | `TimeAlignmentBlock` | Delay/phase measurement (ctypes) | Active |

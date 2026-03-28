@@ -117,6 +117,9 @@ def find_sample_delay(ref, surv, max_delay=20000):
         s = surv[s_start:s_end]
 
         # FFT cross-correlation
+        # Convention: IFFT(conj(R) * S) gives xcorr[k] = sum(conj(r[n]) * s[n+k]).
+        # Peak at k means surv[s_start+k] aligns with ref[r_start].
+        # np.abs() makes conjugation order irrelevant for delay magnitude.
         n_fft = int(2 ** np.ceil(np.log2(len(s) + seg_len)))
         R = np.fft.fft(r.astype(np.complex128), n_fft)
         S = np.fft.fft(s.astype(np.complex128), n_fft)

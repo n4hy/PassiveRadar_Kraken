@@ -243,6 +243,13 @@ class krakensdr_source(gr.hier_block2):
                     write_reg(GPO, SYSB, gpo | gpio_bit)
                 else:
                     write_reg(GPO, SYSB, gpo & ~gpio_bit)
+
+                # Read-back verification (only warn on mismatch)
+                gpo2 = read_reg(GPO, SYSB)
+                expected_gpo = (gpo | gpio_bit) if value else (gpo & ~gpio_bit)
+                if gpo2 != (expected_gpo & 0xFF):
+                    print(f"  GPIO readback MISMATCH: GPO 0x{gpo2:02x} "
+                          f"(expected 0x{expected_gpo & 0xFF:02x})")
             finally:
                 libusb.libusb_close(handle)
         finally:
