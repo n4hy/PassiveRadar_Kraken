@@ -188,7 +188,7 @@ Some parameters can be changed at runtime via callback:
 ```python
 # In flowgraph
 self.cfar_detector.set_threshold_db(15.0)
-self.eca_canceller.set_num_taps(256)
+self.eca_canceller.set_num_taps(128)  # Default is 128
 self.doppler_processor.set_window_type(2)  # Hann
 ```
 

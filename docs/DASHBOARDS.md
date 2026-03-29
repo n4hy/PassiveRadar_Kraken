@@ -117,7 +117,7 @@ Color: green (good), orange (waiting), red (failed).
 | FFT size | 2048 |
 | CPI samples | 2048 |
 | Doppler bins | 64 |
-| ECA taps | 256 |
+| ECA taps | 128 |
 | ECA regularization | 0.0001 |
 | Center frequency | 103.7 MHz |
 | RF gain | 49.6 dB |
@@ -193,7 +193,7 @@ Row 1: Freq Sink Ref [1x1] | Freq Sink Surv [1x1]
 | Decimation | 8 |
 | FFT size | 2048 |
 | Doppler bins | 64 |
-| ECA taps | 256 |
+| ECA taps | 128 |
 | ECA regularization | 0.0001 |
 | IF gain | 40.0 dB |
 | RF gain reduction | 0.0 dB |

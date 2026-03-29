@@ -121,59 +121,51 @@ python3 kraken_passive_radar/multi_display_dashboard.py
 
 ### Server Setup (Radar Host)
 
-```bash
-# Start radar with dashboard (data is streamed for remote display)
-python3 run_passive_radar.py --freq 103.7e6 --visualize
-```
+The radar server exposes a JSON HTTP API that remote displays connect to.
 
 ### Client Connection
 
 ```bash
-# Basic remote display
-python3 kraken_passive_radar/remote_display.py \
-    --host 192.168.1.100 \
-    --port 5555
+# Basic remote display (default: https://radar3.retnode.com)
+python3 -m kraken_passive_radar.remote_display
+
+# Connect to a specific server
+python3 -m kraken_passive_radar.remote_display --url https://your-radar-server.com
+
+# With custom poll interval
+python3 -m kraken_passive_radar.remote_display --url https://your-radar-server.com --interval 0.5
 
 # Enhanced display with local post-processing
-python3 kraken_passive_radar/enhanced_remote_display.py \
-    --host 192.168.1.100 \
-    --port 5555 \
-    --local-cfar \
-    --local-clustering
+python3 -m kraken_passive_radar.enhanced_remote_display --local
+
+# Enhanced display with custom CFAR/tracker parameters
+python3 -m kraken_passive_radar.enhanced_remote_display --url https://your-radar-server.com --local \
+    --cfar-guard 2 --cfar-train 8 --cfar-threshold 10 \
+    --track-confirm 2 --track-delete 3 --track-gate 150
 ```
 
-### Network Protocol
+### HTTP JSON API
 
-The remote display uses a simple binary protocol over TCP:
+The remote display fetches data from the radar server via HTTP JSON endpoints:
 
-```
-Header (16 bytes):
-  - Magic: 4 bytes "KRKN"
-  - Type: 4 bytes (0=RD_MAP, 1=DETECTIONS, 2=TRACKS, 3=STATUS)
-  - Length: 4 bytes (payload size)
-  - Sequence: 4 bytes (frame counter)
-
-Payload:
-  - Type 0: Range-Doppler map (float32 array, row-major)
-  - Type 1: Detection list (struct array: range, doppler, snr, aoa)
-  - Type 2: Track list (struct array: id, x, y, vx, vy, age)
-  - Type 3: Status (JSON: processing_time, buffer_level, cal_state)
-```
+| Endpoint | Returns |
+|----------|---------|
+| `/api/map` | 2D CAF matrix (delay, doppler, data arrays) |
+| `/api/detection` | CFAR detection list (delay, doppler, snr) |
+| `/api/timing` | Processing timing (cpi_ms, uptime_days, nCpi) |
 
 ### Bandwidth Requirements
 
 | Data Type | Size | Rate | Bandwidth |
 |-----------|------|------|-----------|
-| RD Map (256x4096) | 4 MB | 10 Hz | 40 MB/s |
-| Detections | ~1 KB | 10 Hz | 10 KB/s |
-| Tracks | ~1 KB | 10 Hz | 10 KB/s |
-| **Total** | | | **~40 MB/s** |
+| RD Map (256x4096) | 4 MB | 1 Hz | 4 MB/s |
+| Detections | ~1 KB | 1 Hz | 1 KB/s |
+| Timing | ~100 B | 1 Hz | 100 B/s |
+| **Total (default)** | | | **~4 MB/s** |
 
-For low-bandwidth connections, use detection-only mode:
+Bandwidth scales with poll interval (default 1.0s). For lower bandwidth, increase the interval:
 ```bash
-python3 kraken_passive_radar/remote_display.py \
-    --host 192.168.1.100 \
-    --port 5555
+python3 -m kraken_passive_radar.remote_display --url https://your-radar-server.com --interval 2.0
 ```
 
 ## GNU Radio Dashboard Sink

@@ -156,7 +156,14 @@ python3 run_passive_radar.py --source rspduo --freq 98.1e6 --visualize
 
 **On the display computer (client):**
 ```bash
-python3 kraken_passive_radar/remote_display.py --host 192.168.1.100 --port 5556
+# Basic remote display (default server: https://radar3.retnode.com)
+python3 -m kraken_passive_radar.remote_display
+
+# Connect to your RSPduo server
+python3 -m kraken_passive_radar.remote_display --url https://your-rspduo-server.com
+
+# With local CFAR/tracking
+python3 -m kraken_passive_radar.enhanced_remote_display --url https://your-rspduo-server.com --local
 ```
 
 ## Signal Processing Flow
