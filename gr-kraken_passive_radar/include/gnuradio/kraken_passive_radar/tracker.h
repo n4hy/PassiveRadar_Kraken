@@ -1,8 +1,8 @@
 /*
  * Multi-Target Tracker Block for KrakenSDR Passive Radar
  *
- * Kalman filter tracker with Global Nearest Neighbor (GNN)
- * data association for tracking multiple targets.
+ * Square Root Unscented Kalman Filter (SRUKF) tracker with
+ * Global Nearest Neighbor (GNN) data association.
  *
  * Copyright (c) 2026 Dr Robert W McGwier, PhD
  * SPDX-License-Identifier: MIT
@@ -28,6 +28,11 @@ enum class track_status_t {
     COASTING = 2     // No measurement, predicting forward
 };
 
+// State dimension: [range, doppler, range_rate, doppler_rate, turn_rate]
+static constexpr int NX = 5;
+// Measurement dimension: [range, doppler, aoa]
+static constexpr int NY = 3;
+
 /*!
  * \brief Single track state structure
  */
@@ -35,11 +40,11 @@ struct track_t {
     int id;                         // Unique track ID
     track_status_t status;          // Track status
 
-    // State vector: [range_m, doppler_hz, range_rate, doppler_rate]
-    std::array<float, 4> state;
+    // State vector: [range_m, doppler_hz, range_rate, doppler_rate, turn_rate]
+    std::array<float, NX> state;
 
-    // State covariance (4x4, stored row-major)
-    std::array<float, 16> covariance;
+    // State covariance (NX x NX, stored row-major)
+    std::array<float, NX * NX> covariance;
 
     // Track quality metrics
     int hits;                       // Total measurement updates
@@ -56,15 +61,15 @@ struct track_t {
  * \brief Multi-target tracker for passive radar
  * \ingroup kraken_passive_radar
  *
- * Implements Extended Kalman Filter (linear motion model) with
+ * Implements Square Root Unscented Kalman Filter (SRUKF) with
  * Global Nearest Neighbor (GNN) data association.
  *
- * State model: constant velocity in range and Doppler
- *   x = [range, doppler, range_rate, doppler_rate]^T
- *   x[k+1] = F * x[k] + w, where w ~ N(0, Q)
+ * State model: Coordinated Turn Rate (CTRV) in range-Doppler space
+ *   x = [range, doppler, range_rate, doppler_rate, turn_rate]^T
+ *   Nonlinear propagation allows tracking maneuvering targets.
  *
  * Measurement model:
- *   z = [range, doppler]^T = H * x + v, where v ~ N(0, R)
+ *   z = [range, doppler, aoa]^T  (AoA optional, gated on confidence)
  *
  * Track lifecycle:
  *   TENTATIVE -> CONFIRMED after confirm_hits consecutive updates

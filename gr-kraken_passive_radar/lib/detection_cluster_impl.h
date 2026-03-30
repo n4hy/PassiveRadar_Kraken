@@ -12,6 +12,10 @@
 #include <vector>
 #include <queue>
 
+#ifdef HAVE_OPTMATHKERNELS
+#include <optmath/neon_kernels.hpp>
+#endif
+
 namespace gr {
 namespace kraken_passive_radar {
 
@@ -30,6 +34,7 @@ private:
     std::vector<int> d_labels;          // Connected component labels
     std::vector<bool> d_visited;        // BFS visited flags
     std::vector<detection_t> d_detections;  // Output detections
+    std::vector<float> d_power_linear;  // Pre-converted dB->linear power map
 
     // Thread safety
     mutable gr::thread::mutex d_mutex;
@@ -44,11 +49,14 @@ private:
     // Connected components using BFS
     int find_connected_components(const float* det_mask);
 
-    // Compute cluster statistics
+    // Compute cluster statistics (uses pre-converted linear power)
     void compute_cluster_stats(int label,
-                               const float* det_mask,
                                const float* power_db,
+                               const float* power_linear,
                                detection_t& det);
+
+    // Batch convert dB power map to linear (NEON-accelerated)
+    void convert_db_to_linear(const float* power_db, float* power_linear, int n);
 
     // Index conversion helpers
     inline int idx(int r, int d) const { return d * d_num_range_bins + r; }

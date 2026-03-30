@@ -33,6 +33,9 @@ target_link_libraries(gnuradio-kraken_passive_radar PUBLIC
 target_include_directories(gnuradio-kraken_passive_radar PRIVATE
     ${FFTW3F_INCLUDE_DIRS}
     ${EIGEN3_INCLUDE_DIR}
+    # Modern-Computational-Nonlinear-Filtering (header-only SRUKF)
+    $ENV{HOME}/Modern-Computational-Nonlinear-Filtering/UKF/include
+    $ENV{HOME}/Modern-Computational-Nonlinear-Filtering/Common/include
 )
 
 # OptMathKernels integration (optional NEON acceleration)

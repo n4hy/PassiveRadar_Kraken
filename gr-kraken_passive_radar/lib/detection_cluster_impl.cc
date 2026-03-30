@@ -16,6 +16,9 @@
 namespace gr {
 namespace kraken_passive_radar {
 
+// Pad float count to next multiple of 1024 (= 4096 bytes) for buffer alignment
+static inline int pad4k(int n) { return ((n + 1023) & ~1023); }
+
 // Static member definition
 constexpr int detection_cluster_impl::d_neighbors[8][2];
 
@@ -43,8 +46,8 @@ detection_cluster_impl::detection_cluster_impl(int num_range_bins,
     : gr::sync_block("detection_cluster",
                      // Input: detection mask + power map
                      gr::io_signature::make(2, 2, num_range_bins * num_doppler_bins * sizeof(float)),
-                     // Output: packed detection vector
-                     gr::io_signature::make(1, 1, max_detections * 10 * sizeof(float))),
+                     // Output: packed detection vector (padded to 4096-byte boundary)
+                     gr::io_signature::make(1, 1, pad4k(max_detections * 10) * sizeof(float))),
       d_num_range_bins(num_range_bins),
       d_num_doppler_bins(num_doppler_bins),
       d_min_cluster_size(min_cluster_size),
@@ -57,6 +60,7 @@ detection_cluster_impl::detection_cluster_impl(int num_range_bins,
     d_labels.resize(total_cells, 0);
     d_visited.resize(total_cells, false);
     d_detections.reserve(max_detections);
+    d_power_linear.resize(total_cells);
 }
 
 detection_cluster_impl::~detection_cluster_impl() {}
@@ -133,9 +137,31 @@ int detection_cluster_impl::find_connected_components(const float* det_mask)
     return current_label;
 }
 
+void detection_cluster_impl::convert_db_to_linear(const float* power_db,
+                                                   float* power_linear,
+                                                   int n)
+{
+    // 10^(x/10) = exp(x * ln(10)/10)
+    static constexpr float LN10_OVER_10 = 0.23025850929940457f;  // ln(10)/10
+
+#ifdef HAVE_OPTMATHKERNELS
+    // Scale: power_db[i] -> clamped * LN10/10, then batch exp
+    // Use a temp buffer for the scaled values
+    std::vector<float> scaled(n);
+    for (int i = 0; i < n; i++) {
+        scaled[i] = std::max(power_db[i], -60.0f) * LN10_OVER_10;
+    }
+    optmath::neon::neon_fast_exp_f32(power_linear, scaled.data(), n);
+#else
+    for (int i = 0; i < n; i++) {
+        power_linear[i] = std::exp(std::max(power_db[i], -60.0f) * LN10_OVER_10);
+    }
+#endif
+}
+
 void detection_cluster_impl::compute_cluster_stats(int label,
-                                                   const float* det_mask,
                                                    const float* power_db,
+                                                   const float* power_linear,
                                                    detection_t& det)
 {
     // Initialize statistics
@@ -157,13 +183,11 @@ void detection_cluster_impl::compute_cluster_stats(int label,
         int r = range_from_idx(i);
         int d = doppler_from_idx(i);
         float power = power_db[i];
+        float lp = power_linear[i];  // pre-converted
 
-        // Convert dB to linear for weighting (with floor to avoid issues)
-        float linear_power = std::pow(10.0f, std::max(power, -60.0f) / 10.0f);
-
-        weighted_range_sum += r * linear_power;
-        weighted_doppler_sum += d * linear_power;
-        total_weight += linear_power;
+        weighted_range_sum += r * lp;
+        weighted_doppler_sum += d * lp;
+        total_weight += lp;
         cluster_size++;
 
         // Track peak
@@ -212,13 +236,17 @@ int detection_cluster_impl::work(int noutput_items,
     for (int frame = 0; frame < noutput_items; frame++) {
         const float* frame_mask = det_mask + frame * map_size;
         const float* frame_power = power_db + frame * map_size;
-        float* frame_out = out + frame * d_max_detections * 10;
+        const int out_stride = pad4k(d_max_detections * 10);
+        float* frame_out = out + frame * out_stride;
+
+        // Batch convert dB power map to linear (NEON-accelerated)
+        convert_db_to_linear(frame_power, d_power_linear.data(), map_size);
 
         // Find connected components
         int num_components = find_connected_components(frame_mask);
 
-        // Clear output and detection list
-        std::fill(frame_out, frame_out + d_max_detections * 10, 0.0f);
+        // Clear output and detection list (full padded region)
+        std::fill(frame_out, frame_out + out_stride, 0.0f);
 
         {
             gr::thread::scoped_lock lock(d_mutex);
@@ -241,7 +269,7 @@ int detection_cluster_impl::work(int noutput_items,
 
             detection_t det;
             det.id = det_count;
-            compute_cluster_stats(label, frame_mask, frame_power, det);
+            compute_cluster_stats(label, frame_power, d_power_linear.data(), det);
 
             // Pack into output
             int base = det_count * 10;

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.8)
 project(gr-kraken_passive_radar CXX)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Portable architecture-specific optimization (same policy as src/CMakeLists.txt)

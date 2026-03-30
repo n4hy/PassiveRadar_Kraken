@@ -1,5 +1,5 @@
 /*
- * Multi-Target Tracker Implementation Header
+ * Multi-Target Tracker Implementation Header (SRUKF)
  * Copyright (c) 2026 Dr Robert W McGwier, PhD
  * SPDX-License-Identifier: MIT
  */
@@ -9,11 +9,33 @@
 
 #include <gnuradio/kraken_passive_radar/tracker.h>
 #include <gnuradio/thread/thread.h>
+#include "radar_target_model.h"
+#include "SRUKF.h"
 #include <vector>
-#include <array>
+#include <memory>
 
 namespace gr {
 namespace kraken_passive_radar {
+
+// Per-track SRUKF filter state
+struct srukf_track_t {
+    int id;
+    track_status_t status;
+
+    // The SRUKF filter for this track
+    std::unique_ptr<RadarTargetModel> model;
+    std::unique_ptr<UKFCore::SRUKF<RTM_NX, RTM_NY>> filter;
+
+    // Track quality metrics
+    int hits;
+    int misses;
+    int age;
+    float score;
+
+    // History for display (last N positions)
+    static constexpr int MAX_HISTORY = 50;
+    std::vector<std::array<float, 2>> history;  // [(range, doppler), ...]
+};
 
 class tracker_impl : public tracker
 {
@@ -22,8 +44,10 @@ private:
     float d_dt;
     float d_process_noise_range;
     float d_process_noise_doppler;
+    float d_process_noise_turn;
     float d_meas_noise_range;
     float d_meas_noise_doppler;
+    float d_meas_noise_aoa;
     float d_gate_threshold;
     int d_confirm_hits;
     int d_delete_misses;
@@ -31,14 +55,9 @@ private:
     int d_max_detections;
 
     // Track management
-    std::vector<track_t> d_tracks;
+    std::vector<srukf_track_t> d_tracks;
     int d_next_track_id;
-
-    // Kalman filter matrices (constant)
-    std::array<float, 16> d_F;  // State transition (4x4)
-    std::array<float, 8> d_H;   // Measurement (2x4)
-    std::array<float, 16> d_Q;  // Process noise covariance (4x4)
-    std::array<float, 4> d_R;   // Measurement noise covariance (2x2)
+    int d_frame_count;
 
     // Working buffers
     std::vector<bool> d_det_used;
@@ -47,31 +66,25 @@ private:
     // Thread safety
     mutable gr::thread::mutex d_mutex;
 
-    // Matrix operations (inline for speed)
-    void mat4x4_mult_vec4(const float* M, const float* v, float* out);
-    void mat4x4_mult_mat4x4(const float* A, const float* B, float* out);
-    void mat4x4_transpose(const float* M, float* out);
-    void mat4x4_add(const float* A, const float* B, float* out);
-    void mat2x2_inverse(const float* M, float* out);
-    void mat2x4_mult_mat4x4(const float* A, const float* B, float* out);
-    void mat4x2_mult_mat2x2(const float* A, const float* B, float* out);
-    void mat4x2_mult_mat2x4(const float* A, const float* B, float* out);
-
-    // Kalman filter operations
-    void predict_track(track_t& track);
-    void update_track(track_t& track, float range_m, float doppler_hz);
-    float compute_distance(const track_t& track, float range_m, float doppler_hz);
+    // SRUKF operations
+    void predict_track(srukf_track_t& track);
+    void update_track(srukf_track_t& track,
+                      float range_m, float doppler_hz,
+                      float aoa_deg, float aoa_confidence);
+    float compute_distance(const srukf_track_t& track,
+                          float range_m, float doppler_hz);
 
     // Data association
     void associate_detections(const float* detections, int num_dets);
 
     // Track lifecycle
-    void create_track(float range_m, float doppler_hz);
+    void create_track(float range_m, float doppler_hz,
+                      float aoa_deg, float aoa_confidence);
     void delete_stale_tracks();
-    void update_track_status(track_t& track, bool updated);
+    void update_track_status(srukf_track_t& track, bool updated);
 
-    // Initialize matrices
-    void init_matrices();
+    // Convert srukf_track_t to public track_t
+    track_t to_public_track(const srukf_track_t& t) const;
 
 public:
     tracker_impl(float dt,

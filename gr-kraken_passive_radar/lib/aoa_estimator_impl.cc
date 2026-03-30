@@ -20,6 +20,9 @@
 namespace gr {
 namespace kraken_passive_radar {
 
+// Pad float count to next multiple of 1024 (= 4096 bytes) for buffer alignment
+static inline int pad4k(int n) { return ((n + 1023) & ~1023); }
+
 static constexpr float PI = 3.14159265358979323846f;
 static constexpr float TWO_PI = 2.0f * PI;
 
@@ -60,8 +63,8 @@ aoa_estimator_impl::aoa_estimator_impl(int num_elements,
                          // First 4 inputs: CAF maps from each surveillance channel
                          // Last input: detection list
                          sizeof(float)),  // Will use vlen
-                     // Output: AoA-augmented detection list
-                     gr::io_signature::make(1, 1, max_detections * 12 * sizeof(float))),
+                     // Output: AoA-augmented detection list (padded to 4096-byte boundary)
+                     gr::io_signature::make(1, 1, pad4k(max_detections * 12) * sizeof(float))),
       d_num_elements(num_elements),
       d_d_lambda(d_lambda),
       d_n_angles(std::max(2, n_angles)),
@@ -75,18 +78,16 @@ aoa_estimator_impl::aoa_estimator_impl(int num_elements,
       d_n_sources(std::max(1, std::min(n_sources, num_elements - 1))),
       d_n_snapshots(std::max(2, n_snapshots))
 {
-    // Set input signature with correct vlens
+    // Set input signature with correct vlens (detection port padded to 4096-byte boundary)
     const int caf_size = num_range_bins * num_doppler_bins;
-    const int det_size = max_detections * 10;
+    const int det_padded = pad4k(max_detections * 10);
 
-    // Note: GNU Radio doesn't support mixed vlens easily, so we use message passing
-    // or restructure. For now, use fixed sizes.
     set_input_signature(gr::io_signature::makev(5, 5,
         {caf_size * (int)sizeof(gr_complex),  // CAF 0 (complex)
          caf_size * (int)sizeof(gr_complex),  // CAF 1
          caf_size * (int)sizeof(gr_complex),  // CAF 2
          caf_size * (int)sizeof(gr_complex),  // CAF 3
-         det_size * (int)sizeof(float)}));    // Detections
+         det_padded * (int)sizeof(float)}));  // Detections (padded)
 
     d_steering_vectors.resize(n_angles);
     d_steering_vectors_eigen.resize(n_angles);
@@ -410,8 +411,8 @@ int aoa_estimator_impl::work(int noutput_items,
     float* out = static_cast<float*>(output_items[0]);
 
     const int caf_size = d_num_range_bins * d_num_doppler_bins;
-    const int det_input_size = d_max_detections * 10;
-    const int det_output_size = d_max_detections * 12;
+    const int det_input_size = pad4k(d_max_detections * 10);
+    const int det_output_size = pad4k(d_max_detections * 12);
 
     for (int frame = 0; frame < noutput_items; frame++) {
         const float* frame_dets = detections + frame * det_input_size;
