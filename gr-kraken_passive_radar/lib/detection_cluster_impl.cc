@@ -63,7 +63,6 @@ detection_cluster_impl::detection_cluster_impl(int num_range_bins,
     d_labels.resize(total_cells, 0);
     d_visited.resize(total_cells, false);
     d_detections.reserve(max_detections);
-    d_power_linear.resize(total_cells);
 }
 
 detection_cluster_impl::~detection_cluster_impl() {}
@@ -195,7 +194,7 @@ void detection_cluster_impl::compute_cluster_stats(int label,
     det.doppler_hz = (det.doppler_bin - doppler_center) * d_doppler_res_hz;
 
     // SNR in dB relative to noise floor
-    if (noise_floor > 0.0f) {
+    if (noise_floor > 0.0f && peak_power > 1e-20f) {
         det.snr_db = 10.0f * std::log10(peak_power / noise_floor);
     } else {
         det.snr_db = 0.0f;

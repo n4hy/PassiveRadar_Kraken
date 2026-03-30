@@ -441,10 +441,11 @@ int tracker_impl::work(int noutput_items,
                 frame_tracks[base + 12] = static_cast<float>(track.age);
                 frame_tracks[base + 13] = track.score;
 
-                int hist_len = std::min(static_cast<int>(track.history.size()), 2);
+                int sz = static_cast<int>(track.history.size());
+                int hist_len = std::min(sz, 2);
                 frame_tracks[base + 14] = static_cast<float>(hist_len);
                 for (int h = 0; h < hist_len; h++) {
-                    int hist_idx = track.history.size() - hist_len + h;
+                    int hist_idx = sz - hist_len + h;
                     frame_tracks[base + 15 + h * 2] = track.history[hist_idx][0];
                     frame_tracks[base + 16 + h * 2] = track.history[hist_idx][1];
                 }

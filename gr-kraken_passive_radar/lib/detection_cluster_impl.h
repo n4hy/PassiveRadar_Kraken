@@ -32,7 +32,6 @@ private:
     std::vector<int> d_labels;          // Connected component labels
     std::vector<bool> d_visited;        // BFS visited flags
     std::vector<detection_t> d_detections;  // Output detections
-    std::vector<float> d_power_linear;  // Working buffer for linear power
 
     // Thread safety
     mutable gr::thread::mutex d_mutex;
