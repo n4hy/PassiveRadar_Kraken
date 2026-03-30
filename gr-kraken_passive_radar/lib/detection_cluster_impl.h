@@ -12,9 +12,6 @@
 #include <vector>
 #include <queue>
 
-#ifdef HAVE_OPTMATHKERNELS
-#include <optmath/neon_kernels.hpp>
-#endif
 
 namespace gr {
 namespace kraken_passive_radar {
@@ -29,12 +26,13 @@ private:
     float d_range_res_m;
     float d_doppler_res_hz;
     int d_max_detections;
+    float d_min_snr_db;
 
     // Working buffers
     std::vector<int> d_labels;          // Connected component labels
     std::vector<bool> d_visited;        // BFS visited flags
     std::vector<detection_t> d_detections;  // Output detections
-    std::vector<float> d_power_linear;  // Pre-converted dB->linear power map
+    std::vector<float> d_power_linear;  // Working buffer for linear power
 
     // Thread safety
     mutable gr::thread::mutex d_mutex;
@@ -49,14 +47,11 @@ private:
     // Connected components using BFS
     int find_connected_components(const float* det_mask);
 
-    // Compute cluster statistics (uses pre-converted linear power)
+    // Compute cluster statistics using linear power map
     void compute_cluster_stats(int label,
-                               const float* power_db,
                                const float* power_linear,
+                               float noise_floor,
                                detection_t& det);
-
-    // Batch convert dB power map to linear (NEON-accelerated)
-    void convert_db_to_linear(const float* power_db, float* power_linear, int n);
 
     // Index conversion helpers
     inline int idx(int r, int d) const { return d * d_num_range_bins + r; }
@@ -70,7 +65,8 @@ public:
                            int max_cluster_extent,
                            float range_resolution_m,
                            float doppler_resolution_hz,
-                           int max_detections);
+                           int max_detections,
+                           float min_snr_db);
     ~detection_cluster_impl();
 
     int work(int noutput_items,
@@ -81,6 +77,7 @@ public:
     void set_max_cluster_extent(int extent) override;
     void set_range_resolution(float res_m) override;
     void set_doppler_resolution(float res_hz) override;
+    void set_min_snr_db(float snr_db) override;
 
     std::vector<detection_t> get_detections() const override;
     int get_num_detections() const override;

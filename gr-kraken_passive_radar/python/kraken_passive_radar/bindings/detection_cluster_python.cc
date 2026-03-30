@@ -40,6 +40,7 @@ void bind_detection_cluster(py::module& m)
             py::arg("range_resolution_m") = 600.0f,
             py::arg("doppler_resolution_hz") = 3.9f,
             py::arg("max_detections") = 100,
+            py::arg("min_snr_db") = 0.0f,
             R"doc(
 Create detection clustering block.
 
@@ -51,6 +52,7 @@ Parameters:
     range_resolution_m: Range resolution in meters
     doppler_resolution_hz: Doppler resolution in Hz
     max_detections: Maximum detections per frame
+    min_snr_db: Minimum peak SNR in dB to report detection (0=disabled)
 )doc")
 
         .def("set_min_cluster_size",
@@ -72,6 +74,11 @@ Parameters:
             &detection_cluster::set_doppler_resolution,
             py::arg("res_hz"),
             "Set Doppler resolution in Hz")
+
+        .def("set_min_snr_db",
+            &detection_cluster::set_min_snr_db,
+            py::arg("snr_db"),
+            "Set minimum SNR threshold in dB for detection reporting")
 
         .def("get_detections",
             &detection_cluster::get_detections,

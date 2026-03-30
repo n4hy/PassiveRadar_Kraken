@@ -1,7 +1,7 @@
 /*
  * Multi-Target Tracker Block for KrakenSDR Passive Radar
  *
- * Square Root Unscented Kalman Filter (SRUKF) tracker with
+ * Extended Kalman Filter (EKF) tracker with
  * Global Nearest Neighbor (GNN) data association.
  *
  * Copyright (c) 2026 Dr Robert W McGwier, PhD
@@ -61,23 +61,19 @@ struct track_t {
  * \brief Multi-target tracker for passive radar
  * \ingroup kraken_passive_radar
  *
- * Implements Square Root Unscented Kalman Filter (SRUKF) with
- * Global Nearest Neighbor (GNN) data association.
+ * Extended Kalman Filter (EKF) with Global Nearest Neighbor (GNN)
+ * data association. Constant-velocity model in range-Doppler space.
  *
- * State model: Coordinated Turn Rate (CTRV) in range-Doppler space
- *   x = [range, doppler, range_rate, doppler_rate, turn_rate]^T
- *   Nonlinear propagation allows tracking maneuvering targets.
- *
- * Measurement model:
- *   z = [range, doppler, aoa]^T  (AoA optional, gated on confidence)
+ * State: [range, doppler, range_rate, doppler_rate, turn_rate]^T
+ * Measurement: [range, doppler, aoa]^T (AoA gated on confidence)
  *
  * Track lifecycle:
  *   TENTATIVE -> CONFIRMED after confirm_hits consecutive updates
  *   CONFIRMED -> COASTING after one miss
  *   COASTING -> deleted after delete_misses consecutive misses
  *
- * Input: AoA-augmented detection list (12 floats/detection) from AoA estimator
- * Output: Track list as packed float vector
+ * Input: AoA-augmented detection list (12 floats/detection)
+ * Output: Track list as packed float vector (20 floats/track)
  */
 class KRAKEN_PASSIVE_RADAR_API tracker : virtual public gr::sync_block
 {

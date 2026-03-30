@@ -256,7 +256,8 @@ class PassiveRadarTopBlock(gr.top_block):
                  b3_signal_type='passthrough', b3_fft_size=8192, b3_guard_interval=192,
                  source_type='kraken', if_gain=40.0, rf_gain=0.0,
                  bandwidth=0, sample_rate=2.4e6, skip_aoa=False, cpi_len=2048,
-                 signal_bw=500000, pfa=1e-6, min_cluster_size=2):
+                 signal_bw=500000, pfa=1e-6, min_cluster_size=2,
+                 min_snr_db=0.0):
         gr.top_block.__init__(self, "Passive Radar Run")
 
         # Parameters
@@ -272,13 +273,18 @@ class PassiveRadarTopBlock(gr.top_block):
         self.b3_fft_size = b3_fft_size
         self.b3_guard_interval = b3_guard_interval
 
-        # Decimation: rational resampler from source rate to signal bandwidth
-        # 2 MHz -> 500 kHz = 4:1 gives ~6 dB processing gain
+        # Decimation: fft_filter_ccc with overlap-save FFT filtering + decimation.
+        # Phase correction is folded into the FIR taps to eliminate multiply_const blocks.
+        # FFT-based filtering is ~8x faster than direct FIR for 97 taps (O(log N) vs O(N)).
         self.signal_bw = signal_bw
-        self.decimation = max(1, int(sample_rate / signal_bw))
-        self.sample_rate = sample_rate / self.decimation  # decimated rate for all downstream
-        self.lpf_taps = firdes.low_pass(
-            1.0, sample_rate, signal_bw / 2, signal_bw / 10, window.WIN_HAMMING)
+        if signal_bw > 0 and signal_bw < sample_rate:
+            self.decimation = max(1, int(sample_rate / signal_bw))
+            self.lpf_taps = firdes.low_pass(
+                1.0, sample_rate, signal_bw / 2, signal_bw / 10, window.WIN_HAMMING)
+        else:
+            self.decimation = 1
+            self.lpf_taps = None
+        self.sample_rate = sample_rate / self.decimation  # effective rate for all downstream
 
         # Source-dependent parameters
         if source_type == 'rspduo':
@@ -330,22 +336,30 @@ class PassiveRadarTopBlock(gr.top_block):
                 sample_rate=self.source_rate
             )
 
-        # 1b. Rational resampler: source_rate -> signal_bw (e.g. 2 MHz -> 500 kHz)
-        # Decimation with anti-alias LPF gives ~6 dB processing gain
-        # Runs BEFORE phase correction so the Python phase corrector operates
-        # at the decimated rate (500 kHz) instead of the source rate (2 MHz).
+        # 1b. Decimation + phase correction in one step.
+        # Phase correction exp(-j*phi0) is folded into the FIR taps so the
+        # fir_filter_ccc applies anti-alias + phase in a single pass — no
+        # separate multiply_const_cc block needed (saves 5 threads on RPi5).
+        # Drift compensation uses rotator_cc (1 complex mul per sample).
         self.resamplers = []
+        self.phase_mults = []   # empty — phase folded into FIR taps
+        self.phase_rotators = []  # rotator_cc per channel (drift only)
+        self.cal_controller = None
+        self.phase_correctors = None  # legacy (unused)
+
+        n_ch = 2 if self.source_type == 'rspduo' else 5
+
         if self.decimation > 1:
+            n_taps = len(self.lpf_taps)
             print(f"Decimation: {self.source_rate/1e6:.1f} MHz -> "
                   f"{self.sample_rate/1e3:.0f} kHz ({self.decimation}:1, "
-                  f"+{10*np.log10(self.decimation):.1f} dB processing gain)")
-            n_ch = 2 if self.source_type == 'rspduo' else 5
+                  f"+{10*np.log10(self.decimation):.1f} dB processing gain, "
+                  f"{n_taps} taps)")
             for i in range(n_ch):
-                rs = filter.rational_resampler_ccc(
-                    interpolation=1,
-                    decimation=self.decimation,
-                    taps=self.lpf_taps,
-                )
+                phi0 = float(self.phase_offsets[i]) if not self.skip_calibration else 0.0
+                # Fold phase correction into FIR taps: taps * exp(-j*phi0)
+                phase_corrected_taps = [complex(t * np.exp(-1j * phi0)) for t in self.lpf_taps]
+                rs = filter.fft_filter_ccc(self.decimation, phase_corrected_taps)
                 self.resamplers.append(rs)
                 self.connect((self.source, i), (rs, 0))
 
@@ -355,33 +369,20 @@ class PassiveRadarTopBlock(gr.top_block):
                 return (self.resamplers[ch], 0)
             return (self.source, ch)
 
-        # 1c. Phase correction using C++ blocks (no Python in signal path)
-        # multiply_const_cc: static phase offset exp(-j*phi0)
-        # rotator_cc: drift compensation exp(-j*omega*n/fs) per sample
-        self.phase_mults = []   # multiply_const_cc per channel
-        self.phase_rotators = []  # rotator_cc per channel
-        self.cal_controller = None
-        self.phase_correctors = None  # legacy (unused)
-
+        # Drift compensation: rotator_cc per channel (C++, ~1 complex mul/sample)
         if not self.skip_calibration:
-            for i in range(5):
-                phi0 = float(self.phase_offsets[i])
+            for i in range(n_ch):
                 omega = float(self.drift_rates[i])  # rad/sec
                 phase_inc = -omega / self.sample_rate  # rad/sample (negate to correct)
-
-                mult = blocks.multiply_const_cc(complex(np.exp(-1j * phi0)))
                 rot = blocks.rotator_cc(phase_inc)
-                self.phase_mults.append(mult)
                 self.phase_rotators.append(rot)
-                self.connect(_resampled_out(i), (mult, 0))
-                self.connect((mult, 0), (rot, 0))
+                self.connect(_resampled_out(i), (rot, 0))
 
             # CalibrationController for periodic recalibration
-            # The callback updates the C++ multiply_const/rotator blocks
             self.cal_controller = CalibrationController(
                 source=self.source,
                 num_channels=5,
-                cal_samples=int(0.01 * self.source_rate),  # 10ms at source rate
+                cal_samples=int(0.01 * self.source_rate),
                 settle_time_ms=50.0,
                 on_calibration_complete=self._on_calibration_complete
             )
@@ -392,16 +393,18 @@ class PassiveRadarTopBlock(gr.top_block):
                 return (self.phase_rotators[ch], 0)
             return _resampled_out(ch)
 
-        # 2. Conditioning (operates at decimated rate)
+        # 2. AGC (C++ analog.agc_cc replaces Python ConditioningBlock)
+        # Eliminates 5 Python blocks + GIL contention + buffer copies from hot path.
+        # agc_cc(rate, reference, gain, max_gain)
         self.cond_blocks = []
         if self.source_type == 'rspduo':
             for i in range(2):
-                blk = ConditioningBlock(rate=1e-5)
+                blk = analog.agc_cc(rate=1e-5, reference=1.0, gain=1.0, max_gain=1e3)
                 self.cond_blocks.append(blk)
                 self.connect(_resampled_out(i), (blk, 0))
         else:
-            for i in range(5):
-                blk = ConditioningBlock(rate=1e-5)
+            for i in range(n_ch):
+                blk = analog.agc_cc(rate=1e-5, reference=1.0, gain=1.0, max_gain=1e3)
                 self.cond_blocks.append(blk)
                 self.connect(_corrected_out(i), (blk, 0))
 
@@ -539,7 +542,8 @@ class PassiveRadarTopBlock(gr.top_block):
                 max_cluster_extent=50,
                 range_resolution_m=range_res,
                 doppler_resolution_hz=doppler_res,
-                max_detections=85
+                max_detections=85,
+                min_snr_db=min_snr_db
             )
             self.cluster_blocks.append(blk)
             # Cluster takes CFAR mask (input 0) and power map (input 1)
@@ -573,16 +577,16 @@ class PassiveRadarTopBlock(gr.top_block):
                 self.connect((self.cluster_blocks[i], 0), (ns, 0))
 
             # 9. Multi-Target Tracker (C++ Kalman + GNN)
-            max_tracks = 50
+            max_tracks = 20
             self.trk = tracker(
                 dt=frame_period,
                 process_noise_range=50.0,
                 process_noise_doppler=5.0,
                 meas_noise_range=range_res * 2,
                 meas_noise_doppler=doppler_res * 2,
-                gate_threshold=9.21,     # chi2(2) @ 99%
+                gate_threshold=16.0,     # chi2(2) @ 99.97% — wider gate for SRUKF convergence
                 confirm_hits=3,
-                delete_misses=5,
+                delete_misses=3,
                 max_tracks=max_tracks,
                 max_detections=85
             )
@@ -647,12 +651,16 @@ class PassiveRadarTopBlock(gr.top_block):
 
         now = result.timestamp
 
-        # Update C++ phase correction blocks with new calibration
-        if self.phase_mults:
-            for i in range(5):
+        # Update phase correction: fold new phase into FIR taps (decimation mode)
+        # or update rotator drift rate. Phase is baked into the FIR taps,
+        # so we recompute and call set_taps() on each resampler.
+        if self.resamplers and self.lpf_taps is not None:
+            for i in range(len(self.resamplers)):
                 phi0 = float(result.phase_offsets[i])
-                self.phase_mults[i].set_k(complex(np.exp(-1j * phi0)))
-                # Keep existing drift rate (measured at startup, stable over hours)
+                phase_corrected_taps = [complex(t * np.exp(-1j * phi0)) for t in self.lpf_taps]
+                self.resamplers[i].set_taps(phase_corrected_taps)
+        if self.phase_rotators:
+            for i in range(len(self.phase_rotators)):
                 omega = float(self.drift_rates[i])
                 phase_inc = -omega / self.sample_rate
                 self.phase_rotators[i].set_phase_inc(phase_inc)
@@ -824,8 +832,8 @@ Signal Flow (RSPduo, dual-tuner):
                         help="SDR source: kraken (5-ch KrakenSDR) or rspduo (2-ch SDRplay RSPduo)")
     parser.add_argument("--freq", type=float, default=103.7e6,
                         help="Center frequency in Hz (default: 103.7 MHz)")
-    parser.add_argument("--gain", type=float, default=30,
-                        help="Receiver gain in dB (default: 30, KrakenSDR only)")
+    parser.add_argument("--gain", type=float, default=0,
+                        help="Receiver gain in dB (default: 0, KrakenSDR only)")
     parser.add_argument("--geometry", choices=['ULA', 'URA'], default='ULA',
                         help="Antenna array geometry (default: ULA)")
     parser.add_argument("--no-startup-cal", action="store_true",
@@ -853,13 +861,15 @@ Signal Flow (RSPduo, dual-tuner):
     parser.add_argument("--sample-rate", type=float, default=2e6,
                         help="Source sample rate in Hz (default: 2e6)")
     parser.add_argument("--signal-bw", type=float, default=500e3,
-                        help="Signal bandwidth in Hz; decimates source to this rate (default: 500e3)")
+                        help="Signal bandwidth in Hz; decimates source to this rate (default: 500e3 for 4:1 on 2MHz source; use 0 for no decimation)")
 
     # CFAR tuning
-    parser.add_argument("--pfa", type=float, default=1e-6,
-                        help="CFAR probability of false alarm (default: 1e-6, try 1e-8 or 1e-10 to reduce false alarms)")
-    parser.add_argument("--min-cluster-size", type=int, default=2,
-                        help="Minimum CFAR detections in a cluster to report (default: 2, raise to reject isolated noise)")
+    parser.add_argument("--pfa", type=float, default=1e-8,
+                        help="CFAR probability of false alarm (default: 1e-8, try 1e-10 to further reduce false alarms)")
+    parser.add_argument("--min-cluster-size", type=int, default=3,
+                        help="Minimum CFAR detections in a cluster to report (default: 3, raise to reject isolated noise)")
+    parser.add_argument("--min-snr", type=float, default=15.0,
+                        help="Minimum detection SNR in dB (default: 15, raise to reject sidelobe false alarms)")
 
     # Block B3: Reference Signal Reconstructor
     parser.add_argument("--b3-signal", choices=['passthrough', 'fm', 'atsc3', 'dvbt'],
@@ -958,6 +968,7 @@ Signal Flow (RSPduo, dual-tuner):
         signal_bw=args.signal_bw,
         pfa=args.pfa,
         min_cluster_size=args.min_cluster_size,
+        min_snr_db=args.min_snr,
     )
 
     if args.source == 'rspduo':
@@ -982,7 +993,7 @@ Signal Flow (RSPduo, dual-tuner):
     else:
         print(f"\nProcessing chain: Source -> Phase Corr -> AGC -> Block B3 ({args.b3_signal}) -> ECA (C++) -> CAF -> "
               f"Doppler (C++) -> CFAR (C++) -> Cluster (C++) -> AoA (C++) -> Tracker (C++)")
-        print(f"  CFAR: pfa={args.pfa:.0e}, min_cluster_size={args.min_cluster_size}\n")
+        print(f"  CFAR: pfa={args.pfa:.0e}, min_cluster_size={args.min_cluster_size}, min_snr={args.min_snr:.0f} dB\n")
 
     if args.b3_signal != 'passthrough':
         print(f"Block B3 Reference Reconstruction: {args.b3_signal.upper()}")
@@ -1187,9 +1198,13 @@ Signal Flow (RSPduo, dual-tuner):
                     if tb.trk is not None:
                         n_tracks = tb.trk.get_num_tracks()
                         n_confirmed = tb.trk.get_num_confirmed_tracks()
-                        n_dets = tb.cluster_blocks[0].get_num_detections() if tb.cluster_blocks else 0
+                        dets = tb.cluster_blocks[0].get_detections() if tb.cluster_blocks else []
+                        n_dets = len(dets)
                         if n_tracks > 0 or n_dets > 0:
-                            print(f"  Dets: {n_dets}  Tracks: {n_confirmed} confirmed / {n_tracks} total")
+                            det_info = "  ".join(
+                                f"[R={d.range_m/1000:.1f}km D={d.doppler_hz:+.0f}Hz SNR={d.snr_db:.0f}dB]"
+                                for d in dets[:5])
+                            print(f"  Dets: {n_dets} {det_info}  Tracks: {n_confirmed} confirmed / {n_tracks} total")
                     else:
                         print("  Range-Doppler mode: processing...", end='\r')
         except KeyboardInterrupt:

@@ -28,12 +28,13 @@ detection_cluster::sptr detection_cluster::make(int num_range_bins,
                                                  int max_cluster_extent,
                                                  float range_resolution_m,
                                                  float doppler_resolution_hz,
-                                                 int max_detections)
+                                                 int max_detections,
+                                                 float min_snr_db)
 {
     return gnuradio::make_block_sptr<detection_cluster_impl>(
         num_range_bins, num_doppler_bins, min_cluster_size,
         max_cluster_extent, range_resolution_m, doppler_resolution_hz,
-        max_detections);
+        max_detections, min_snr_db);
 }
 
 detection_cluster_impl::detection_cluster_impl(int num_range_bins,
@@ -42,9 +43,10 @@ detection_cluster_impl::detection_cluster_impl(int num_range_bins,
                                                int max_cluster_extent,
                                                float range_resolution_m,
                                                float doppler_resolution_hz,
-                                               int max_detections)
+                                               int max_detections,
+                                               float min_snr_db)
     : gr::sync_block("detection_cluster",
-                     // Input: detection mask + power map
+                     // Input: detection mask + linear power map (|z|²)
                      gr::io_signature::make(2, 2, num_range_bins * num_doppler_bins * sizeof(float)),
                      // Output: packed detection vector (padded to 4096-byte boundary)
                      gr::io_signature::make(1, 1, pad4k(max_detections * 10) * sizeof(float))),
@@ -54,7 +56,8 @@ detection_cluster_impl::detection_cluster_impl(int num_range_bins,
       d_max_cluster_extent(max_cluster_extent),
       d_range_res_m(range_resolution_m),
       d_doppler_res_hz(doppler_resolution_hz),
-      d_max_detections(max_detections)
+      d_max_detections(max_detections),
+      d_min_snr_db(min_snr_db)
 {
     const int total_cells = num_range_bins * num_doppler_bins;
     d_labels.resize(total_cells, 0);
@@ -137,38 +140,16 @@ int detection_cluster_impl::find_connected_components(const float* det_mask)
     return current_label;
 }
 
-void detection_cluster_impl::convert_db_to_linear(const float* power_db,
-                                                   float* power_linear,
-                                                   int n)
-{
-    // 10^(x/10) = exp(x * ln(10)/10)
-    static constexpr float LN10_OVER_10 = 0.23025850929940457f;  // ln(10)/10
-
-#ifdef HAVE_OPTMATHKERNELS
-    // Scale: power_db[i] -> clamped * LN10/10, then batch exp
-    // Use a temp buffer for the scaled values
-    std::vector<float> scaled(n);
-    for (int i = 0; i < n; i++) {
-        scaled[i] = std::max(power_db[i], -60.0f) * LN10_OVER_10;
-    }
-    optmath::neon::neon_fast_exp_f32(power_linear, scaled.data(), n);
-#else
-    for (int i = 0; i < n; i++) {
-        power_linear[i] = std::exp(std::max(power_db[i], -60.0f) * LN10_OVER_10);
-    }
-#endif
-}
-
 void detection_cluster_impl::compute_cluster_stats(int label,
-                                                   const float* power_db,
                                                    const float* power_linear,
+                                                   float noise_floor,
                                                    detection_t& det)
 {
     // Initialize statistics
     double weighted_range_sum = 0.0;
     double weighted_doppler_sum = 0.0;
     double total_weight = 0.0;
-    float peak_power = -std::numeric_limits<float>::infinity();
+    float peak_power = 0.0f;
     int peak_range = 0;
     int peak_doppler = 0;
     int cluster_size = 0;
@@ -182,23 +163,22 @@ void detection_cluster_impl::compute_cluster_stats(int label,
 
         int r = range_from_idx(i);
         int d = doppler_from_idx(i);
-        float power = power_db[i];
-        float lp = power_linear[i];  // pre-converted
+        float lp = power_linear[i];
 
         weighted_range_sum += r * lp;
         weighted_doppler_sum += d * lp;
         total_weight += lp;
         cluster_size++;
 
-        // Track peak
-        if (power > peak_power) {
-            peak_power = power;
+        // Track peak (linear power)
+        if (lp > peak_power) {
+            peak_power = lp;
             peak_range = r;
             peak_doppler = d;
         }
     }
 
-    // Compute centroid (power-weighted)
+    // Compute centroid (linear-power-weighted)
     if (total_weight > 0) {
         det.range_bin = static_cast<float>(weighted_range_sum / total_weight);
         det.doppler_bin = static_cast<float>(weighted_doppler_sum / total_weight);
@@ -214,9 +194,15 @@ void detection_cluster_impl::compute_cluster_stats(int label,
     float doppler_center = d_num_doppler_bins / 2.0f;
     det.doppler_hz = (det.doppler_bin - doppler_center) * d_doppler_res_hz;
 
-    // Statistics
-    det.snr_db = peak_power;
-    det.power_sum = static_cast<float>(10.0 * std::log10(total_weight));
+    // SNR in dB relative to noise floor
+    if (noise_floor > 0.0f) {
+        det.snr_db = 10.0f * std::log10(peak_power / noise_floor);
+    } else {
+        det.snr_db = 0.0f;
+    }
+    det.power_sum = (total_weight > 0.0)
+        ? static_cast<float>(10.0 * std::log10(total_weight))
+        : -999.0f;
     det.cluster_size = cluster_size;
     det.peak_range = peak_range;
     det.peak_doppler = peak_doppler;
@@ -227,7 +213,7 @@ int detection_cluster_impl::work(int noutput_items,
                                  gr_vector_void_star& output_items)
 {
     const float* det_mask = static_cast<const float*>(input_items[0]);
-    const float* power_db = static_cast<const float*>(input_items[1]);
+    const float* power_linear = static_cast<const float*>(input_items[1]);
     float* out = static_cast<float*>(output_items[0]);
 
     const int map_size = d_num_range_bins * d_num_doppler_bins;
@@ -235,12 +221,22 @@ int detection_cluster_impl::work(int noutput_items,
     // Process each frame
     for (int frame = 0; frame < noutput_items; frame++) {
         const float* frame_mask = det_mask + frame * map_size;
-        const float* frame_power = power_db + frame * map_size;
+        const float* frame_power = power_linear + frame * map_size;
         const int out_stride = pad4k(d_max_detections * 10);
         float* frame_out = out + frame * out_stride;
 
-        // Batch convert dB power map to linear (NEON-accelerated)
-        convert_db_to_linear(frame_power, d_power_linear.data(), map_size);
+        // Compute noise floor from non-detection cells
+        double noise_sum = 0.0;
+        int noise_count = 0;
+        for (int i = 0; i < map_size; i++) {
+            if (frame_mask[i] < 0.5f) {
+                noise_sum += frame_power[i];
+                noise_count++;
+            }
+        }
+        float noise_floor = (noise_count > 0)
+            ? static_cast<float>(noise_sum / noise_count)
+            : 1e-20f;
 
         // Find connected components
         int num_components = find_connected_components(frame_mask);
@@ -269,7 +265,22 @@ int detection_cluster_impl::work(int noutput_items,
 
             detection_t det;
             det.id = det_count;
-            compute_cluster_stats(label, frame_power, d_power_linear.data(), det);
+            compute_cluster_stats(label, frame_power, noise_floor, det);
+
+            // Skip detections at very low range bins (direct path / self-interference)
+            // and near zero-Doppler (DC leakage / stationary clutter)
+            if (det.range_bin < 3.0f) {
+                continue;
+            }
+            float doppler_center = d_num_doppler_bins / 2.0f;
+            if (std::abs(det.doppler_bin - doppler_center) < 2.0f) {
+                continue;
+            }
+
+            // Skip detections below minimum SNR threshold
+            if (det.snr_db < d_min_snr_db) {
+                continue;
+            }
 
             // Pack into output
             int base = det_count * 10;
@@ -318,6 +329,12 @@ void detection_cluster_impl::set_doppler_resolution(float res_hz)
 {
     gr::thread::scoped_lock lock(d_mutex);
     d_doppler_res_hz = res_hz;
+}
+
+void detection_cluster_impl::set_min_snr_db(float snr_db)
+{
+    gr::thread::scoped_lock lock(d_mutex);
+    d_min_snr_db = snr_db;
 }
 
 std::vector<detection_t> detection_cluster_impl::get_detections() const

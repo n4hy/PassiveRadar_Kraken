@@ -32,9 +32,12 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import List, Optional, Deque
 
-# Import matplotlib with TkAgg backend
+# Import matplotlib with TkAgg backend (fall back to Agg for headless/testing)
 import matplotlib
-matplotlib.use('TkAgg')
+try:
+    matplotlib.use('TkAgg')
+except ImportError:
+    matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from matplotlib.widgets import Slider, Button, CheckButtons

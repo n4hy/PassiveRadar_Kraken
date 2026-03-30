@@ -45,7 +45,7 @@ struct detection_t {
  * Connected components uses 8-connectivity (includes diagonals).
  *
  * Input 0: CFAR detection mask (float, 1.0 = detection)
- * Input 1: Power map in dB (float, for centroid weighting)
+ * Input 1: Power map (linear |z|², for centroid weighting and SNR)
  * Output 0: Detection list as packed float vector
  *
  * Output format per detection (10 floats):
@@ -73,12 +73,14 @@ public:
                      int max_cluster_extent = 50,
                      float range_resolution_m = 600.0f,
                      float doppler_resolution_hz = 3.9f,
-                     int max_detections = 100);
+                     int max_detections = 100,
+                     float min_snr_db = 0.0f);
 
     virtual void set_min_cluster_size(int size) = 0;
     virtual void set_max_cluster_extent(int extent) = 0;
     virtual void set_range_resolution(float res_m) = 0;
     virtual void set_doppler_resolution(float res_hz) = 0;
+    virtual void set_min_snr_db(float snr_db) = 0;
 
     // Get detections from last frame
     virtual std::vector<detection_t> get_detections() const = 0;
