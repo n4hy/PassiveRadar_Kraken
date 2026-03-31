@@ -605,7 +605,7 @@ class PassiveRadarTopBlock(gr.top_block):
                 process_noise_doppler=5.0,
                 meas_noise_range=range_res * 2,
                 meas_noise_doppler=doppler_res * 2,
-                gate_threshold=16.0,     # chi2(2) @ 99.97% — wider gate for SRUKF convergence
+                gate_threshold=16.0,     # chi2(2) @ 99.97% — wider gate for SRUKF coordinated-turn model
                 confirm_hits=3,
                 delete_misses=3,
                 max_tracks=max_tracks,
