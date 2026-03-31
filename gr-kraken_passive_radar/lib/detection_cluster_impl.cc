@@ -60,9 +60,9 @@ detection_cluster_impl::detection_cluster_impl(int num_range_bins,
       d_min_snr_db(min_snr_db)
 {
     const int total_cells = num_range_bins * num_doppler_bins;
-    d_labels.resize(total_cells, 0);
     d_visited.resize(total_cells, false);
     d_detections.reserve(max_detections);
+    d_cluster_cells.reserve(max_detections);
 }
 
 detection_cluster_impl::~detection_cluster_impl() {}
@@ -71,22 +71,17 @@ int detection_cluster_impl::find_connected_components(const float* det_mask)
 {
     const int total_cells = d_num_range_bins * d_num_doppler_bins;
 
-    // Reset state
-    std::fill(d_labels.begin(), d_labels.end(), 0);
     std::fill(d_visited.begin(), d_visited.end(), false);
+    d_cluster_cells.clear();
 
-    int current_label = 0;
     std::queue<int> bfs_queue;
 
     for (int i = 0; i < total_cells; i++) {
-        // Skip if not a detection or already visited
-        if (det_mask[i] < 0.5f || d_visited[i]) {
-            continue;
-        }
+        if (det_mask[i] < 0.5f || d_visited[i]) continue;
 
-        // Start new component
-        current_label++;
-        int component_size = 0;
+        // Start new component — store cell indices directly
+        d_cluster_cells.emplace_back();
+        auto& cells = d_cluster_cells.back();
 
         bfs_queue.push(i);
         d_visited[i] = true;
@@ -94,17 +89,12 @@ int detection_cluster_impl::find_connected_components(const float* det_mask)
         while (!bfs_queue.empty()) {
             int cell = bfs_queue.front();
             bfs_queue.pop();
+            cells.push_back(cell);
 
-            d_labels[cell] = current_label;
-            component_size++;
-
-            // Check if cluster is too large
-            if (component_size > d_max_cluster_extent) {
-                // Mark remaining cells but don't add neighbors
+            if (static_cast<int>(cells.size()) > d_max_cluster_extent) {
                 while (!bfs_queue.empty()) {
-                    int c = bfs_queue.front();
+                    cells.push_back(bfs_queue.front());
                     bfs_queue.pop();
-                    d_labels[c] = current_label;
                 }
                 break;
             }
@@ -112,54 +102,36 @@ int detection_cluster_impl::find_connected_components(const float* det_mask)
             int r = range_from_idx(cell);
             int d = doppler_from_idx(cell);
 
-            // Check 8-connected neighbors
             for (int n = 0; n < 8; n++) {
                 int nr = r + d_neighbors[n][0];
                 int nd = d + d_neighbors[n][1];
-
-                // Bounds check
                 if (nr < 0 || nr >= d_num_range_bins ||
-                    nd < 0 || nd >= d_num_doppler_bins) {
-                    continue;
-                }
-
-                int neighbor_idx = idx(nr, nd);
-
-                // Skip if not a detection or already visited
-                if (det_mask[neighbor_idx] < 0.5f || d_visited[neighbor_idx]) {
-                    continue;
-                }
-
-                d_visited[neighbor_idx] = true;
-                bfs_queue.push(neighbor_idx);
+                    nd < 0 || nd >= d_num_doppler_bins) continue;
+                int ni = idx(nr, nd);
+                if (det_mask[ni] < 0.5f || d_visited[ni]) continue;
+                d_visited[ni] = true;
+                bfs_queue.push(ni);
             }
         }
     }
 
-    return current_label;
+    return static_cast<int>(d_cluster_cells.size());
 }
 
-void detection_cluster_impl::compute_cluster_stats(int label,
+void detection_cluster_impl::compute_cluster_stats(const std::vector<int>& cells,
                                                    const float* power_linear,
                                                    float noise_floor,
                                                    detection_t& det)
 {
-    // Initialize statistics
     double weighted_range_sum = 0.0;
     double weighted_doppler_sum = 0.0;
     double total_weight = 0.0;
     float peak_power = 0.0f;
     int peak_range = 0;
     int peak_doppler = 0;
-    int cluster_size = 0;
+    int cluster_size = static_cast<int>(cells.size());
 
-    const int total_cells = d_num_range_bins * d_num_doppler_bins;
-
-    for (int i = 0; i < total_cells; i++) {
-        if (d_labels[i] != label) {
-            continue;
-        }
-
+    for (int i : cells) {
         int r = range_from_idx(i);
         int d = doppler_from_idx(i);
         float lp = power_linear[i];
@@ -167,9 +139,7 @@ void detection_cluster_impl::compute_cluster_stats(int label,
         weighted_range_sum += r * lp;
         weighted_doppler_sum += d * lp;
         total_weight += lp;
-        cluster_size++;
 
-        // Track peak (linear power)
         if (lp > peak_power) {
             peak_power = lp;
             peak_range = r;
@@ -248,23 +218,16 @@ int detection_cluster_impl::work(int noutput_items,
             d_detections.clear();
         }
 
-        // Process each cluster
+        // Process each cluster (cell indices already stored during BFS)
         int det_count = 0;
-        for (int label = 1; label <= num_components && det_count < d_max_detections; label++) {
-            // Count cluster size first
-            int size = 0;
-            for (int i = 0; i < map_size; i++) {
-                if (d_labels[i] == label) size++;
-            }
+        for (int ci = 0; ci < num_components && det_count < d_max_detections; ci++) {
+            const auto& cells = d_cluster_cells[ci];
 
-            // Skip clusters that are too small
-            if (size < d_min_cluster_size) {
-                continue;
-            }
+            if (static_cast<int>(cells.size()) < d_min_cluster_size) continue;
 
             detection_t det;
             det.id = det_count;
-            compute_cluster_stats(label, frame_power, noise_floor, det);
+            compute_cluster_stats(cells, frame_power, noise_floor, det);
 
             // Skip detections at very low range bins (direct path / self-interference)
             // and near zero-Doppler (DC leakage / stationary clutter)

@@ -29,9 +29,9 @@ private:
     float d_min_snr_db;
 
     // Working buffers
-    std::vector<int> d_labels;          // Connected component labels
     std::vector<bool> d_visited;        // BFS visited flags
     std::vector<detection_t> d_detections;  // Output detections
+    std::vector<std::vector<int>> d_cluster_cells;  // Cell indices per cluster
 
     // Thread safety
     mutable gr::thread::mutex d_mutex;
@@ -43,19 +43,19 @@ private:
         { 1, -1}, { 1, 0}, { 1, 1}
     };
 
-    // Connected components using BFS
+    // Connected components using BFS — stores cell indices per cluster
     int find_connected_components(const float* det_mask);
 
-    // Compute cluster statistics using linear power map
-    void compute_cluster_stats(int label,
+    // Compute cluster statistics from stored cell indices
+    void compute_cluster_stats(const std::vector<int>& cells,
                                const float* power_linear,
                                float noise_floor,
                                detection_t& det);
 
-    // Index conversion helpers
-    inline int idx(int r, int d) const { return d * d_num_range_bins + r; }
-    inline int range_from_idx(int i) const { return i % d_num_range_bins; }
-    inline int doppler_from_idx(int i) const { return i / d_num_range_bins; }
+    // Index helpers
+    int idx(int r, int d) const { return d * d_num_range_bins + r; }
+    int range_from_idx(int i) const { return i % d_num_range_bins; }
+    int doppler_from_idx(int i) const { return i / d_num_range_bins; }
 
 public:
     detection_cluster_impl(int num_range_bins,

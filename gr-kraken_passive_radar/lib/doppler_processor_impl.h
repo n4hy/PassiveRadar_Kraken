@@ -23,17 +23,17 @@ private:
     int d_num_doppler_bins;
     int d_window_type;
     bool d_output_power;
-    std::vector<gr_complex> d_accumulator;
     std::vector<float> d_window;
-    std::vector<gr_complex> d_output_buffer;
-    
-    fftwf_complex *d_fft_in;
-    fftwf_complex *d_fft_out;
-    fftwf_plan d_fft_plan;
-    
+
+    // Transposed layout for contiguous batched FFT
+    // Input [n_doppler × n_range] → transpose to [n_range × n_doppler] → batch FFT
+    fftwf_complex* d_transposed;  // [n_range × n_doppler] transposed buffer
+    fftwf_plan d_batch_plan;      // n_range contiguous n_doppler-point FFTs
+
     gr::thread::mutex d_mutex;
-    
+
     void generate_window();
+    void create_batch_plan();
 
 public:
     doppler_processor_impl(int num_range_bins,
@@ -53,4 +53,4 @@ public:
 } // namespace kraken_passive_radar
 } // namespace gr
 
-#endif /* INCLUDED_KRAKEN_PASSIVE_RADAR_DOPPLER_PROCESSOR_IMPL_H */
+#endif

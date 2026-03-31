@@ -189,18 +189,28 @@ int eca_canceller_impl::work(int noutput_items,
     std::memcpy(d_fir_ref_fft, ref, total * sizeof(fftwf_complex));
     fftwf_execute_dft(d_fir_fwd, d_fir_ref_fft, d_fir_ref_fft);
 
-    // ===== Autocorrelation R (dot products + Toeplitz recursion) =====
+    // ===== Autocorrelation R first row via FFT =====
+    // R[0][k] = xcorr(window, ref_full) at lag L-1-k
+    // where window = ref[base..base+N-1]
     {
-        const float* r0_re = d_ref_re.data() + base;
-        const float* r0_im = d_ref_im.data() + base;
+        // FFT the output-aligned window
+        std::memset(d_fir_a, 0, F * sizeof(fftwf_complex));
+        std::memcpy(d_fir_a, ref + base, N * sizeof(fftwf_complex));
+        fftwf_execute_dft(d_fir_fwd, d_fir_a, d_fir_a);
+
+        // conj(ref_fft) * window_fft → d_fir_b, with 1/F scaling
+        for (int i = 0; i < F; i++) {
+            float rr = d_fir_ref_fft[i][0], ri = d_fir_ref_fft[i][1];
+            float wr = d_fir_a[i][0],       wi = d_fir_a[i][1];
+            d_fir_b[i][0] = (rr * wr + ri * wi) * fft_scale;
+            d_fir_b[i][1] = (rr * wi - ri * wr) * fft_scale;
+        }
+        fftwf_execute_dft(d_fir_inv, d_fir_b, d_fir_b);
+
+        // Extract R[0][k] = result[L-1-k]
         for (int k = 0; k < L; k++) {
-            const float* rk_re = d_ref_re.data() + (base - k);
-            const float* rk_im = d_ref_im.data() + (base - k);
-            float rr = dot_f32(r0_re, rk_re, N);
-            float ii = dot_f32(r0_im, rk_im, N);
-            float ri = dot_f32(r0_re, rk_im, N);
-            float ir = dot_f32(r0_im, rk_re, N);
-            d_R[k] = std::complex<float>(rr + ii, ir - ri);
+            int idx = L - 1 - k;
+            d_R[k] = std::complex<float>(d_fir_b[idx][0], d_fir_b[idx][1]);
         }
     }
 
