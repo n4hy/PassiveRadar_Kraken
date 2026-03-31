@@ -182,13 +182,13 @@
                    │
          Block B3 Reconstructor (FM/ATSC3/DVB-T) ← 10-20 dB improvement
                    │
-         ECA-B Clutter Canceller (NLMS adaptive)
+         ECA-B Clutter Canceller (batch Toeplitz LS)
                    │
          CAF Processing (2D FFT cross-ambiguity)
                    │
          Doppler Processing (slow-time FFT)
                    │
-         CFAR Detection (CA/GO/SO/OS, O(n) prefix-sum)
+         CFAR Detection (CA/GO/SO/OS, O(n) integral image)
                    │
          Detection Clustering (8-connected components)
                    │
@@ -225,7 +225,7 @@
                 </div>
                 <div class="card">
                     <h3>eca_canceller</h3>
-                    <p>NLMS adaptive clutter cancellation. Removes direct path and multipath interference.</p>
+                    <p>Batch Toeplitz least-squares clutter cancellation. Removes direct path and multipath interference.</p>
                     <span class="badge badge-cpu">CPU</span> <span class="badge badge-gpu">GPU 10x</span>
                     <a href="BLOCKS.md#eca-canceller">Details &rarr;</a>
                 </div>
@@ -243,7 +243,7 @@
                 </div>
                 <div class="card">
                     <h3>cfar_detector</h3>
-                    <p>2D CA/GO/SO/OS-CFAR with O(n) prefix-sum optimization. Pfa-calibrated threshold.</p>
+                    <p>2D CA/GO/SO/OS-CFAR with O(n) integral image (summed area table). Pfa-calibrated threshold.</p>
                     <span class="badge badge-cpu">CPU</span> <span class="badge badge-gpu">GPU 305x</span>
                     <a href="BLOCKS.md#cfar-detector">Details &rarr;</a>
                 </div>

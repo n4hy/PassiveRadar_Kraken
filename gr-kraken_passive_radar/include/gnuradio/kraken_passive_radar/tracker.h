@@ -1,7 +1,7 @@
 /*
  * Multi-Target Tracker Block for KrakenSDR Passive Radar
  *
- * Extended Kalman Filter (EKF) tracker with
+ * Square Root UKF (SRUKF) tracker with
  * Global Nearest Neighbor (GNN) data association.
  *
  * Copyright (c) 2026 Dr Robert W McGwier, PhD
@@ -61,8 +61,8 @@ struct track_t {
  * \brief Multi-target tracker for passive radar
  * \ingroup kraken_passive_radar
  *
- * Extended Kalman Filter (EKF) with Global Nearest Neighbor (GNN)
- * data association. Constant-velocity model in range-Doppler space.
+ * Square Root UKF (SRUKF) with Global Nearest Neighbor (GNN)
+ * data association. Coordinated-turn model in range-Doppler space.
  *
  * State: [range, doppler, range_rate, doppler_rate, turn_rate]^T
  * Measurement: [range, doppler, aoa]^T (AoA gated on confidence)

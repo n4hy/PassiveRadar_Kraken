@@ -1023,7 +1023,7 @@ Remote Map Data (/api/map)
         │
         ▼
 ┌─────────────┐
-│   Tracker   │  Kalman filter (constant velocity model)
+│   Tracker   │  SRUKF (coordinated turn model)
 │   GNN       │  Tentative → Confirmed → Coasting lifecycle
 └─────────────┘
         │

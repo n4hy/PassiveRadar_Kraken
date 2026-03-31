@@ -181,7 +181,7 @@ from kraken_passive_radar.dashboard_sink import DashboardSink
 dashboard = DashboardSink(
     num_range_bins=4096,
     num_doppler_bins=256,
-    sample_rate=2.4e6,
+    sample_rate=1e6,
     update_rate=10  # Hz
 )
 

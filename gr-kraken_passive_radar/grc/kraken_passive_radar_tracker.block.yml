@@ -93,14 +93,14 @@ asserts:
   - ${ max_detections >= 1 }
 
 documentation: |-
-  Multi-Target Kalman Tracker for Passive Radar
+  Multi-Target SRUKF Tracker for Passive Radar
 
-  Implements Extended Kalman Filter with Global Nearest Neighbor (GNN)
+  Implements Square Root UKF (SRUKF) with Global Nearest Neighbor (GNN)
   data association for tracking multiple bistatic radar targets.
 
   State Model:
-    Constant velocity in range and Doppler
-    x = [range, doppler, range_rate, doppler_rate]^T
+    Coordinated turn in range and Doppler
+    x = [range, doppler, range_rate, doppler_rate, turn_rate]^T
 
   Track Lifecycle:
     TENTATIVE (0): New track, needs confirmation

@@ -429,7 +429,7 @@ class KalmanFilter:
     State vector: [range, doppler, range_rate, doppler_rate]
     Measurement vector: [range, doppler]
 
-    Uses constant velocity (CV) motion model.
+    Uses coordinated turn model (SRUKF).
     """
 
     def __init__(
@@ -477,7 +477,7 @@ class KalmanFilter:
         Args:
             dt: Time step in seconds.
         """
-        # State transition matrix (constant velocity model)
+        # State transition matrix (coordinated turn model)
         F = np.array([
             [1, 0, dt, 0],
             [0, 1, 0, dt],
