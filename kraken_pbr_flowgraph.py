@@ -206,11 +206,11 @@ class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
         ##################################################
         # Variables
         ##################################################
-        self.signal_bw = signal_bw = 250000
-        self.samp_rate = samp_rate = 2400000
-        self.decimation = decimation = int(samp_rate / signal_bw)
+        self.signal_bw = signal_bw = 0
+        self.samp_rate = samp_rate = 1000000
+        self.decimation = decimation = max(1, int(samp_rate / signal_bw)) if signal_bw > 0 else 1
         self.rf_gain = rf_gain = 49.6
-        self.lpf_taps = lpf_taps = firdes.low_pass(1.0, samp_rate, signal_bw/2, signal_bw/10, window.WIN_HAMMING)
+        self.lpf_taps = lpf_taps = firdes.low_pass(1.0, samp_rate, signal_bw/2, signal_bw/10, window.WIN_HAMMING) if signal_bw > 0 else [1.0]
         self.center_freq = center_freq = 103.7e6
         self.decimated_rate = decimated_rate = int(samp_rate / decimation)
 

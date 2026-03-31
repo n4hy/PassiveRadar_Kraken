@@ -60,6 +60,7 @@ from gnuradio.kraken_passive_radar import (
     TimeAlignmentBlock,
     CalibrationController,
     # C++ blocks
+    caf,
     eca_canceller,
     doppler_processor,
     cfar_detector,
@@ -255,8 +256,8 @@ class PassiveRadarTopBlock(gr.top_block):
     def __init__(self, freq=100e6, gain=30, geometry='ULA', calibration_file=None,
                  b3_signal_type='passthrough', b3_fft_size=8192, b3_guard_interval=192,
                  source_type='kraken', if_gain=40.0, rf_gain=0.0,
-                 bandwidth=0, sample_rate=2.4e6, skip_aoa=False, cpi_len=2048,
-                 signal_bw=500000, pfa=1e-6, min_cluster_size=2,
+                 bandwidth=0, sample_rate=1e6, skip_aoa=False, cpi_len=2048,
+                 signal_bw=0, pfa=1e-6, min_cluster_size=2,
                  min_snr_db=0.0):
         gr.top_block.__init__(self, "Passive Radar Run")
 
@@ -342,12 +343,18 @@ class PassiveRadarTopBlock(gr.top_block):
         # separate multiply_const_cc block needed (saves 5 threads on RPi5).
         # Drift compensation uses rotator_cc (1 complex mul per sample).
         self.resamplers = []
-        self.phase_mults = []   # empty — phase folded into FIR taps
+        self.phase_mults = []
         self.phase_rotators = []  # rotator_cc per channel (drift only)
         self.cal_controller = None
         self.phase_correctors = None  # legacy (unused)
 
         n_ch = 2 if self.source_type == 'rspduo' else 5
+
+        # Buffer sizing: at 1 MHz, GR default (32K items) fills in 32ms.
+        # Increase to 256K items (~260ms at 1 MHz) to absorb scheduling jitter.
+        buf_items = max(262144, int(self.sample_rate * 0.25))
+        for port in range(n_ch):
+            self.source.set_min_output_buffer(port, buf_items)
 
         if self.decimation > 1:
             n_taps = len(self.lpf_taps)
@@ -362,11 +369,24 @@ class PassiveRadarTopBlock(gr.top_block):
                 rs = filter.fft_filter_ccc(self.decimation, phase_corrected_taps)
                 self.resamplers.append(rs)
                 self.connect((self.source, i), (rs, 0))
+        elif not self.skip_calibration:
+            # No decimation: apply static phase correction via multiply_const_cc
+            print(f"No decimation: source rate {self.source_rate/1e6:.1f} MHz used directly")
+            for i in range(n_ch):
+                phi0 = float(self.phase_offsets[i])
+                phasor = complex(np.exp(-1j * phi0))
+                mc = blocks.multiply_const_cc(phasor)
+                self.phase_mults.append(mc)
+                self.connect((self.source, i), (mc, 0))
+        else:
+            print(f"No decimation: source rate {self.source_rate/1e6:.1f} MHz used directly")
 
-        # Helper: output after resampler (or source if no decimation)
+        # Helper: output after resampler/phase-mult (or source if neither)
         def _resampled_out(ch):
             if self.resamplers:
                 return (self.resamplers[ch], 0)
+            if self.phase_mults:
+                return (self.phase_mults[ch], 0)
             return (self.source, ch)
 
         # Drift compensation: rotator_cc per channel (C++, ~1 complex mul/sample)
@@ -473,9 +493,10 @@ class PassiveRadarTopBlock(gr.top_block):
                 self.connect((self.cond_blocks[i+1], 0), (self.eca, i+1))
 
         # 4. CAF (cross-ambiguity function) per surveillance channel
+        # C++ sync_decimator: FFT cross-correlation, no GIL
         self.caf_blocks = []
         for i in range(self.num_surv):
-            blk = CafBlock(n_samples=self.cpi_len)
+            blk = caf(n_samples=self.cpi_len)
             self.caf_blocks.append(blk)
             self.connect(self.reference_channel, (blk, 0))  # Block B3 output
             self.connect((self.eca, i), (blk, 1))           # cleaned surv
@@ -652,13 +673,16 @@ class PassiveRadarTopBlock(gr.top_block):
         now = result.timestamp
 
         # Update phase correction: fold new phase into FIR taps (decimation mode)
-        # or update rotator drift rate. Phase is baked into the FIR taps,
-        # so we recompute and call set_taps() on each resampler.
+        # or update multiply_const (no-decimation mode).
         if self.resamplers and self.lpf_taps is not None:
             for i in range(len(self.resamplers)):
                 phi0 = float(result.phase_offsets[i])
                 phase_corrected_taps = [complex(t * np.exp(-1j * phi0)) for t in self.lpf_taps]
                 self.resamplers[i].set_taps(phase_corrected_taps)
+        elif self.phase_mults:
+            for i in range(len(self.phase_mults)):
+                phi0 = float(result.phase_offsets[i])
+                self.phase_mults[i].set_k(complex(np.exp(-1j * phi0)))
         if self.phase_rotators:
             for i in range(len(self.phase_rotators)):
                 omega = float(self.drift_rates[i])
@@ -858,10 +882,10 @@ Signal Flow (RSPduo, dual-tuner):
                         help="RSPduo RF gain reduction in dB (default: 0, range: 0-27)")
     parser.add_argument("--bandwidth", type=float, default=0,
                         help="RSPduo analog bandwidth in Hz (0=auto)")
-    parser.add_argument("--sample-rate", type=float, default=2e6,
-                        help="Source sample rate in Hz (default: 2e6)")
-    parser.add_argument("--signal-bw", type=float, default=500e3,
-                        help="Signal bandwidth in Hz; decimates source to this rate (default: 500e3 for 4:1 on 2MHz source; use 0 for no decimation)")
+    parser.add_argument("--sample-rate", type=float, default=1e6,
+                        help="Source sample rate in Hz (default: 1e6)")
+    parser.add_argument("--signal-bw", type=float, default=0,
+                        help="Signal bandwidth in Hz; decimates source to this rate (default: 0 = no decimation; use e.g. 500e3 to decimate 2MHz source)")
 
     # CFAR tuning
     parser.add_argument("--pfa", type=float, default=1e-8,

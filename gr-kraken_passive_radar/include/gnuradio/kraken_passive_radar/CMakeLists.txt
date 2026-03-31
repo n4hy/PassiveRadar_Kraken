@@ -1,5 +1,6 @@
 install(FILES
     api.h
+    caf.h
     eca_canceller.h
     doppler_processor.h
     cfar_detector.h

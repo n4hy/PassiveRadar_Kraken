@@ -1,5 +1,6 @@
 # Source files
 list(APPEND kraken_passive_radar_sources
+    caf_impl.cc
     eca_canceller_impl.cc
     doppler_processor_impl.cc
     cfar_detector_impl.cc

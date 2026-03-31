@@ -67,14 +67,14 @@ class rspduo_pbr_flowgraph(gr.top_block, Qt.QWidget):
         ##################################################
         # Variables
         ##################################################
-        self.signal_bw = signal_bw = 250000
-        self.samp_rate = samp_rate = 2000000
+        self.signal_bw = signal_bw = 0
+        self.samp_rate = samp_rate = 1000000
         self.num_doppler_bins = num_doppler_bins = 64
         self.fft_size = fft_size = 2048
-        self.decimation = decimation = int(samp_rate / signal_bw)
+        self.decimation = decimation = max(1, int(samp_rate / signal_bw)) if signal_bw > 0 else 1
         self.rf_gain_reduction = rf_gain_reduction = 0.0
         self.rd_size = rd_size = num_doppler_bins * fft_size
-        self.lpf_taps = lpf_taps = firdes.low_pass(1.0, samp_rate, signal_bw/2, signal_bw/10, window.WIN_HAMMING)
+        self.lpf_taps = lpf_taps = firdes.low_pass(1.0, samp_rate, signal_bw/2, signal_bw/10, window.WIN_HAMMING) if signal_bw > 0 else [1.0]
         self.if_gain = if_gain = 40.0
         self.eca_taps = eca_taps = 128
         self.eca_reg = eca_reg = 0.0001

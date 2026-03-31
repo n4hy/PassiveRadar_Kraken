@@ -345,7 +345,7 @@ class KrakenDevices:
 # --- Calibration ---
 
 def calibrate(freq_hz: int = 103700000,
-              sample_rate: int = 2000000,
+              sample_rate: int = 1000000,
               gain_db: float = 0.0,
               cal_samples: int = 524288,
               settle_time_sec: float = 0.3,
@@ -485,7 +485,7 @@ def calibrate(freq_hz: int = 103700000,
 # --- Phase drift characterization ---
 
 def measure_drift(freq_hz: int = 103700000,
-                  sample_rate: int = 2000000,
+                  sample_rate: int = 1000000,
                   gain_db: float = 0.0,
                   duration_sec: float = 300.0,
                   interval_sec: float = 5.0,
@@ -653,7 +653,7 @@ def measure_drift(freq_hz: int = 103700000,
 # --- Periodic recalibration with drift rate tracking ---
 
 def periodic_recal(freq_hz: int = 103700000,
-                   sample_rate: int = 2000000,
+                   sample_rate: int = 1000000,
                    gain_db: float = 0.0,
                    recal_interval_sec: float = 120.0,
                    cal_samples: int = 524288,
@@ -908,7 +908,7 @@ if __name__ == "__main__":
         if args.command == "calibrate":
             calibrate(
                 freq_hz=int(args.freq),
-                sample_rate=2000000,
+                sample_rate=1000000,
                 gain_db=args.gain,
                 cal_samples=args.samples,
                 cal_file=args.output,
@@ -916,7 +916,7 @@ if __name__ == "__main__":
         elif args.command == "drift":
             measure_drift(
                 freq_hz=int(args.freq),
-                sample_rate=2000000,
+                sample_rate=1000000,
                 gain_db=args.gain,
                 duration_sec=args.duration,
                 interval_sec=args.interval,
@@ -925,7 +925,7 @@ if __name__ == "__main__":
         elif args.command == "periodic":
             periodic_recal(
                 freq_hz=int(args.freq),
-                sample_rate=2000000,
+                sample_rate=1000000,
                 gain_db=args.gain,
                 recal_interval_sec=args.interval,
                 duration_sec=args.duration,
