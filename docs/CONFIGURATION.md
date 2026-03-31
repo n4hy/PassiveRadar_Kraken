@@ -112,7 +112,7 @@ config = {
     'cpi_size': 65536,
     'num_doppler_bins': 256,
     'num_range_bins': 4096,
-    'sample_rate': 2.4e6,
+    'sample_rate': 1e6,
     'center_freq': 98.1e6,
 
     # ECA parameters
@@ -200,7 +200,7 @@ self.doppler_processor.set_window_type(2)  # Hann
 krakensdr_config = {
     'device_serial': None,  # Auto-detect
     'center_freq': 98.1e6,
-    'sample_rate': 2.4e6,
+    'sample_rate': 1e6,
     'gain': 40,
     'num_channels': 5,
 
@@ -220,7 +220,7 @@ krakensdr_config = {
 ```python
 rspduo_config = {
     'center_freq': 98.1e6,
-    'sample_rate': 2e6,  # Max 2 MHz in dual-tuner
+    'sample_rate': 1e6,  # Default 1 MHz, max 2 MHz in dual-tuner
 
     # Tuner A (Reference)
     'tuner_a_if_gain': 40,
@@ -279,7 +279,7 @@ export KRAKEN_GPU_PINNED_MEMORY=1
 ```python
 fm_config = {
     'center_freq': 98.1e6,  # Local strong station
-    'sample_rate': 2.4e6,
+    'sample_rate': 1e6,
     'signal_type': 'fm',
     'block_b3_enabled': True,
 }
@@ -315,7 +315,7 @@ dvbt_config = {
 {
     "timestamp": "2026-03-27T10:15:30Z",
     "center_freq": 98100000,
-    "sample_rate": 2400000,
+    "sample_rate": 1000000,
     "phase_offsets": [0.0, 0.127, -0.054, 0.231, -0.089],
     "snr_db": [45.2, 38.1, 39.5, 37.8, 40.1],
     "coherence": 0.97

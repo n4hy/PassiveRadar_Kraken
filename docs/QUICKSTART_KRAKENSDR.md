@@ -79,7 +79,7 @@ python3 run_passive_radar.py --freq 101.9e6 --gain 40 --visualize
 | `--gain` | 30 | RF gain (dB) |
 | `--geometry` | ULA | Array geometry: ULA or URA |
 | `--cpi-len` | 2048 | CPI length / range bins: 512, 1024, 2048, 4096 |
-| `--sample-rate` | 2e6 | Sample rate (Hz) |
+| `--sample-rate` | 1e6 | Sample rate (Hz) |
 | `--recal-interval` | 120 | Recalibration interval (seconds) |
 | `--no-startup-cal` | off | Skip initial phase calibration |
 | `--skip-aoa` | off | Skip AoA estimation (range-Doppler only) |
@@ -170,7 +170,7 @@ python3 kraken_passive_radar/five_channel_demo.py
 ```
 KrakenSDR 5-Ch      Phase          Conditioning     Block B3        ECA-B
 USB Source    -->  Calibration -->    AGC      --> Reconstruct --> Canceller
-(2.4 MHz)         (noise src)     (decay mode)    (FM/ATSC3)      (NLMS)
+(1 MHz)           (noise src)     (decay mode)    (FM/ATSC3)   (batch Toeplitz)
      |                                                                |
      v                                                                v
 Multi-panel   <--   Tracker   <--   AoA Est   <--  Clustering  <--  CFAR

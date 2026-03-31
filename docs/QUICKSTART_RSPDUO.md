@@ -87,7 +87,7 @@ The RSPduo operates in dual-tuner (diversity) mode for passive radar:
 |-----------|---------------------|------------------------|
 | Function | Captures illuminator | Captures echoes |
 | Antenna | Point at transmitter | Point at target area |
-| Sample Rate | 2 MHz (shared) | 2 MHz (shared) |
+| Sample Rate | 1 MHz default (up to 2 MHz) | 1 MHz default (up to 2 MHz) |
 | IF Gain | 20-59 dB | 20-59 dB |
 | LNA State | 0-9 | 0-9 |
 
@@ -104,11 +104,11 @@ In dual-tuner mode, the RSPduo has specific sample rate constraints:
 
 ```bash
 # Start passive radar with RSPduo source
-python3 run_passive_radar.py --source rspduo --freq 98.1e6 --sample-rate 2e6 --visualize
+python3 run_passive_radar.py --source rspduo --freq 98.1e6 --sample-rate 1e6 --visualize
 
 # With specific gain settings
 python3 run_passive_radar.py --source rspduo --freq 98.1e6 \
-    --if-gain 40 --rf-gain 0 --sample-rate 2e6 --visualize
+    --if-gain 40 --rf-gain 0 --sample-rate 1e6 --visualize
 ```
 
 ### Command-Line Options
@@ -120,7 +120,7 @@ python3 run_passive_radar.py --source rspduo --freq 98.1e6 \
 | `--gain` | 30 | RF gain (dB, KrakenSDR) |
 | `--if-gain` | 40 | IF gain (dB, RSPduo) |
 | `--rf-gain` | 0 | RF gain (dB, RSPduo) |
-| `--sample-rate` | 2e6 | Sample rate (Hz, max 2 MHz dual-tuner) |
+| `--sample-rate` | 1e6 | Sample rate (Hz, max 2 MHz dual-tuner) |
 | `--bandwidth` | 0 | IF bandwidth (0 = auto) |
 | `--cpi-len` | 2048 | CPI length / range bins: 512, 1024, 2048, 4096 |
 | `--visualize` | off | Show live dashboard GUI |
@@ -183,7 +183,7 @@ RSPduo Dual-Tuner
                                     │
                                     v
                               ECA-B Canceller
-                              (NLMS adaptive)
+                              (batch Toeplitz)
                                     │
                                     v
                               CAF Processing ──> Doppler FFT
@@ -296,7 +296,7 @@ The RSPduo flowgraph can also be created in GRC:
 options:
   parameters:
     freq: 98.1e6
-    sample_rate: 2e6
+    sample_rate: 1e6
     if_gain: 40
 
 blocks:

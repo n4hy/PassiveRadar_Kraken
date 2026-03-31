@@ -45,7 +45,7 @@ The KrakenSDR consists of 5 RTL-SDR tuners sharing a common clock for phase cohe
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `center_freq` | float | 98.1e6 | Center frequency (Hz) |
-| `sample_rate` | float | 2.4e6 | Sample rate (Hz) |
+| `sample_rate` | float | 1e6 | Sample rate (Hz) |
 | `gain` | float | 40 | RF gain (dB) |
 | `num_channels` | int | 5 | Number of channels |
 | `enable_cal` | bool | True | Enable phase calibration |
@@ -177,7 +177,7 @@ y[n] = x[n] * gain
 | `attack_time` | float | 0.001 | Attack time constant (seconds) |
 | `decay_time` | float | 0.1 | Decay time constant (seconds) |
 | `max_gain` | float | 1000 | Maximum gain limit |
-| `sample_rate` | float | 2.4e6 | Sample rate for time constant conversion |
+| `sample_rate` | float | 1e6 | Sample rate for time constant conversion |
 
 **Implementation**: `src/conditioning.cpp`, `libkraken_conditioning.so`
 
@@ -237,7 +237,7 @@ Block B3 implements reference signal reconstruction to improve the quality of th
 |-----------|------|---------|-------------|
 | `signal_type` | enum | 'fm' | Signal type: fm, atsc3, dvbt, passthrough |
 | `fft_size` | int | 8192 | FFT size for OFDM modes |
-| `sample_rate` | float | 2.4e6 | Sample rate (Hz) |
+| `sample_rate` | float | 1e6 | Sample rate (Hz) |
 
 **Implementation**: `gr-kraken_passive_radar/lib/dvbt_reconstructor_impl.cc`
 
@@ -251,7 +251,7 @@ Block B3 implements reference signal reconstruction to improve the quality of th
 
 **Technical Description**:
 
-The ECA-B (Batch) clutter canceller uses NLMS (Normalized Least Mean Squares) adaptive filtering to remove direct-path interference and multipath clutter from the surveillance channel.
+The ECA-B (Batch) clutter canceller uses batch Toeplitz least-squares with FFT-based cross-correlation and FIR application to remove direct-path interference and multipath clutter from the surveillance channel.
 
 **Algorithm**:
 
@@ -260,26 +260,30 @@ The filter minimizes the error between surveillance and filtered reference:
 e[n] = surv[n] - sum(w[k] * ref[n - k]) for k = 0 to num_taps-1
 ```
 
-**NLMS Update** (batch mode):
-1. Build autocorrelation matrix R:
+**Batch Toeplitz Least-Squares**:
+1. Compute reference autocorrelation via FFT:
    ```
-   R[j,k] = sum(ref[n-j] * conj(ref[n-k])) for n = 0 to N-1
+   R_ref = IFFT(|FFT(ref, 2N)|²)
+   r[k] = R_ref[k] for k = 0 to num_taps-1   (Toeplitz first row)
    ```
-2. Build cross-correlation vector p:
+2. Compute surveillance-reference cross-correlation via FFT:
    ```
-   p[j] = sum(surv[n] * conj(ref[n-j])) for n = 0 to N-1
+   P = IFFT(FFT(surv, 2N) * conj(FFT(ref, 2N)))
+   p[k] = P[k] for k = 0 to num_taps-1
    ```
-3. Add diagonal loading for stability:
+3. Build Toeplitz autocorrelation matrix and add diagonal loading:
    ```
+   R[j,k] = r[|j-k|]    (Hermitian Toeplitz structure)
    R_reg = R + lambda * I  (lambda = reg_factor, default 0.001)
    ```
 4. Solve for optimal weights:
    ```
    w = R_reg^(-1) * p  (via Cholesky decomposition)
    ```
-5. Apply filter and compute error:
+5. Apply FIR cancellation filter via FFT convolution:
    ```
-   y[n] = surv[n] - sum(w[k] * ref[n-k])
+   Y = IFFT(FFT(ref, 2N) * FFT(w, 2N))
+   y[n] = surv[n] - Y[n]   (overlap-save extraction)
    ```
 
 **Key Features**:
@@ -349,9 +353,10 @@ Zero-padding ensures linear (not circular) convolution.
 |-----------|------|---------|-------------|
 | `n_samples` | int | 4096 | CPI length (samples per processing interval) |
 
-The CAF block computes the range profile (cross-correlation) only. Doppler processing
-is handled by the separate `doppler_processor` block, which applies windowing and
-slow-time FFT across multiple CPI outputs.
+The CAF block is a C++ pybind11 `sync_decimator` block (not Python+ctypes). It
+computes the range profile (cross-correlation) only. Doppler processing is handled
+by the separate `doppler_processor` block, which applies windowing and slow-time
+FFT across multiple CPI outputs.
 
 The standalone C++ kernel (`caf_create_full()`) additionally accepts `n_doppler`,
 `n_range`, `doppler_start`, `doppler_step`, and `sample_rate` for full range-Doppler
@@ -461,12 +466,12 @@ noise_estimate = sorted_cells[k]  # k-th smallest
 ```
 Robust to interfering targets.
 
-**2D Optimization (O(n) via Prefix Sum)**:
+**2D Optimization (O(n) via Integral Image / Summed Area Table)**:
 
-Traditional 2D CFAR is O(n² × window_size²). The optimized version uses integral images:
+Traditional 2D CFAR is O(n² × window_size²). The optimized version uses integral images (summed area tables):
 
 ```
-// Build prefix sum
+// Build integral image (summed area table)
 prefix[i,j] = input[i,j] + prefix[i-1,j] + prefix[i,j-1] - prefix[i-1,j-1]
 
 // Compute region sum in O(1)

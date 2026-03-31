@@ -245,8 +245,8 @@ KrakenSDR 5-Channel Coherent SDR
         v
 +-------------------+     +-------------------+     +-------------------+
 | ECA Canceller     | --> | CAF               | --> | Doppler Processor |
-| (C++/VOLK)        |     | (cross-ambiguity) |     | (C++/FFTW)        |
-| NLMS adaptive     |     | range profiles    |     | slow-time FFT     |
+| (C++/FFTW)        |     | (C++/FFTW)        |     | (C++/FFTW)        |
+| batch Toeplitz LS |     | cross-ambiguity   |     | slow-time FFT     |
 +-------------------+     +-------------------+     +-------------------+
                                                             |
                                                             v
@@ -287,7 +287,7 @@ Measured performance: <1 degree phase deviation over 60 seconds with drift compe
 ```
 PassiveRadar_Kraken/
 |-- gr-kraken_passive_radar/         GNU Radio OOT module (the main module)
-|   |-- lib/                         C++ block implementations (8 blocks)
+|   |-- lib/                         C++ block implementations (9 blocks)
 |   |   |-- dvbt_reconstructor_impl.cc/h   Block B3 (750+ lines, FM/ATSC3/DVB-T)
 |   |   +-- ...                      (other blocks)
 |   |-- include/gnuradio/             Public C++ headers
@@ -370,7 +370,7 @@ PassiveRadar_Kraken/
 The `run_passive_radar.py` script implements the full processing chain using C++ blocks:
 
 ```
-Source -> PhaseCorr -> AGC -> Block B3 (NEW!) -> ECA(C++) -> CAF -> Doppler(C++) ->
+Source -> PhaseCorr -> AGC -> Block B3 (NEW!) -> ECA(C++) -> CAF(C++) -> Doppler(C++) ->
   CFAR(C++) -> Cluster(C++) -> AoA(C++) -> Tracker(C++) -> Display
 ```
 
@@ -380,8 +380,8 @@ Source -> PhaseCorr -> AGC -> Block B3 (NEW!) -> ECA(C++) -> CAF -> Doppler(C++)
 | 2 | `phase_corrector` | Python | Per-sample NCO phase + drift correction for all 4 surv channels (thread-safe, 3.6x NCO speedup) |
 | 3 | `ConditioningBlock` | Python+ctypes | AGC / signal conditioning (gain-limited, silence-safe) |
 | **3b** | **`dvbt_reconstructor`** | **C++ (FFTW/Eigen3)** | **Reference signal reconstruction (10-20 dB improvement)** |
-| 4 | `eca_canceller` | C++ (VOLK) | NLMS adaptive clutter cancellation |
-| 5 | `CafBlock` | Python+ctypes | Cross-ambiguity function (range profiles) |
+| 4 | `eca_canceller` | C++ (FFTW) | Batch Toeplitz least-squares clutter cancellation with FFT-based cross-correlation and FIR |
+| 5 | `caf` | C++ (FFTW) | Cross-ambiguity function (range profiles) |
 | 6 | `doppler_processor` | C++ (FFTW) | Slow-time FFT for range-Doppler map |
 | 7 | `cfar_detector` | C++ | CA/GO/SO/OS-CFAR detection |
 | 8 | `detection_cluster` | C++ | 8-connected component target extraction |
@@ -417,7 +417,7 @@ A comprehensive audit of the full codebase (C++ kernels, OOT blocks, Python proc
 
 | Optimization | File | Speedup |
 |-------------|------|---------|
-| **CFAR O(n²) -> O(n)** via 2D prefix sum (integral image) | `backend.cpp` | ~10-50x for 256×128 maps |
+| **CFAR O(n²) -> O(n)** via integral image (summed area table) | `backend.cpp` | ~10-50x for 256×128 maps |
 | **CFAR O(n²) -> O(n)** via `radar::cfar_2d_f32` | `cfar_detector_impl.cc` (OOT, CA-CFAR) | ~10-50x (150ms -> 3-15ms on aarch64) |
 | **Python CFAR** vectorized | `local_processing.py` | `scipy.ndimage.uniform_filter` replaces nested Python loops |
 | **Python clustering** vectorized | `local_processing.py` | `scipy.ndimage.maximum_filter` replaces scalar peak search |
@@ -456,14 +456,15 @@ Patterns found repeatedly in this codebase with no existing kernel:
 
 ## GNU Radio Blocks
 
-The single OOT module `gr-kraken_passive_radar` provides 15 blocks: 8 C++ (pybind11) and 7 Python.
+The single OOT module `gr-kraken_passive_radar` provides 16 blocks: 9 C++ (pybind11) and 7 Python.
 
 ### C++ Blocks (pybind11)
 
 | Block | Description | Key Parameters |
 |-------|-------------|----------------|
 | **`dvbt_reconstructor`** | **Multi-signal reference reconstructor (Block B3)** | **`signal_type`, `fm_deviation`, `fft_size`, `enable_svd`** |
-| `eca_canceller` | NLMS clutter canceller (OptMathKernels/VOLK) | `num_taps`, `reg_factor`, `num_surv` |
+| `eca_canceller` | Batch Toeplitz least-squares clutter canceller (FFTW/OptMathKernels) | `num_taps`, `reg_factor`, `num_surv` |
+| `caf` | Cross-ambiguity function via FFT-based cross-correlation (FFTW) | `fft_len`, `num_doppler_bins`, `num_surv` |
 | `doppler_processor` | Range-Doppler map via slow-time FFT | `num_range_bins`, `num_doppler_bins`, `window_type` |
 | `cfar_detector` | CA/GO/SO/OS-CFAR detection | `pfa`, `cfar_type`, guard/ref cells |
 | `coherence_monitor` | Phase coherence monitoring + cal trigger (OptMathKernels NEON) | `corr_threshold`, `phase_threshold_deg` |
@@ -478,7 +479,7 @@ The single OOT module `gr-kraken_passive_radar` provides 15 blocks: 8 C++ (pybin
 | `krakensdr_source` | 5-channel coherent SDR source (osmosdr) | Active |
 | `CalibrationController` | Automatic phase calibration manager | Legacy (superseded by inline flowgraph calibrator) |
 | `ConditioningBlock` | AGC / signal conditioning (ctypes) | Active |
-| `CafBlock` | Cross-ambiguity function (ctypes) | Active |
+| `CafBlock` | Cross-ambiguity function (ctypes) | Deprecated - use `caf` (C++) |
 | `TimeAlignmentBlock` | Delay/phase measurement (ctypes) | Active |
 | `vector_zero_pad` | Zero-pad vectors for FFT alignment | Active |
 | `EcaBClutterCanceller` | ECA-B clutter cancellation (ctypes) | Deprecated - use `eca_canceller` |
@@ -495,7 +496,7 @@ Ten shared libraries built from `src/` provide the DSP kernels used by both the 
 
 | Library | Description | Dependencies |
 |---------|-------------|--------------|
-| `libkraken_eca_b_clutter_canceller.so` | ECA-B NLMS clutter cancellation | libm, OptMathKernels (optional) |
+| `libkraken_eca_b_clutter_canceller.so` | ECA-B batch Toeplitz least-squares clutter cancellation | fftw3f, libm, OptMathKernels (optional) |
 | `libkraken_conditioning.so` | Signal conditioning / AGC | libm, OptMathKernels (optional) |
 | `libkraken_fftw_init.so` | Centralized FFTW thread init (pthread_once) | fftw3f, fftw3f_threads |
 | `libkraken_time_alignment.so` | Cross-correlation time alignment | fftw3f, kraken_fftw_init, OptMathKernels (optional) |
@@ -550,10 +551,10 @@ Five CUDA libraries provide GPU-accelerated implementations of compute-intensive
 
 This passive radar system is ITAR and EAR compliant:
 
-- **Limited bandwidth**: 2.4 MHz max sample rate, well below EAR ECCN 3A001.b.1 threshold (>50 MHz)
+- **Limited bandwidth**: 1-2.4 MHz sample rate (default 1 MHz), well below EAR ECCN 3A001.b.1 threshold (>50 MHz)
 - **Low operating frequency**: FM broadcast band (88-108 MHz), civilian illuminators only
 - **Passive reception only**: No active transmission capability
-- **Open-source**: All algorithms published in open academic literature (NLMS, CFAR, Kalman)
+- **Open-source**: All algorithms published in open academic literature (Toeplitz least-squares, CFAR, Kalman)
 - **COTS hardware**: KrakenSDR is a commercially available consumer SDR (~$400)
 - **Performance class**: ~15-20 km range, ~300-600 m resolution, typical of academic research
 
@@ -583,7 +584,7 @@ sudo apt install -y gnuradio-dtv gnuradio-filter
 
 ### OS-Level Tuning (Raspberry Pi 5 / Multi-Dongle SDR)
 
-Running 5 RTL-SDR dongles at 2 MHz requires raised USB buffer limits. The default 16 MB `usbfs_memory_mb` causes continuous overruns.
+Running 5 RTL-SDR dongles at 1 MHz (default) or higher requires raised USB buffer limits. The default 16 MB `usbfs_memory_mb` causes continuous overruns.
 
 ```bash
 # Raise USB buffer pool to 256 MB (required for 5-dongle KrakenSDR)
@@ -805,7 +806,7 @@ python3 run_passive_radar.py --freq 103.7e6 --gain 30
 | `--if-gain` | 40 | RSPduo IF gain in dB (20-59) |
 | `--rf-gain` | 0 | RSPduo RF gain reduction in dB (0-27) |
 | `--bandwidth` | auto | RSPduo analog bandwidth in Hz |
-| `--sample-rate` | 2e6 | Sample rate in Hz (max 2 MHz dual-tuner) |
+| `--sample-rate` | 1e6 | Sample rate in Hz (1-2.4 MHz, default 1 MHz) |
 
 **GPU Backend Selection:**
 
@@ -1250,7 +1251,7 @@ sink = kpr.dashboard_sink(
     fft_len=2048,            # Range bins (CPI length)
     doppler_len=256,         # Doppler bins
     num_channels=4,          # Surveillance channels
-    sample_rate=2.0e6,       # Sample rate
+    sample_rate=1.0e6,       # Sample rate (default 1 MHz)
     center_freq=103.7e6,     # Transmitter frequency
     external_display=True,   # Main-thread display (required for TkAgg/X11)
 )
@@ -1567,7 +1568,7 @@ python3 -m pytest tests/test_gr_cpp_blocks.py -v
 
 ### CFAR benchmark threshold
 
-The CFAR 2D benchmark uses platform-aware thresholds: 150ms on aarch64 (Pi 5), 50ms on x86_64. With the 2026-03-23 audit optimizations (prefix-sum CFAR in standalone kernel, `radar::cfar_2d_f32` in OOT CA-CFAR), actual performance is 10-50x faster than these thresholds.
+The CFAR 2D benchmark uses platform-aware thresholds: 150ms on aarch64 (Pi 5), 50ms on x86_64. With the 2026-03-23 audit optimizations (integral image CFAR in standalone kernel, `radar::cfar_2d_f32` in OOT CA-CFAR), actual performance is 10-50x faster than these thresholds.
 
 ### Display tests skip
 
@@ -1682,7 +1683,7 @@ MIT License. See [LICENSE](LICENSE).
 
 **Block B3 Reference Reconstructor**: Multi-signal demodulation-remodulation system providing 10-20 dB sensitivity improvement. Supports FM Radio (production-ready, 8% CPU), ATSC 3.0 OFDM (49% CPU), and DVB-T (skeleton). Complete with GRC flowgraph, command-line integration, and comprehensive documentation.
 
-**2026-03-23 Audit**: Comprehensive codebase audit fixed 4 safety-critical bugs (buffer overread, AGC gain spike, CFAR edge case, NLMS guard), 5 correctness bugs (FFT shift, calibration SNR, phase timing, ctypes, LD_LIBRARY_PATH), and 7 performance optimizations (CFAR O(n^2)->O(n) via prefix sum and `radar::cfar_2d_f32`, Python CFAR/clustering vectorized, FFT shift modulo elimination, dashboard memory, phasor caching). OptMathKernels usage expanded from 8 to 13 unique functions across NLMS, time alignment, ECA, AoA, Doppler, and conditioning processing. All 10 kernel libraries now have OptMathKernels acceleration paths.
+**2026-03-23 Audit**: Comprehensive codebase audit fixed 4 safety-critical bugs (buffer overread, AGC gain spike, CFAR edge case, NLMS guard), 5 correctness bugs (FFT shift, calibration SNR, phase timing, ctypes, LD_LIBRARY_PATH), and 7 performance optimizations (CFAR O(n^2)->O(n) via integral image (summed area table) and `radar::cfar_2d_f32`, Python CFAR/clustering vectorized, FFT shift modulo elimination, dashboard memory, phasor caching). OptMathKernels usage expanded from 8 to 13 unique functions across NLMS, time alignment, ECA, AoA, Doppler, and conditioning processing. All 10 kernel libraries now have OptMathKernels acceleration paths.
 
 ---
 
