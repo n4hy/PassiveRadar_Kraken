@@ -294,7 +294,7 @@ public:
                 Complex u_last_j = full_ref[idx_last_j];
                 Complex u_last_k = full_ref[idx_last_k];
 
-                Complex next_val = curr + (u_prev_j * std::conj(u_prev_k)) - (u_last_j * std::conj(u_last_k));
+                Complex next_val = curr + (std::conj(u_prev_j) * u_prev_k) - (std::conj(u_last_j) * u_last_k);
                 R[(j + 1) * num_taps + (k + 1)] = next_val;
             }
         }

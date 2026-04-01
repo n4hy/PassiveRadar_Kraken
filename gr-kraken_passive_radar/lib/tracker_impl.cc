@@ -17,6 +17,10 @@
 #include <cmath>
 #include <limits>
 
+#ifdef HAVE_MCNF
+#include "FilterMath.h"
+#endif
+
 namespace gr {
 namespace kraken_passive_radar {
 
@@ -234,10 +238,15 @@ void tracker_impl::update_track(srukf_track_t& track,
         Pxz += d_wci * (d_chi.col(i) - track.x) * (d_zeta.col(i) - z_pred).transpose();
     }
 
-    // Kalman gain: K = Pxz * Sy^{-T} * Sy^{-1}
-    // Solve K * (Sy * Sy^T) = Pxz → K = Pxz * (Sy*Sy^T)^{-1}
+    // Kalman gain: K = Pxz * (Sy * Sy^T)^{-1}
+#ifdef HAVE_MCNF
+    Eigen::MatrixXf Kf = filtermath::kalman_gain(
+        Eigen::MatrixXf(Pxz), Eigen::MatrixXf(Sy * Sy.transpose()));
+    GainMat K = (Kf.size() > 0) ? GainMat(Kf) : Pxz * (Sy * Sy.transpose()).inverse();
+#else
     MeasMat SySyT = Sy * Sy.transpose();
     GainMat K = Pxz * SySyT.inverse();
+#endif
 
     // State update
     MeasVec z_meas;

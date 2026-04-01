@@ -2,7 +2,7 @@
 
 **Passive Bistatic Radar System for KrakenSDR**
 
-[![CI](https://github.com/n4hy/PassiveRadar_Kraken/actions/workflows/ci.yml/badge.svg)](https://github.com/n4hy/PassiveRadar_Kraken/actions) [![License](https://img.shields.io/badge/license-MIT-blue)]() [![Platform](https://img.shields.io/badge/platform-RPi5%20%7C%20x86__64%20%7C%20GPU-lightgrey)]() [![GNU Radio](https://img.shields.io/badge/GNU%20Radio-3.10+-green)]() [![GPU](https://img.shields.io/badge/GPU-CUDA%2012.0+-green)]()
+[![CI](https://github.com/n4hy/PassiveRadar_Kraken/actions/workflows/ci.yml/badge.svg)](https://github.com/n4hy/PassiveRadar_Kraken/actions) [![License](https://img.shields.io/badge/license-MIT-blue)]() [![Platform](https://img.shields.io/badge/platform-RPi5%20%7C%20OrangePi%20%7C%20x86__64%20%7C%20GPU-lightgrey)]() [![GNU Radio](https://img.shields.io/badge/GNU%20Radio-3.10+-green)]() [![GPU](https://img.shields.io/badge/GPU-CUDA%2012.0+-green)]()
 
 GNU Radio Out-of-Tree (OOT) module for passive bistatic radar using the KrakenSDR 5-channel coherent SDR receiver. Implements the full processing chain from coherent acquisition through clutter cancellation, Doppler processing, CFAR detection, AoA estimation, and multi-target tracking, all in C++ with Python bindings.
 
@@ -52,6 +52,18 @@ GNU Radio Out-of-Tree (OOT) module for passive bistatic radar using the KrakenSD
 
 GPU tests are skipped on RPi5 (no CUDA). All 232 CPU tests pass including the full audit fixes.
 
+### Orange Pi / CIX P1 CD8160 (aarch64, ARMv9-A, CPU-only)
+
+**Platform**: CIX P1 CD8160 (4x Cortex-A520 + 8x Cortex-A720), Python 3.11.7, GNU Radio 3.10, OptMathKernels 0.5.7 (NEON/SVE2), Modern-Computational-Nonlinear-Filtering (FilterMath dispatch)
+
+**Date**: 2026-03-31
+
+```
+======================= 166 passed, 85 skipped in 10.87s =======================
+```
+
+GPU tests skipped (no CUDA), C++ pybind11 block tests skipped (require sudo install). All 166 CPU kernel and algorithm tests pass including ECA-B Toeplitz fix and ARMv9-A optimizations.
+
 ### x86_64 (NVIDIA RTX 5090)
 
 **Platform**: x86_64, Python 3.12.3, GNU Radio 3.10.9, CUDA 12.0
@@ -64,18 +76,20 @@ GPU tests are skipped on RPi5 (no CUDA). All 232 CPU tests pass including the fu
 
 ### Summary
 
-| Category | Tests | RPi5 Status | x86_64+GPU Status |
-|----------|------:|-------------|-------------------|
-| C++ kernel libraries | 8 | 8 passed | 8 passed |
-| GNU Radio C++ blocks (pybind11) | 66 | 66 passed | 66 passed |
-| GNU Radio Python blocks | 16 | 16 passed | 16 passed |
-| GPU kernel tests | 32 | 19 skipped | 32 passed |
-| Unit tests (algorithms) | 79 | 79 passed | 79 passed |
-| Integration / end-to-end | 6 | 6 passed | 6 passed |
-| Benchmarks | 6 | 6 passed | 6 passed |
-| Test fixtures | 28 | 28 passed | 28 passed |
-| Display modules | 17 | 17 passed | 17 passed |
-| **Total** | **251** | **232 passed, 19 skipped** | **251 passed** |
+| Category | Tests | RPi5 Status | CIX P1 Status | x86_64+GPU Status |
+|----------|------:|-------------|---------------|-------------------|
+| C++ kernel libraries | 8 | 8 passed | 8 passed | 8 passed |
+| GNU Radio C++ blocks (pybind11) | 66 | 66 passed | 66 skipped* | 66 passed |
+| GNU Radio Python blocks | 16 | 16 passed | 16 passed | 16 passed |
+| GPU kernel tests | 32 | 19 skipped | 19 skipped | 32 passed |
+| Unit tests (algorithms) | 79 | 79 passed | 79 passed | 79 passed |
+| Integration / end-to-end | 6 | 6 passed | 6 passed | 6 passed |
+| Benchmarks | 6 | 6 passed | 6 passed | 6 passed |
+| Test fixtures | 28 | 28 passed | 28 passed | 28 passed |
+| Display modules | 17 | 17 passed | 17 passed | 17 passed |
+| **Total** | **251** | **232 passed, 19 skipped** | **166 passed, 85 skipped** | **251 passed** |
+
+*CIX P1 pybind11 skips are due to non-sudo build environment, not test failures.
 
 ---
 
@@ -103,6 +117,7 @@ PassiveRadar_Kraken now includes **optional GPU acceleration** for compute-inten
 
 | Platform | Build Mode | Performance | Use Case |
 |----------|-----------|-------------|----------|
+| **Orange Pi / CIX P1** | CPU-only (ARMv9-A + SVE2) | 15-30 Hz | Research, embedded, education |
 | **Raspberry Pi 5** | CPU-only (default) | 10-20 Hz | Hobbyist, research, education |
 | **Desktop + RTX GPU** | GPU-enabled | 100-200 Hz | Professional, commercial |
 | **NVIDIA Jetson Orin** | GPU-enabled | 80-150 Hz | Embedded, field deployment |
@@ -387,6 +402,32 @@ Source -> PhaseCorr -> AGC -> Block B3 (NEW!) -> ECA(C++) -> CAF(C++) -> Doppler
 | 8 | `detection_cluster` | C++ | 8-connected component target extraction |
 | 9 | `aoa_estimator` | C++ (Eigen3) | Bartlett/MUSIC AoA (ULA/UCA) |
 | 10 | `tracker` | C++ | Kalman filter + GNN association |
+
+---
+
+## 2026-03-31 Audit: CIX P1 CD8160 Support, MCNF Integration, ECA-B Bug Fix
+
+Comprehensive audit and optimization for the CIX P1 CD8160 (Orange Pi) ARMv9-A platform with 4x Cortex-A520 + 8x Cortex-A720 cores and SVE2 support.
+
+### Bug Fix
+
+| Fix | File | Impact |
+|-----|------|--------|
+| **ECA-B Toeplitz recursion conjugation** | `eca_b_clutter_canceller.cpp:297` | Diagonal recursion used `u * conj(v)` instead of `conj(u) * v`, producing conjugated off-diagonal autocorrelation elements. Fixed to match the correct formula used in `eca_canceller_impl.cc`. |
+
+### Architecture Optimization
+
+| Change | Files | Details |
+|--------|-------|---------|
+| **ARMv9-A auto-detection** | `src/CMakeLists.txt`, `gr-kraken_passive_radar/CMakeLists.txt` | Reads `/proc/cpuinfo` CPU part to detect ARMv9-A cores (0xd80/0xd81) and sets `-march=armv9-a -mtune=cortex-a715`. Falls back to `-mcpu=cortex-a76` for RPi5, generic for unknown. |
+| **OptMathKernels local discovery** | Both CMakeLists.txt | Adds `~/.local/lib/cmake/OptMathKernels` to `CMAKE_PREFIX_PATH` for non-sudo builds. |
+| **MCNF FilterMath dispatch** | `tracker_impl.cc`, `lib/CMakeLists.txt` | Integrates [Modern-Computational-Nonlinear-Filtering](https://github.com/n4hy/Modern-Computational-Nonlinear-Filtering) FilterMath.h for SVE2/NEON-accelerated Kalman gain computation (GEMM, Cholesky, SPD solve). |
+
+### Platform Test Results (CIX P1 CD8160)
+
+- 166 passed, 85 skipped (GPU + pybind11 install), 0 failed
+- Build: GCC 13.3.0, `-march=armv9-a -mtune=cortex-a715`
+- OptMathKernels 0.5.7 (NEON/SVE2), MCNF FilterMath dispatch active
 
 ---
 

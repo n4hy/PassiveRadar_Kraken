@@ -47,7 +47,25 @@ else()
     else()
         # Portable tuning per architecture
         if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|ARM64")
-            add_compile_options(-mcpu=cortex-a76)  # RPi5
+            # Auto-detect ARM CPU: read /proc/cpuinfo for CPU part
+            # 0xd81 = Cortex-A720 (CIX P1 CD8160, Orange Pi)
+            # 0xd80 = Cortex-A520 (CIX P1 CD8160, Orange Pi)
+            # 0xd0b = Cortex-A76  (Raspberry Pi 5)
+            execute_process(
+                COMMAND grep -m1 "CPU part" /proc/cpuinfo
+                OUTPUT_VARIABLE _cpu_part OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+            if(_cpu_part MATCHES "0xd8[0-9a-f]")
+                # ARMv9-A cores (Cortex-A520/A720/X3 etc.)
+                # cortex-a715 is the closest GCC 13 target for Cortex-A720
+                add_compile_options(-march=armv9-a -mtune=cortex-a715)
+                message(STATUS "Detected ARMv9-A CPU (${_cpu_part}) — using -march=armv9-a -mtune=cortex-a715")
+            elseif(_cpu_part MATCHES "0xd0b")
+                add_compile_options(-mcpu=cortex-a76)
+                message(STATUS "Detected Cortex-A76 (RPi5) — using -mcpu=cortex-a76")
+            else()
+                # Generic aarch64 fallback
+                message(STATUS "Unknown ARM CPU part (${_cpu_part}) — using generic aarch64")
+            endif()
         endif()
     endif()
     # Position-independent code for shared libs linking static OptMathKernels
@@ -73,12 +91,24 @@ endif()
 # Find Eigen3 (required for MUSIC AoA estimation)
 find_package(Eigen3 3.3 REQUIRED NO_MODULE)
 
-# OptMathKernels for NEON acceleration (optional, requires >= 0.2.1)
+# OptMathKernels for NEON/SVE2 acceleration (optional)
+# Search local build directory if not installed system-wide
+list(APPEND CMAKE_PREFIX_PATH "$ENV{HOME}/.local/lib/cmake/OptMathKernels")
 find_package(OptMathKernels QUIET)
 if(OptMathKernels_FOUND)
-    message(STATUS "OptMathKernels ${OptMathKernels_VERSION} found - enabling NEON optimization")
+    message(STATUS "OptMathKernels ${OptMathKernels_VERSION} found - enabling NEON/SVE2 optimization")
 else()
-    message(STATUS "OptMathKernels >= 0.2.1 not found - using scalar implementation")
+    message(STATUS "OptMathKernels not found - using scalar implementation")
+endif()
+
+# Modern-Computational-Nonlinear-Filtering (header-only, provides FilterMath dispatch)
+set(MCNF_INCLUDE_DIR "$ENV{HOME}/Modern-Computational-Nonlinear-Filtering")
+if(EXISTS "${MCNF_INCLUDE_DIR}/Common/include/FilterMath.h")
+    set(MCNF_FOUND TRUE)
+    message(STATUS "Modern-Computational-Nonlinear-Filtering found — FilterMath dispatch available")
+else()
+    set(MCNF_FOUND FALSE)
+    message(STATUS "Modern-Computational-Nonlinear-Filtering not found — using Eigen directly")
 endif()
 
 #===============================================================================

@@ -36,10 +36,19 @@ target_include_directories(gnuradio-kraken_passive_radar PRIVATE
     ${EIGEN3_INCLUDE_DIR}
 )
 
-# OptMathKernels integration (optional NEON acceleration)
+# OptMathKernels integration (optional NEON/SVE2 acceleration)
 if(OptMathKernels_FOUND)
     target_compile_definitions(gnuradio-kraken_passive_radar PRIVATE HAVE_OPTMATHKERNELS=1)
     target_link_libraries(gnuradio-kraken_passive_radar PUBLIC OptMathKernels::OptMathKernels)
+endif()
+
+# Modern-Computational-Nonlinear-Filtering (FilterMath dispatch for tracker)
+if(MCNF_FOUND)
+    target_include_directories(gnuradio-kraken_passive_radar PRIVATE
+        ${MCNF_INCLUDE_DIR}/Common/include
+        ${MCNF_INCLUDE_DIR}/UKF/include
+    )
+    target_compile_definitions(gnuradio-kraken_passive_radar PRIVATE HAVE_MCNF=1)
 endif()
 
 target_include_directories(gnuradio-kraken_passive_radar PUBLIC
