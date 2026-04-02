@@ -23,6 +23,7 @@ ENV/
 env/
 env.bak/
 venv.bak/
+prenv/
 
 ############################################
 # GNU Radio / OOT Build Artifacts
@@ -141,6 +142,7 @@ secrets/
 .env
 .env.local
 .env.*
+src/.cache/
 
 ############################################
 # Runtime artifacts (calibration, screenshots, test outputs)
