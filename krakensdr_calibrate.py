@@ -24,10 +24,36 @@ import sys
 import threading
 from typing import Optional
 
-# --- librtlsdr ctypes bindings ---
+# --- librtlsdr ctypes bindings (lazy loaded) ---
 
-_lib = ctypes.CDLL(ctypes.util.find_library('rtlsdr') or 'librtlsdr.so.0')
+_lib = None
 _dev_p = ctypes.c_void_p
+
+
+def _get_lib():
+    """Lazy-load librtlsdr to allow module import without the library installed."""
+    global _lib
+    if _lib is None:
+        # Try find_library first (handles platform differences)
+        lib_path = ctypes.util.find_library('rtlsdr')
+        if lib_path:
+            try:
+                _lib = ctypes.CDLL(lib_path)
+                return _lib
+            except OSError:
+                pass
+        # Fallback to common library names (including ARM variants)
+        for candidate in ['librtlsdr.so.0', 'librtlsdr.so.2', 'librtlsdr.so']:
+            try:
+                _lib = ctypes.CDLL(candidate)
+                return _lib
+            except OSError:
+                continue
+        raise RuntimeError(
+            "librtlsdr not found. Install with: sudo apt install librtlsdr-dev\n"
+            "Calibration requires RTL-SDR library for direct device access."
+        )
+    return _lib
 
 
 def _check(ret, msg=""):
@@ -36,11 +62,11 @@ def _check(ret, msg=""):
 
 
 def get_device_count():
-    return _lib.rtlsdr_get_device_count()
+    return _get_lib().rtlsdr_get_device_count()
 
 
 def get_index_by_serial(serial: str) -> int:
-    idx = _lib.rtlsdr_get_index_by_serial(serial.encode())
+    idx = _get_lib().rtlsdr_get_index_by_serial(serial.encode())
     if idx < 0:
         raise RuntimeError(f"Device with serial {serial} not found")
     return idx
@@ -48,37 +74,39 @@ def get_index_by_serial(serial: str) -> int:
 
 def open_device(index: int):
     dev = ctypes.c_void_p()
-    _check(_lib.rtlsdr_open(ctypes.byref(dev), ctypes.c_uint32(index)),
+    _check(_get_lib().rtlsdr_open(ctypes.byref(dev), ctypes.c_uint32(index)),
            f"open device {index}")
     return dev
 
 
 def close_device(dev):
-    _lib.rtlsdr_close(dev)
+    _get_lib().rtlsdr_close(dev)
 
 
 def configure_device(dev, freq_hz: int, sample_rate: int, gain_tenth_db: int):
-    _check(_lib.rtlsdr_set_center_freq(dev, ctypes.c_uint32(freq_hz)),
+    lib = _get_lib()
+    _check(lib.rtlsdr_set_center_freq(dev, ctypes.c_uint32(freq_hz)),
            "set_center_freq")
-    _check(_lib.rtlsdr_set_sample_rate(dev, ctypes.c_uint32(sample_rate)),
+    _check(lib.rtlsdr_set_sample_rate(dev, ctypes.c_uint32(sample_rate)),
            "set_sample_rate")
-    _check(_lib.rtlsdr_set_tuner_gain_mode(dev, ctypes.c_int(1)),
+    _check(lib.rtlsdr_set_tuner_gain_mode(dev, ctypes.c_int(1)),
            "set_gain_mode")
-    _check(_lib.rtlsdr_set_tuner_gain(dev, ctypes.c_int(gain_tenth_db)),
+    _check(lib.rtlsdr_set_tuner_gain(dev, ctypes.c_int(gain_tenth_db)),
            "set_tuner_gain")
 
 
 def set_noise_source(dev, gpio: int, enable: bool):
-    _check(_lib.rtlsdr_set_bias_tee_gpio(dev, ctypes.c_int(gpio), ctypes.c_int(int(enable))),
+    _check(_get_lib().rtlsdr_set_bias_tee_gpio(dev, ctypes.c_int(gpio), ctypes.c_int(int(enable))),
            f"set_bias_tee_gpio({gpio}, {enable})")
 
 
 def read_samples(dev, num_samples: int) -> np.ndarray:
+    lib = _get_lib()
     num_bytes = num_samples * 2
     buf = (ctypes.c_uint8 * num_bytes)()
     n_read = ctypes.c_int(0)
-    _check(_lib.rtlsdr_reset_buffer(dev), "reset_buffer")
-    _check(_lib.rtlsdr_read_sync(dev, buf, ctypes.c_int(num_bytes),
+    _check(lib.rtlsdr_reset_buffer(dev), "reset_buffer")
+    _check(lib.rtlsdr_read_sync(dev, buf, ctypes.c_int(num_bytes),
                                   ctypes.byref(n_read)), "read_sync")
     actual = n_read.value // 2
     raw = np.frombuffer(buf, dtype=np.uint8)[:actual * 2]
@@ -312,15 +340,16 @@ class KrakenDevices:
         data = {}
         errors = {}
         barrier = threading.Barrier(len(self.devices))
+        lib = _get_lib()  # Get lib once before spawning threads
 
         def capture_one(serial, dev):
             try:
-                _check(_lib.rtlsdr_reset_buffer(dev), "reset_buffer")
+                _check(lib.rtlsdr_reset_buffer(dev), "reset_buffer")
                 barrier.wait(timeout=5.0)
                 num_bytes = n_samples * 2
                 buf = (ctypes.c_uint8 * num_bytes)()
                 n_read = ctypes.c_int(0)
-                _check(_lib.rtlsdr_read_sync(dev, buf, ctypes.c_int(num_bytes),
+                _check(lib.rtlsdr_read_sync(dev, buf, ctypes.c_int(num_bytes),
                                               ctypes.byref(n_read)), "read_sync")
                 actual = n_read.value // 2
                 raw = np.frombuffer(buf, dtype=np.uint8)[:actual * 2]
@@ -346,7 +375,7 @@ class KrakenDevices:
 # --- Calibration ---
 
 def calibrate(freq_hz: int = 103700000,
-              sample_rate: int = 1000000,
+              sample_rate: int = 2000000,
               gain_db: float = 0.0,
               cal_samples: int = 524288,
               settle_time_sec: float = 0.3,
@@ -486,7 +515,7 @@ def calibrate(freq_hz: int = 103700000,
 # --- Phase drift characterization ---
 
 def measure_drift(freq_hz: int = 103700000,
-                  sample_rate: int = 1000000,
+                  sample_rate: int = 2000000,
                   gain_db: float = 0.0,
                   duration_sec: float = 300.0,
                   interval_sec: float = 5.0,
@@ -654,7 +683,7 @@ def measure_drift(freq_hz: int = 103700000,
 # --- Periodic recalibration with drift rate tracking ---
 
 def periodic_recal(freq_hz: int = 103700000,
-                   sample_rate: int = 1000000,
+                   sample_rate: int = 2000000,
                    gain_db: float = 0.0,
                    recal_interval_sec: float = 120.0,
                    cal_samples: int = 524288,
@@ -909,7 +938,7 @@ if __name__ == "__main__":
         if args.command == "calibrate":
             calibrate(
                 freq_hz=int(args.freq),
-                sample_rate=1000000,
+                sample_rate=2000000,
                 gain_db=args.gain,
                 cal_samples=args.samples,
                 cal_file=args.output,
@@ -917,7 +946,7 @@ if __name__ == "__main__":
         elif args.command == "drift":
             measure_drift(
                 freq_hz=int(args.freq),
-                sample_rate=1000000,
+                sample_rate=2000000,
                 gain_db=args.gain,
                 duration_sec=args.duration,
                 interval_sec=args.interval,
@@ -926,7 +955,7 @@ if __name__ == "__main__":
         elif args.command == "periodic":
             periodic_recal(
                 freq_hz=int(args.freq),
-                sample_rate=1000000,
+                sample_rate=2000000,
                 gain_db=args.gain,
                 recal_interval_sec=args.interval,
                 duration_sec=args.duration,
