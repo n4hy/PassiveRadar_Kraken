@@ -16,6 +16,7 @@ Calibration process:
 """
 
 import ctypes
+import ctypes.util
 import numpy as np
 import json
 import time
@@ -25,7 +26,7 @@ from typing import Optional
 
 # --- librtlsdr ctypes bindings ---
 
-_lib = ctypes.CDLL('librtlsdr.so.0')
+_lib = ctypes.CDLL(ctypes.util.find_library('rtlsdr') or 'librtlsdr.so.0')
 _dev_p = ctypes.c_void_p
 
 

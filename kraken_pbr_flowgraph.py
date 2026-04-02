@@ -99,7 +99,10 @@ from gnuradio.eng_arg import eng_float, intx
 from gnuradio import eng_notation
 from gnuradio import kraken_passive_radar
 from gnuradio.kraken_passive_radar import krakensdr_source
-from gnuradio.kraken_passive_radar import rspduo_source
+try:
+    from gnuradio.kraken_passive_radar import rspduo_source
+except ImportError:
+    rspduo_source = None
 import sip
 import threading
 import time
