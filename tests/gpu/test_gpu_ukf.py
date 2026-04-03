@@ -35,6 +35,8 @@ def load_ukf_gpu_lib():
     lib_paths = [
         Path(__file__).parents[2] / 'build' / 'lib' / 'libkraken_ukf_gpu.so',
         Path(__file__).parents[2] / 'src' / 'build' / 'lib' / 'libkraken_ukf_gpu.so',
+        Path(__file__).parents[2] / 'src' / 'lib' / 'libkraken_ukf_gpu.so',
+        Path(__file__).parents[2] / 'kraken_passive_radar' / 'libkraken_ukf_gpu.so',
     ]
 
     for lib_path in lib_paths:
