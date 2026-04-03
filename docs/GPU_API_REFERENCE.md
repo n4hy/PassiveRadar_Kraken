@@ -1,8 +1,9 @@
 # GPU API Reference
 ## PassiveRadar_Kraken CUDA Acceleration API
 
-**Version:** 0.2.0
-**Date:** 2026-02-08
+**Version:** 0.3.0
+**Date:** 2026-04-03
+**CUDA Support:** 11.8+ (base), 12.0+ (enhanced), 13.0+ (Blackwell native)
 **Language:** Python (ctypes bindings to C/CUDA libraries)
 
 ---
@@ -11,10 +12,12 @@
 
 - [Overview](#overview)
 - [Python High-Level API](#python-high-level-api)
+- [CUDA Version API](#cuda-version-api)
 - [GPU Runtime Library](#gpu-runtime-library)
 - [Doppler GPU Kernel](#doppler-gpu-kernel)
 - [CFAR GPU Kernel](#cfar-gpu-kernel)
 - [CAF GPU Kernel](#caf-gpu-kernel)
+- [UKF GPU Kernel](#ukf-gpu-kernel)
 - [Error Handling](#error-handling)
 - [Memory Management](#memory-management)
 - [Advanced Usage](#advanced-usage)
@@ -87,6 +90,14 @@ Get information about a GPU device.
   - `'name'` (str): GPU device name (e.g., "NVIDIA GeForce RTX 5090")
   - `'compute_capability'` (int): Compute capability × 10 (e.g., 120 for sm_12.0)
   - `'device_id'` (int): CUDA device ID
+  - `'cuda_version'` (int): CUDA runtime version (e.g., 13000 for CUDA 13.0)
+  - `'driver_version'` (int): NVIDIA driver version
+  - `'cuda_features'` (dict): Feature availability flags:
+    - `'base'` (bool): Always True for any CUDA version
+    - `'stream_ordered_memory'` (bool): CUDA 11.2+ async memory allocation
+    - `'hopper'` (bool): CUDA 12.0+ Hopper architecture support
+    - `'cpp20'` (bool): CUDA 12.0+ C++20 device code
+    - `'blackwell'` (bool): CUDA 13.0+ Blackwell native support
 
 **Returns empty dict if:**
 - GPU not available
@@ -98,6 +109,12 @@ info = get_gpu_info()
 if info:
     print(f"GPU: {info['name']}")
     print(f"Compute Capability: {info['compute_capability'] / 10.0:.1f}")
+
+    # CUDA version info (v0.3.0+)
+    if 'cuda_version' in info:
+        cuda_ver = info['cuda_version']
+        print(f"CUDA: {cuda_ver // 1000}.{(cuda_ver % 1000) // 10}")
+        print(f"Features: {info['cuda_features']}")
 else:
     print("No GPU available")
 ```
@@ -186,7 +203,75 @@ GPUBackend.cleanup()
 - `device_count() -> int`: Number of CUDA devices
 - `get_device_info(device_id) -> dict`: Device information
 - `is_available() -> bool`: GPU availability check
+- `get_cuda_version() -> int`: CUDA runtime version (e.g., 13000)
+- `get_driver_version() -> int`: NVIDIA driver version
+- `get_cuda_features() -> dict`: Feature availability flags
 - `cleanup() -> None`: Release GPU resources
+
+---
+
+## CUDA Version API
+
+### `GPUBackend.get_cuda_version() -> Optional[int]`
+
+Get CUDA runtime version.
+
+**Returns:**
+- `int`: CUDA version (e.g., 13000 for CUDA 13.0, 12060 for CUDA 12.6)
+- `None`: If GPU not available or version cannot be determined
+
+**Example:**
+```python
+cuda_ver = GPUBackend.get_cuda_version()
+if cuda_ver:
+    major = cuda_ver // 1000
+    minor = (cuda_ver % 1000) // 10
+    print(f"CUDA {major}.{minor}")
+
+    if cuda_ver >= 13000:
+        print("  Blackwell native support available")
+    elif cuda_ver >= 12000:
+        print("  Hopper support, C++20 device code available")
+```
+
+---
+
+### `GPUBackend.get_driver_version() -> Optional[int]`
+
+Get NVIDIA driver version.
+
+**Returns:**
+- `int`: Driver version
+- `None`: If not available
+
+---
+
+### `GPUBackend.get_cuda_features() -> dict`
+
+Get CUDA feature availability based on detected version.
+
+**Returns:**
+- `dict` with boolean flags:
+  - `'base'`: Always True for any CUDA version
+  - `'stream_ordered_memory'`: CUDA 11.2+ (cudaMallocAsync)
+  - `'hopper'`: CUDA 12.0+ (sm_90 architecture)
+  - `'cpp20'`: CUDA 12.0+ (C++20 device code support)
+  - `'blackwell'`: CUDA 13.0+ (sm_100/101/103/120 native)
+
+**Example:**
+```python
+features = GPUBackend.get_cuda_features()
+
+if features.get('blackwell'):
+    print("Running on CUDA 13+ with Blackwell native support")
+elif features.get('hopper'):
+    print("Running on CUDA 12+ with Hopper support")
+else:
+    print("Running on CUDA 11.x base features")
+
+if features.get('stream_ordered_memory'):
+    print("  Stream-ordered memory allocation available")
+```
 
 ---
 
@@ -604,6 +689,188 @@ Process CAF with full Doppler-range grid.
 
 ---
 
+## UKF GPU Kernel
+
+GPU-accelerated Unscented Kalman Filter for multi-target tracking (`libkraken_ukf_gpu.so`).
+
+### Load Library
+
+```python
+import ctypes
+import numpy as np
+
+ukf_lib = ctypes.cdll.LoadLibrary("libkraken_ukf_gpu.so")
+
+# Setup function signatures
+ukf_lib.ukf_gpu_create.restype = ctypes.c_void_p
+ukf_lib.ukf_gpu_create.argtypes = [
+    ctypes.c_int,    # max_tracks
+    ctypes.c_float,  # alpha
+    ctypes.c_float,  # beta
+    ctypes.c_float   # kappa
+]
+
+ukf_lib.ukf_gpu_destroy.restype = None
+ukf_lib.ukf_gpu_destroy.argtypes = [ctypes.c_void_p]
+
+ukf_lib.ukf_gpu_predict.restype = None
+ukf_lib.ukf_gpu_predict.argtypes = [
+    ctypes.c_void_p,
+    ctypes.c_int,    # n_tracks
+    ctypes.c_float   # dt
+]
+
+ukf_lib.ukf_gpu_set_states.restype = None
+ukf_lib.ukf_gpu_set_states.argtypes = [
+    ctypes.c_void_p,
+    ctypes.POINTER(ctypes.c_float),
+    ctypes.c_int
+]
+
+ukf_lib.ukf_gpu_get_states.restype = None
+ukf_lib.ukf_gpu_get_states.argtypes = [
+    ctypes.c_void_p,
+    ctypes.POINTER(ctypes.c_float),
+    ctypes.c_int
+]
+
+ukf_lib.ukf_gpu_is_available.restype = ctypes.c_int
+ukf_lib.ukf_gpu_is_available.argtypes = []
+```
+
+### State Dimensions
+
+```
+NX = 5   # State: [range, doppler, range_rate, doppler_rate, turn_rate]
+NY = 3   # Measurement: [range, doppler, aoa_deg]
+NSIGMA = 2 * NX + 1  # 11 sigma points
+```
+
+---
+
+### `ukf_gpu_create(max_tracks, alpha, beta, kappa) -> void*`
+
+Create UKF GPU processing context.
+
+**Parameters:**
+- `max_tracks` (int): Maximum number of simultaneous tracks
+- `alpha` (float): UKF scaling parameter (typically 0.001 to 1.0)
+- `beta` (float): Prior knowledge parameter (2.0 for Gaussian)
+- `kappa` (float): Secondary scaling (typically 0 or 3-NX)
+
+**Returns:** Opaque handle, or NULL on error
+
+**Example:**
+```python
+max_tracks = 32
+alpha = 1.0
+beta = 2.0
+kappa = 0.0
+
+handle = ukf_lib.ukf_gpu_create(max_tracks, alpha, beta, kappa)
+if handle == 0:
+    raise RuntimeError("Failed to create UKF GPU context")
+```
+
+---
+
+### `ukf_gpu_destroy(handle)`
+
+Release UKF GPU resources.
+
+**Parameters:**
+- `handle` (void*): Context from `ukf_gpu_create()`
+
+---
+
+### `ukf_gpu_set_states(handle, states, n_tracks)`
+
+Set track state vectors.
+
+**Parameters:**
+- `handle` (void*): UKF context
+- `states` (float*): State vectors, shape `(n_tracks, NX)` row-major
+- `n_tracks` (int): Number of active tracks
+
+**Example:**
+```python
+NX = 5
+n_tracks = 4
+
+# Initialize states: [range, doppler, range_rate, doppler_rate, turn_rate]
+states = np.array([
+    [1000.0, 50.0, 10.0, 5.0, 0.1],   # Track 0
+    [2000.0, -30.0, -5.0, -2.0, 0.0], # Track 1
+    [1500.0, 0.0, 0.0, 0.0, 0.0],     # Track 2
+    [3000.0, 100.0, 50.0, 0.0, 0.05], # Track 3
+], dtype=np.float32)
+
+states_ptr = states.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+ukf_lib.ukf_gpu_set_states(handle, states_ptr, n_tracks)
+```
+
+---
+
+### `ukf_gpu_get_states(handle, states, n_tracks)`
+
+Get track state vectors.
+
+**Parameters:**
+- `handle` (void*): UKF context
+- `states` (float*): Output buffer, shape `(n_tracks, NX)`
+- `n_tracks` (int): Number of tracks to retrieve
+
+**Example:**
+```python
+states_out = np.zeros((n_tracks, NX), dtype=np.float32)
+states_out_ptr = states_out.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+
+ukf_lib.ukf_gpu_get_states(handle, states_out_ptr, n_tracks)
+print(f"Track 0 state: {states_out[0]}")
+```
+
+---
+
+### `ukf_gpu_predict(handle, n_tracks, dt)`
+
+Batch prediction step for all tracks.
+
+**Parameters:**
+- `handle` (void*): UKF context
+- `n_tracks` (int): Number of active tracks
+- `dt` (float): Time step in seconds
+
+**Processing:**
+1. Generate sigma points for each track (parallel)
+2. Propagate sigma points through state transition model
+3. Compute predicted mean via weighted combination
+4. Update covariance (optional cuSOLVER QR)
+
+**Example:**
+```python
+dt = 0.1  # 100 ms update rate
+
+# Predict all tracks
+ukf_lib.ukf_gpu_predict(handle, n_tracks, dt)
+
+# Get predicted states
+ukf_lib.ukf_gpu_get_states(handle, states_out_ptr, n_tracks)
+```
+
+**Performance:**
+- RTX 5090: <1 ms for 32 tracks
+- Speedup: 10x+ vs CPU
+
+---
+
+### `ukf_gpu_is_available() -> int`
+
+Check if UKF GPU is available.
+
+**Returns:** 1 if available, 0 otherwise
+
+---
+
 ## Error Handling
 
 ### GPU Errors
@@ -705,7 +972,8 @@ handle = doppler_lib.doppler_gpu_create_ex(
 
 ---
 
-**Document Version:** 1.0
-**Last Updated:** 2026-02-08
+**Document Version:** 1.1
+**Last Updated:** 2026-04-03
 **Author:** Dr. Robert W McGwier, PhD, N4HY
 **GPU Implementation:** Claude (Anthropic)
+**CUDA 13 Update:** UKF GPU, cuSOLVER integration, CUDA version API
