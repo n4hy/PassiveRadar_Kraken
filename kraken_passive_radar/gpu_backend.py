@@ -4,6 +4,11 @@ Copyright (c) 2026 Dr Robert W McGwier, PhD
 SPDX-License-Identifier: MIT
 
 Provides runtime GPU backend selection and device management.
+
+CUDA Version Support:
+- CUDA 11.8+: Core functionality (Turing through Ada Lovelace)
+- CUDA 12.0+: Hopper architecture, C++20 device code
+- CUDA 13.0+: Blackwell architecture (B100/B200/B300)
 """
 
 import os
@@ -71,6 +76,17 @@ class GPUBackend:
 
             cls._gpu_runtime_lib.kraken_should_use_gpu.restype = ctypes.c_int
             cls._gpu_runtime_lib.kraken_should_use_gpu.argtypes = []
+
+            # CUDA version functions (CUDA 13 support)
+            try:
+                cls._gpu_runtime_lib.kraken_gpu_cuda_version.restype = ctypes.c_int
+                cls._gpu_runtime_lib.kraken_gpu_cuda_version.argtypes = []
+
+                cls._gpu_runtime_lib.kraken_gpu_driver_version.restype = ctypes.c_int
+                cls._gpu_runtime_lib.kraken_gpu_driver_version.argtypes = []
+            except AttributeError:
+                # Version functions not available (older build)
+                pass
 
             # Initialize GPU runtime (device 0 by default)
             if cls._gpu_runtime_lib.kraken_gpu_init(0) == 0:
@@ -142,6 +158,66 @@ class GPUBackend:
             'name': name_buffer.value.decode('utf-8'),
             'compute_capability': compute_cap.value,
             'device_id': device_id
+        }
+
+    @classmethod
+    def get_cuda_version(cls) -> Optional[int]:
+        """
+        Get CUDA runtime version.
+
+        Returns:
+            CUDA version as integer (e.g., 13000 for CUDA 13.0),
+            or None if not available.
+        """
+        cls.initialize()
+        if cls._gpu_runtime_lib is None:
+            return None
+
+        try:
+            return cls._gpu_runtime_lib.kraken_gpu_cuda_version()
+        except AttributeError:
+            return None
+
+    @classmethod
+    def get_driver_version(cls) -> Optional[int]:
+        """
+        Get CUDA driver version.
+
+        Returns:
+            Driver version as integer, or None if not available.
+        """
+        cls.initialize()
+        if cls._gpu_runtime_lib is None:
+            return None
+
+        try:
+            return cls._gpu_runtime_lib.kraken_gpu_driver_version()
+        except AttributeError:
+            return None
+
+    @classmethod
+    def get_cuda_features(cls) -> Dict[str, bool]:
+        """
+        Get available CUDA feature flags based on version.
+
+        Returns:
+            Dictionary of feature availability:
+                - 'base': Always True for any CUDA version
+                - 'stream_ordered_memory': CUDA 11.2+
+                - 'hopper': CUDA 12.0+
+                - 'cpp20': CUDA 12.0+
+                - 'blackwell': CUDA 13.0+
+        """
+        cuda_ver = cls.get_cuda_version()
+        if cuda_ver is None:
+            return {'base': False}
+
+        return {
+            'base': True,
+            'stream_ordered_memory': cuda_ver >= 11020,
+            'hopper': cuda_ver >= 12000,
+            'cpp20': cuda_ver >= 12000,
+            'blackwell': cuda_ver >= 13000,
         }
 
     @classmethod
@@ -221,14 +297,29 @@ def get_gpu_info() -> Dict[str, any]:
     Get information about the primary GPU device.
 
     Returns:
-        Dictionary with GPU information, or empty dict if no GPU
+        Dictionary with GPU information including CUDA version, or empty dict if no GPU
 
     Example:
         >>> info = get_gpu_info()
         >>> if info:
         ...     print(f"Using {info['name']} (compute {info['compute_capability']})")
+        ...     if 'cuda_version' in info:
+        ...         print(f"CUDA {info['cuda_version'] // 1000}.{(info['cuda_version'] % 1000) // 10}")
     """
-    return GPUBackend.get_device_info(0)
+    info = GPUBackend.get_device_info(0)
+
+    if info:
+        # Add CUDA version info
+        cuda_ver = GPUBackend.get_cuda_version()
+        if cuda_ver is not None:
+            info['cuda_version'] = cuda_ver
+            info['cuda_features'] = GPUBackend.get_cuda_features()
+
+        driver_ver = GPUBackend.get_driver_version()
+        if driver_ver is not None:
+            info['driver_version'] = driver_ver
+
+    return info
 
 
 # Auto-initialize on module import (graceful failure on RPi5)

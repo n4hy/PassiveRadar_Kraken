@@ -118,9 +118,19 @@ endif()
 # - RPi5 CPU-only builds work identically (zero changes to existing code)
 # - GPU libraries are additional, built only if CUDA is available
 # - Runtime backend selection (auto/gpu/cpu)
+#
+# CUDA Version Support:
+# - CUDA 11.8+: Minimum supported (Turing through Ada Lovelace)
+# - CUDA 12.0+: Hopper support, C++20 device code
+# - CUDA 13.0+: Blackwell native (B100/B200/B300), enhanced memory pools
+#
+# Features enabled by version:
+# - 11.8+: Core GPU kernels, cooperative groups, cuFFT batching
+# - 12.0+: Hopper (sm_90), improved cuSOLVER, async memory hints
+# - 13.0+: Blackwell native (sm_100/101/103), advanced stream pools
 #===============================================================================
 
-option(ENABLE_GPU "Build GPU-accelerated kernels (requires CUDA Toolkit)" ON)
+option(ENABLE_GPU "Build GPU-accelerated kernels (requires CUDA Toolkit 11.8+)" ON)
 
 if(ENABLE_GPU)
     # Check if CUDA compiler is available
@@ -131,15 +141,35 @@ if(ENABLE_GPU)
         # CUDA found - enable GPU support
         enable_language(CUDA)
 
-        # Find CUDA Toolkit (minimum 11.8 for C++17 support)
-        find_package(CUDAToolkit 11.8 QUIET)
+        # Find CUDA Toolkit - try versions in order of preference
+        # First try CUDA 13, then 12, then 11.8
+        find_package(CUDAToolkit 13.0 QUIET)
+
+        if(NOT CUDAToolkit_FOUND)
+            find_package(CUDAToolkit 12.0 QUIET)
+        endif()
+
+        if(NOT CUDAToolkit_FOUND)
+            find_package(CUDAToolkit 11.8 QUIET)
+        endif()
 
         if(CUDAToolkit_FOUND)
+            message(STATUS "")
             message(STATUS "========================================")
             message(STATUS "GPU Acceleration: ENABLED")
             message(STATUS "CUDA Toolkit: ${CUDAToolkit_VERSION}")
             message(STATUS "CUDA Compiler: ${CMAKE_CUDA_COMPILER}")
+
+            if(CUDAToolkit_VERSION VERSION_GREATER_EQUAL "13.0")
+                message(STATUS "Features: FULL (Blackwell native, C++20, cuSOLVER)")
+            elseif(CUDAToolkit_VERSION VERSION_GREATER_EQUAL "12.0")
+                message(STATUS "Features: ENHANCED (Hopper, C++20, cuSOLVER)")
+            else()
+                message(STATUS "Features: BASE (Turing-Ada, C++17)")
+            endif()
+
             message(STATUS "========================================")
+            message(STATUS "")
 
             # Add GPU subdirectory (contains all CUDA code)
             add_subdirectory(gpu)

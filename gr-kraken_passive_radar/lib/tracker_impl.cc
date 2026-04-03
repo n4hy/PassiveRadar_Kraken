@@ -120,6 +120,9 @@ MeasVec tracker_impl::h(const StateVec& x) const
 // ===== SRUKF predict =====
 void tracker_impl::predict_track(srukf_track_t& track)
 {
+    // Save state for RTS smoother
+    save_rts_history(track);
+
     // 1. Generate sigma points: χ = [x, x ± γ*S_cols]
     d_chi.col(0) = track.x;
     for (int i = 0; i < NX; i++) {
@@ -149,9 +152,11 @@ void tracker_impl::predict_track(srukf_track_t& track)
     for (int i = 0; i < 2 * NX; i++) {
         d_qr_buf.row(i) = sw * (d_chi_pred.col(1 + i) - track.x).transpose();
     }
-    // Append sqrt(Q)^T
+
+    // Use adaptive process noise based on maneuver detection
+    StateMat sqrt_Q_adaptive = get_adaptive_sqrt_Q(track);
     for (int i = 0; i < NX; i++) {
-        d_qr_buf.row(2 * NX + i) = d_sqrt_Q.row(i);
+        d_qr_buf.row(2 * NX + i) = sqrt_Q_adaptive.row(i);
     }
 
     // QR decomposition → R is the new S⁻ (upper triangular of Q*R)
@@ -251,7 +256,12 @@ void tracker_impl::update_track(srukf_track_t& track,
     // State update
     MeasVec z_meas;
     z_meas << range_m, doppler_hz, aoa_deg;
-    track.x += K * (z_meas - z_pred);
+    MeasVec innovation = z_meas - z_pred;
+
+    // Update maneuver indicator for adaptive process noise
+    update_maneuver_indicator(track, innovation);
+
+    track.x += K * innovation;
 
     // Covariance update: S = choldowndate(S, K*Sy_cols)
     // For each column of K*Sy, do a rank-1 downdate
@@ -269,6 +279,99 @@ void tracker_impl::update_track(srukf_track_t& track,
 
     track.hits++;
     track.misses = 0;
+}
+
+// ===== RTS Smoother =====
+// Save state and covariance for RTS smoothing
+void tracker_impl::save_rts_history(srukf_track_t& track)
+{
+    track.rts_x_history.push_back(track.x);
+    track.rts_S_history.push_back(track.S);
+
+    // Limit history size
+    while (track.rts_x_history.size() > srukf_track_t::MAX_RTS_HISTORY) {
+        track.rts_x_history.pop_front();
+        track.rts_S_history.pop_front();
+    }
+}
+
+// Run RTS (Rauch-Tung-Striebel) smoother backward pass
+void tracker_impl::run_rts_smoother(srukf_track_t& track)
+{
+    int n = static_cast<int>(track.rts_x_history.size());
+    if (n < 2) return;
+
+    // Start from final state (already optimal)
+    StateVec x_smooth = track.x;
+    StateMat S_smooth = track.S;
+
+    // Backward pass
+    for (int k = n - 2; k >= 0; k--) {
+        StateVec x_k = track.rts_x_history[k];
+        StateMat S_k = track.rts_S_history[k];
+
+        // Predict x_k forward
+        StateVec x_pred = f(x_k);
+
+        // Predicted covariance sqrt (from predict step)
+        // P_pred = S_pred * S_pred^T + Q
+        StateMat P_k = S_k * S_k.transpose();
+        StateMat P_pred = P_k + d_Q;  // Approximation
+
+        // RTS gain: G_k = P_k * F_k^T * P_pred^{-1}
+        // For coordinated turn, F_k is the Jacobian (approximate as identity here)
+        StateMat G = P_k * P_pred.inverse();
+
+        // Smooth state and covariance
+        x_smooth = x_k + G * (x_smooth - x_pred);
+        StateMat P_smooth = P_k + G * (S_smooth * S_smooth.transpose() - P_pred) * G.transpose();
+
+        // Update to Cholesky form
+        Eigen::LLT<StateMat> llt(P_smooth);
+        if (llt.info() == Eigen::Success) {
+            S_smooth = llt.matrixL();
+        }
+
+        // Store smoothed values back
+        track.rts_x_history[k] = x_smooth;
+        track.rts_S_history[k] = S_smooth;
+    }
+
+    // The earliest state is now smoothed
+    if (n > 0) {
+        // Use smoothed estimates for better prediction
+        track.x = track.rts_x_history.back();
+        track.S = track.rts_S_history.back();
+    }
+}
+
+// ===== Adaptive Process Noise =====
+// Update maneuver indicator based on innovation magnitude
+void tracker_impl::update_maneuver_indicator(srukf_track_t& track, const MeasVec& innovation)
+{
+    // Normalized innovation squared (NIS)
+    float nis = innovation(0) * innovation(0) / d_R_range +
+                innovation(1) * innovation(1) / d_R_doppler;
+
+    // Expected NIS for 2-DOF chi-squared is 2
+    // If NIS >> 2, target is maneuvering
+    float alpha = 0.1f;  // Smoothing factor
+    track.maneuver_indicator = (1.0f - alpha) * track.maneuver_indicator + alpha * nis;
+
+    // Adjust process noise scaling
+    // Normal: scale = 1.0, High maneuver: scale up to 5.0
+    float nis_threshold = 5.0f;
+    if (track.maneuver_indicator > nis_threshold) {
+        track.adaptive_q_scale = std::min(5.0f, 1.0f + (track.maneuver_indicator - nis_threshold) * 0.5f);
+    } else {
+        track.adaptive_q_scale = std::max(1.0f, track.adaptive_q_scale * 0.95f);  // Decay back to 1
+    }
+}
+
+// Get scaled process noise for adaptive filtering
+StateMat tracker_impl::get_adaptive_sqrt_Q(const srukf_track_t& track) const
+{
+    return d_sqrt_Q * std::sqrt(track.adaptive_q_scale);
 }
 
 // ===== Mahalanobis gating =====
@@ -353,6 +456,10 @@ void tracker_impl::create_track(float range_m, float doppler_hz,
     track.age = 0;
     track.score = 1.0f;
     track.history.push_back({range_m, doppler_hz});
+
+    // Initialize adaptive noise and RTS smoother fields
+    track.maneuver_indicator = 2.0f;  // Start at expected NIS value
+    track.adaptive_q_scale = 1.0f;
 
     d_tracks.push_back(std::move(track));
 }

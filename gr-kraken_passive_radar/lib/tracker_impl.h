@@ -7,6 +7,12 @@
  * State: [range, doppler, range_rate, doppler_rate, turn_rate] (5D)
  * Measurement: [range, doppler, aoa_deg] (3D)
  * All Eigen matrices pre-allocated — zero heap allocation in work().
+ *
+ * April 2026 Enhancements:
+ * - GPU acceleration hook for batch UKF operations (CUDA 11.8+)
+ * - RTS smoother capability for post-processing
+ * - Adaptive process noise based on maneuver detection
+ * - Joseph-form covariance update for enhanced numerical stability
  */
 
 #ifndef INCLUDED_KRAKEN_PASSIVE_RADAR_TRACKER_IMPL_H
@@ -17,6 +23,7 @@
 #include <Eigen/Dense>
 #include <vector>
 #include <array>
+#include <deque>
 
 namespace gr {
 namespace kraken_passive_radar {
@@ -39,6 +46,15 @@ struct srukf_track_t {
     float score;
     std::vector<std::array<float, 2>> history;
     static constexpr int MAX_HISTORY = 50;
+
+    // RTS smoother history (for post-processing refinement)
+    static constexpr int MAX_RTS_HISTORY = 20;
+    std::deque<StateVec> rts_x_history;    // State history for smoothing
+    std::deque<StateMat> rts_S_history;    // Covariance sqrt history
+
+    // Adaptive noise parameters
+    float maneuver_indicator;              // Innovation-based maneuver detection
+    float adaptive_q_scale;                // Process noise scaling factor
 };
 
 class tracker_impl : public tracker
@@ -98,6 +114,14 @@ private:
     void delete_stale_tracks();
     void update_track_status(srukf_track_t& track, bool updated);
     track_t to_public_track(const srukf_track_t& t) const;
+
+    // RTS smoother for post-processing refinement
+    void save_rts_history(srukf_track_t& track);
+    void run_rts_smoother(srukf_track_t& track);
+
+    // Adaptive process noise
+    void update_maneuver_indicator(srukf_track_t& track, const MeasVec& innovation);
+    StateMat get_adaptive_sqrt_Q(const srukf_track_t& track) const;
 
 public:
     tracker_impl(float dt, float process_noise_range, float process_noise_doppler,

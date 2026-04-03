@@ -2,6 +2,11 @@
  * GPU Runtime Library Implementation
  * Copyright (c) 2026 Dr Robert W McGwier, PhD
  * SPDX-License-Identifier: MIT
+ *
+ * CUDA Version Support:
+ * - CUDA 11.8+: Core functionality
+ * - CUDA 12.0+: Hopper architecture (sm_90)
+ * - CUDA 13.0+: Blackwell architecture (sm_100/101/103)
  */
 
 #include "gpu_runtime.h"
@@ -10,6 +15,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+// Provide CUDA version info
+extern "C"
+int kraken_gpu_cuda_version(void) {
+    return CUDART_VERSION;
+}
+
+extern "C"
+int kraken_gpu_driver_version(void) {
+    int driver_version = 0;
+    cudaDriverGetVersion(&driver_version);
+    return driver_version;
+}
 
 // Global backend setting
 static KrakenBackend g_backend = KRAKEN_BACKEND_AUTO;

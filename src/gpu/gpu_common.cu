@@ -37,8 +37,11 @@ void kraken_gpu_print_device_info(int device_id) {
     printf("  Multiprocessors: %d\n", prop.multiProcessorCount);
     printf("  Max Threads per Block: %d\n", prop.maxThreadsPerBlock);
     printf("  Warp Size: %d\n", prop.warpSize);
+#if CUDART_VERSION < 12000
+    // memoryClockRate deprecated in CUDA 12, removed in CUDA 13
     printf("  Memory Clock Rate: %.2f GHz\n",
            prop.memoryClockRate * 1e-6);
+#endif
     printf("  Memory Bus Width: %d-bit\n", prop.memoryBusWidth);
     printf("  L2 Cache Size: %d KB\n", prop.l2CacheSize / 1024);
 }

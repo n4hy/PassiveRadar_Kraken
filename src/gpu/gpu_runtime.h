@@ -4,6 +4,11 @@
  * SPDX-License-Identifier: MIT
  *
  * Device detection, backend selection, and runtime management.
+ *
+ * CUDA Version Support:
+ * - CUDA 11.8+: Core functionality (Turing through Ada Lovelace)
+ * - CUDA 12.0+: Hopper architecture (sm_90), C++20 device code
+ * - CUDA 13.0+: Blackwell architecture (sm_100/101/103)
  */
 
 #ifndef KRAKEN_GPU_RUNTIME_H
@@ -40,6 +45,16 @@ int kraken_gpu_init(int device_id);
 
 // Cleanup GPU runtime (call once at shutdown)
 void kraken_gpu_cleanup(void);
+
+/**
+ * Version Information Functions
+ */
+
+// Get CUDA runtime version (e.g., 13000 for CUDA 13.0)
+int kraken_gpu_cuda_version(void);
+
+// Get CUDA driver version
+int kraken_gpu_driver_version(void);
 
 /**
  * Backend Selection Functions

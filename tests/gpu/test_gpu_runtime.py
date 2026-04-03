@@ -71,11 +71,35 @@ class TestGPUDeviceDetection:
         assert isinstance(info['compute_capability'], int)
         assert isinstance(info['device_id'], int)
 
-        # Compute capability should be reasonable (5.0 to 12.0 for modern GPUs, including Blackwell)
+        # Compute capability: 5.0 to 12.0 for CUDA 13 (RTX 5090 Blackwell is sm_120)
         assert 50 <= info['compute_capability'] <= 120, \
             f"Unexpected compute capability: {info['compute_capability']}"
 
         print(f"\nDetected GPU: {info['name']} (compute {info['compute_capability']/10:.1f})")
+
+    def test_cuda_version_info(self):
+        """Test CUDA version information (CUDA 13 support)."""
+        if not is_gpu_available():
+            pytest.skip("No GPU available")
+
+        info = get_gpu_info()
+
+        # If CUDA version info is available, check it
+        if 'cuda_version' in info:
+            cuda_ver = info['cuda_version']
+            # Support CUDA 11.8 through 13.x
+            assert cuda_ver >= 11800, f"CUDA version too old: {cuda_ver}"
+
+            major = cuda_ver // 1000
+            minor = (cuda_ver % 1000) // 10
+            print(f"CUDA Version: {major}.{minor}")
+
+            if major >= 13:
+                print("  -> CUDA 13 features: ENABLED (Blackwell native)")
+            elif major >= 12:
+                print("  -> CUDA 12 features: ENABLED (Hopper, C++20)")
+            else:
+                print("  -> CUDA 11 features: BASE (Turing-Ada)")
 
 
 class TestBackendSelection:

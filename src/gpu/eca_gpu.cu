@@ -3,19 +3,29 @@
  * Copyright (c) 2026 Dr Robert W McGwier, PhD
  * SPDX-License-Identifier: MIT
  *
- * Simplified CUDA implementation focusing on parallelizing key operations.
- * Uses custom kernels for matrix operations and conjugate gradient solver.
+ * ECA-B (Eigenspace-based Clutter Canceller - Batched) using NVIDIA CUDA.
+ * Uses cuSOLVER for Cholesky decomposition when available.
+ *
+ * CUDA Version Compatibility:
+ * - CUDA 11.8+: Core functionality with cuSOLVER Cholesky
+ * - CUDA 12.0+: Enhanced cuSOLVER performance
+ * - CUDA 13.0+: Blackwell optimizations
  */
 
 #include "eca_gpu.h"
 #include "gpu_common.h"
 #include "gpu_memory.h"
 #include <cuda_runtime.h>
+#include <cusolverDn.h>
+#include <cublas_v2.h>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <atomic>
+
+// cuSOLVER available in CUDA 7.0+
+#define HAVE_CUSOLVER 1
 
 /**
  * ECA-B GPU Processor State
@@ -39,6 +49,15 @@ struct ECAProcessorGPU {
     cuFloatComplex* d_p;              // Cross-correlation vector
     cuFloatComplex* d_w;              // Filter weights
     float* d_temp;                    // Temporary workspace
+
+    // cuSOLVER workspace for Cholesky
+#if HAVE_CUSOLVER
+    cusolverDnHandle_t cusolver_handle;
+    cublasHandle_t cublas_handle;
+    cuFloatComplex* d_chol_work;     // cuSOLVER workspace
+    int* d_info;                      // cuSOLVER info
+    int chol_work_size;               // Workspace size
+#endif
 
     // Pinned host memory
     float* h_input_pinned;
@@ -171,48 +190,128 @@ __global__ void compute_error_kernel(const cuFloatComplex* __restrict__ surv,
 }
 
 /**
- * Host function: Solve linear system using simple iterative method
- * (Conjugate Gradient on CPU since cuSOLVER is complex)
+ * Host function: Solve linear system R*w = p using Cholesky decomposition (CPU fallback)
+ * Used when cuSOLVER is not available or for small matrices
  */
 void solve_linear_system_cpu(cuFloatComplex* h_R, cuFloatComplex* h_p,
                               cuFloatComplex* h_w, int n) {
-    // Simple approach: Use CPU-side conjugate gradient or just copy to Eigen
-    // For now, use simple Gauss-Seidel iteration (not optimal but functional)
+    // Cholesky decomposition: R = L * L^H
+    // Then solve L * y = p (forward substitution)
+    // Then solve L^H * w = y (backward substitution)
 
-    // Initialize w to zero
-    for (int i = 0; i < n; i++) {
-        h_w[i] = make_cuFloatComplex(0.0f, 0.0f);
+    // Work buffers
+    cuFloatComplex* L = new cuFloatComplex[n * n];
+    cuFloatComplex* y = new cuFloatComplex[n];
+
+    // Initialize L to zero
+    for (int i = 0; i < n * n; i++) {
+        L[i] = make_cuFloatComplex(0.0f, 0.0f);
     }
 
-    // Gauss-Seidel iteration (10 iterations for quick convergence)
-    for (int iter = 0; iter < 10; iter++) {
-        for (int i = 0; i < n; i++) {
-            cuFloatComplex sum = make_cuFloatComplex(0.0f, 0.0f);
+    // Cholesky decomposition (column-major lower triangular)
+    for (int j = 0; j < n; j++) {
+        // Compute diagonal element L[j,j]
+        float sum_diag = cuCrealf(h_R[j * n + j]);
+        for (int k = 0; k < j; k++) {
+            cuFloatComplex Ljk = L[j * n + k];
+            sum_diag -= cuCrealf(Ljk) * cuCrealf(Ljk) + cuCimagf(Ljk) * cuCimagf(Ljk);
+        }
 
-            for (int j = 0; j < n; j++) {
-                if (j != i) {
-                    sum = cuCaddf(sum, cuCmulf(h_R[i * n + j], h_w[j]));
-                }
+        if (sum_diag <= 0.0f) {
+            // Matrix not positive definite, fall back to diagonal
+            L[j * n + j] = make_cuFloatComplex(sqrtf(fabsf(cuCrealf(h_R[j * n + j])) + 1e-6f), 0.0f);
+        } else {
+            L[j * n + j] = make_cuFloatComplex(sqrtf(sum_diag), 0.0f);
+        }
+
+        float L_jj = cuCrealf(L[j * n + j]);
+
+        // Compute off-diagonal elements L[i,j] for i > j
+        for (int i = j + 1; i < n; i++) {
+            cuFloatComplex sum = h_R[i * n + j];
+            for (int k = 0; k < j; k++) {
+                cuFloatComplex Lik = L[i * n + k];
+                cuFloatComplex Ljk_conj = cuConjf(L[j * n + k]);
+                sum = cuCsubf(sum, cuCmulf(Lik, Ljk_conj));
             }
-
-            cuFloatComplex num = cuCsubf(h_p[i], sum);
-            cuFloatComplex denom = h_R[i * n + i];
-
-            // Complex division: num / denom
-            float denom_mag_sq = cuCrealf(denom) * cuCrealf(denom) +
-                                 cuCimagf(denom) * cuCimagf(denom);
-
-            if (denom_mag_sq > 1e-10f) {
-                cuFloatComplex denom_conj = cuConjf(denom);
-                cuFloatComplex result = cuCmulf(num, denom_conj);
-                h_w[i] = make_cuFloatComplex(
-                    cuCrealf(result) / denom_mag_sq,
-                    cuCimagf(result) / denom_mag_sq
-                );
-            }
+            L[i * n + j] = make_cuFloatComplex(cuCrealf(sum) / L_jj, cuCimagf(sum) / L_jj);
         }
     }
+
+    // Forward substitution: L * y = p
+    for (int i = 0; i < n; i++) {
+        cuFloatComplex sum = h_p[i];
+        for (int j = 0; j < i; j++) {
+            sum = cuCsubf(sum, cuCmulf(L[i * n + j], y[j]));
+        }
+        float L_ii = cuCrealf(L[i * n + i]);
+        y[i] = make_cuFloatComplex(cuCrealf(sum) / L_ii, cuCimagf(sum) / L_ii);
+    }
+
+    // Backward substitution: L^H * w = y
+    for (int i = n - 1; i >= 0; i--) {
+        cuFloatComplex sum = y[i];
+        for (int j = i + 1; j < n; j++) {
+            cuFloatComplex L_ji_conj = cuConjf(L[j * n + i]);
+            sum = cuCsubf(sum, cuCmulf(L_ji_conj, h_w[j]));
+        }
+        float L_ii = cuCrealf(L[i * n + i]);
+        h_w[i] = make_cuFloatComplex(cuCrealf(sum) / L_ii, cuCimagf(sum) / L_ii);
+    }
+
+    delete[] L;
+    delete[] y;
 }
+
+#if HAVE_CUSOLVER
+/**
+ * GPU function: Solve linear system R*w = p using cuSOLVER Cholesky
+ */
+int solve_linear_system_gpu(ECAProcessorGPU* proc, int n) {
+    cusolverStatus_t status;
+
+    // Cholesky factorization: R = L * L^H (lower triangular)
+    status = cusolverDnCpotrf(
+        proc->cusolver_handle,
+        CUBLAS_FILL_MODE_LOWER,
+        n,
+        proc->d_R,
+        n,
+        proc->d_chol_work,
+        proc->chol_work_size,
+        proc->d_info
+    );
+
+    if (status != CUSOLVER_STATUS_SUCCESS) {
+        fprintf(stderr, "ECA GPU: cusolverDnCpotrf failed: %d\n", status);
+        return -1;
+    }
+
+    // Solve R * w = p using the Cholesky factorization
+    // First copy p to w (cuSOLVER solves in-place)
+    cudaMemcpyAsync(proc->d_w, proc->d_p, n * sizeof(cuFloatComplex),
+                    cudaMemcpyDeviceToDevice, proc->stream);
+
+    status = cusolverDnCpotrs(
+        proc->cusolver_handle,
+        CUBLAS_FILL_MODE_LOWER,
+        n,
+        1,       // nrhs
+        proc->d_R,
+        n,
+        proc->d_w,
+        n,
+        proc->d_info
+    );
+
+    if (status != CUSOLVER_STATUS_SUCCESS) {
+        fprintf(stderr, "ECA GPU: cusolverDnCpotrs failed: %d\n", status);
+        return -1;
+    }
+
+    return 0;
+}
+#endif
 
 /**
  * Create GPU ECA-B processor
@@ -236,6 +335,50 @@ void* eca_gpu_create(int num_taps, int max_delay) {
         delete proc;
         return nullptr;
     }
+
+#if HAVE_CUSOLVER
+    // Initialize cuSOLVER
+    if (cusolverDnCreate(&proc->cusolver_handle) != CUSOLVER_STATUS_SUCCESS) {
+        fprintf(stderr, "ECA GPU: Failed to create cuSOLVER handle\n");
+        cudaStreamDestroy(proc->stream);
+        delete proc;
+        return nullptr;
+    }
+    cusolverDnSetStream(proc->cusolver_handle, proc->stream);
+
+    // Initialize cuBLAS
+    if (cublasCreate(&proc->cublas_handle) != CUBLAS_STATUS_SUCCESS) {
+        fprintf(stderr, "ECA GPU: Failed to create cuBLAS handle\n");
+        cusolverDnDestroy(proc->cusolver_handle);
+        cudaStreamDestroy(proc->stream);
+        delete proc;
+        return nullptr;
+    }
+    cublasSetStream(proc->cublas_handle, proc->stream);
+
+    // Query cuSOLVER workspace size for Cholesky
+    int work_size = 0;
+    cusolverDnCpotrf_bufferSize(
+        proc->cusolver_handle,
+        CUBLAS_FILL_MODE_LOWER,
+        num_taps,
+        nullptr,  // A (not needed for size query)
+        num_taps,
+        &work_size
+    );
+    proc->chol_work_size = work_size;
+    proc->d_chol_work = (cuFloatComplex*)kraken_gpu_alloc(work_size * sizeof(cuFloatComplex));
+    proc->d_info = (int*)kraken_gpu_alloc(sizeof(int));
+
+    if (!proc->d_chol_work || !proc->d_info) {
+        fprintf(stderr, "ECA GPU: Failed to allocate cuSOLVER workspace\n");
+        cusolverDnDestroy(proc->cusolver_handle);
+        cublasDestroy(proc->cublas_handle);
+        cudaStreamDestroy(proc->stream);
+        delete proc;
+        return nullptr;
+    }
+#endif
 
     // Allocate device memory
     size_t max_samples = 65536;
@@ -272,6 +415,7 @@ void* eca_gpu_create(int num_taps, int max_delay) {
         return nullptr;
     }
 
+    printf("ECA GPU: Created processor with %d taps, cuSOLVER Cholesky enabled\n", num_taps);
     return proc;
 }
 
@@ -282,6 +426,13 @@ void eca_gpu_destroy(void* handle) {
     if (!handle) return;
 
     ECAProcessorGPU* proc = static_cast<ECAProcessorGPU*>(handle);
+
+#if HAVE_CUSOLVER
+    if (proc->cusolver_handle) cusolverDnDestroy(proc->cusolver_handle);
+    if (proc->cublas_handle) cublasDestroy(proc->cublas_handle);
+    if (proc->d_chol_work) kraken_gpu_free(proc->d_chol_work);
+    if (proc->d_info) kraken_gpu_free(proc->d_info);
+#endif
 
     if (proc->d_ref_history) kraken_gpu_free(proc->d_ref_history);
     if (proc->d_full_ref) kraken_gpu_free(proc->d_full_ref);
@@ -384,10 +535,31 @@ void eca_gpu_process(void* handle, const float* ref_in, const float* surv_in,
         );
     }
 
-    // Synchronize before CPU solve
+    // Synchronize before solver
     cudaStreamSynchronize(proc->stream);
 
-    // Solve R*w=p on CPU (simpler than GPU solver for small matrices)
+#if HAVE_CUSOLVER
+    // Solve R*w=p using cuSOLVER Cholesky (GPU-accelerated)
+    int result = solve_linear_system_gpu(proc, num_taps);
+    if (result != 0) {
+        // Fall back to CPU solver on failure
+        cuFloatComplex* h_R = new cuFloatComplex[num_taps * num_taps];
+        cuFloatComplex* h_p = new cuFloatComplex[num_taps];
+        cuFloatComplex* h_w = new cuFloatComplex[num_taps];
+
+        cudaMemcpy(h_R, proc->d_R, num_taps * num_taps * sizeof(cuFloatComplex), cudaMemcpyDeviceToHost);
+        cudaMemcpy(h_p, proc->d_p, num_taps * sizeof(cuFloatComplex), cudaMemcpyDeviceToHost);
+
+        solve_linear_system_cpu(h_R, h_p, h_w, num_taps);
+
+        cudaMemcpy(proc->d_w, h_w, num_taps * sizeof(cuFloatComplex), cudaMemcpyHostToDevice);
+
+        delete[] h_R;
+        delete[] h_p;
+        delete[] h_w;
+    }
+#else
+    // CPU-only fallback
     cuFloatComplex* h_R = new cuFloatComplex[num_taps * num_taps];
     cuFloatComplex* h_p = new cuFloatComplex[num_taps];
     cuFloatComplex* h_w = new cuFloatComplex[num_taps];
@@ -402,6 +574,7 @@ void eca_gpu_process(void* handle, const float* ref_in, const float* surv_in,
     delete[] h_R;
     delete[] h_p;
     delete[] h_w;
+#endif
 
     // Apply FIR filter on GPU
     int start_idx = base - (num_taps - 1);
