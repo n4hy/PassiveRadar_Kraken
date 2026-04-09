@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 class Detection:
     """Simple detection structure for testing."""
     def __init__(self, range_bin, doppler_bin, power):
+        """Initialize detection with range bin, Doppler bin, and power level."""
         self.range_bin = range_bin
         self.doppler_bin = doppler_bin
         self.power = power
@@ -20,6 +21,7 @@ class Detection:
 class Cluster:
     """Cluster of detections."""
     def __init__(self):
+        """Initialize empty cluster with zero centroid and power."""
         self.detections = []
         self.centroid_range = 0
         self.centroid_doppler = 0
@@ -27,10 +29,18 @@ class Cluster:
         self.size = 0
 
     def add_detection(self, det):
+        """Add a detection to this cluster and recompute centroid.
+
+        Technique: power-weighted centroid update on each insertion.
+        """
         self.detections.append(det)
         self._update_centroid()
 
     def _update_centroid(self):
+        """Recompute power-weighted centroid from all detections.
+
+        Technique: weighted average of range/Doppler bins by detection power.
+        """
         if not self.detections:
             return
         self.total_power = sum(d.power for d in self.detections)
@@ -45,9 +55,16 @@ class Cluster:
 
 
 class DetectionClusterer:
-    """Connected component clustering for detections."""
+    """Connected component clustering for detections.
+
+    Technique: flood-fill labeling on 2D detection mask with 8-connectivity.
+    """
 
     def __init__(self, n_range, n_doppler, connectivity=8):
+        """Initialize clusterer with grid dimensions and connectivity type.
+
+        Technique: store grid size for boundary checks during flood fill.
+        """
         self.n_range = n_range
         self.n_doppler = n_doppler
         self.connectivity = connectivity
@@ -83,7 +100,10 @@ class DetectionClusterer:
         return list(clusters.values())
 
     def _flood_fill(self, mask, labels, i, j, label):
-        """Flood fill to find connected component."""
+        """Flood fill to find connected component.
+
+        Technique: iterative stack-based flood fill with 8-connectivity neighbors.
+        """
         stack = [(i, j)]
         while stack:
             ci, cj = stack.pop()
@@ -220,7 +240,10 @@ class TestDetectionClustering(unittest.TestCase):
 
 
 class TestClusterFiltering(unittest.TestCase):
-    """Test cluster filtering and validation."""
+    """Test cluster filtering and validation.
+
+    Technique: apply size and extent thresholds to cluster lists.
+    """
 
     def test_minimum_cluster_size(self):
         """Clusters below minimum size should be filtered."""

@@ -15,11 +15,25 @@
 
 using Complex = std::complex<float>;
 
+/**
+ * Backend - CFAR detection and non-coherent fusion for passive radar
+ *
+ * Technique: Provides 2D Cell-Averaging CFAR (CA-CFAR) detection using
+ * prefix-sum acceleration and non-coherent integration (power summation)
+ * across multiple surveillance channels.
+ */
 class Backend {
 public:
-    // Simple 1D CA-CFAR
-    // input: log magnitude buffer (rows x cols)
-    // output: detection mask (1.0 or 0.0)
+    /**
+     * cfar_1d - 2D Cell-Averaging CFAR detector on range-Doppler map
+     *
+     * Technique: Operates in dB domain with additive threshold. Uses a 2D
+     * prefix sum (integral image) for O(1) rectangle queries, enabling
+     * efficient noise estimation from the training cells surrounding each
+     * cell-under-test. Guard cells prevent target self-masking. A cell is
+     * declared a detection when it exceeds the local noise estimate plus
+     * the threshold (in dB). Output is a binary detection mask.
+     */
     static void cfar_1d(const float* input, float* output, int rows, int cols, int guard, int train, float threshold) {
         // Input is Log Mag (dB), threshold is additive dB.
         // cfar_2d_f32 uses multiplicative threshold on linear data, so we use
@@ -68,13 +82,15 @@ public:
         }
     }
 
-    // Non-coherent Integration
-    // Sums magnitude squared (or log mag?)
-    // If inputs are log mag: convert to linear, sum, convert back?
-    // Or just average dB (video integration).
-    // Let's assume inputs are Log Mag (dB).
-    // Summing dB is equivalent to multiplying in linear. Product?
-    // Non-coherent integration usually sums power (Linear).
+    /**
+     * fusion - Non-coherent integration across multiple surveillance channels
+     *
+     * Technique: Converts dB-domain inputs to linear power via exp(dB * ln10/10),
+     * sums linear power across all channels, then converts back to dB.
+     * Optionally uses NEON-optimized batch exponential (neon_fast_exp_f32)
+     * via OptMathKernels for ARM acceleration. This implements standard
+     * non-coherent integration (power summation) for improved detection SNR.
+     */
     static void fusion(const float* const* inputs, int num_inputs, float* output, int size) {
         std::vector<float> sum_linear(size, 0.0f);
 
@@ -114,11 +130,22 @@ public:
 };
 
 extern "C" {
+    /**
+     * cfar_2d - C API wrapper for 2D CFAR detection
+     *
+     * Technique: Delegates to Backend::cfar_1d which implements prefix-sum
+     * accelerated 2D CA-CFAR on a range-Doppler map.
+     */
     void cfar_2d(const float* input, float* output, int rows, int cols, int guard, int train, float threshold) {
         if (!input || !output || rows <= 0 || cols <= 0) return;
         Backend::cfar_1d(input, output, rows, cols, guard, train, threshold);
     }
 
+    /**
+     * fusion_process - C API wrapper for non-coherent integration
+     *
+     * Technique: Delegates to Backend::fusion for multi-channel power summation.
+     */
     void fusion_process(const float** inputs, int num_inputs, float* output, int size) {
         if (!inputs || !output || num_inputs <= 0 || size <= 0) return;
         Backend::fusion(inputs, num_inputs, output, size);

@@ -9,7 +9,9 @@
 #include <stdio.h>
 
 /**
- * Get human-readable error string
+ * kraken_gpu_get_error_string - Convert CUDA error code to human-readable string
+ *
+ * Technique: Wraps cudaGetErrorString for C API exposure.
  */
 extern "C"
 const char* kraken_gpu_get_error_string(cudaError_t error) {
@@ -17,7 +19,11 @@ const char* kraken_gpu_get_error_string(cudaError_t error) {
 }
 
 /**
- * Print detailed GPU device information
+ * kraken_gpu_print_device_info - Print detailed GPU device properties to stdout
+ *
+ * Technique: Queries cudaDeviceProp for compute capability, memory size,
+ * multiprocessor count, warp size, memory bus width, and L2 cache size.
+ * Handles CUDA 12+ deprecation of memoryClockRate via version guard.
  */
 extern "C"
 void kraken_gpu_print_device_info(int device_id) {
@@ -47,7 +53,10 @@ void kraken_gpu_print_device_info(int device_id) {
 }
 
 /**
- * Get compute capability as integer (e.g., 87 for sm_87)
+ * kraken_gpu_get_compute_capability - Get SM compute capability as integer
+ *
+ * Technique: Returns major*10 + minor (e.g., 87 for sm_87, 100 for sm_100).
+ * Returns 0 on error.
  */
 extern "C"
 int kraken_gpu_get_compute_capability(int device_id) {

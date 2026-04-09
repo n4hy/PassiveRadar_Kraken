@@ -40,6 +40,10 @@ class Track:
     history: Optional[List[Tuple[float, float]]] = None
 
     def __post_init__(self):
+        """Initialize default history list if not provided.
+
+        Technique: post-init processing for mutable default field.
+        """
         if self.history is None:
             self.history = []
 
@@ -67,6 +71,10 @@ class RangeDopplerDisplay:
     """
 
     def __init__(self, params: Optional[RDDisplayParams] = None, update_interval_ms: int = 100):
+        """Initialize range-Doppler display with configurable parameters.
+
+        Technique: thread-safe data storage with lock-guarded CAF array and detection lists.
+        """
         self.params = params if params else RDDisplayParams()
         self.interval = update_interval_ms
 
@@ -91,7 +99,10 @@ class RangeDopplerDisplay:
         self.auto_scale = True
 
     def _compute_axis_values(self):
-        """Compute range and Doppler axis values."""
+        """Compute range and Doppler axis values from bin indices and resolution parameters.
+
+        Technique: linear mapping from bin index to physical units (km, Hz).
+        """
         range_bins = np.arange(self.params.n_range_bins)
         self.range_km = range_bins * self.params.range_resolution_m / 1000.0
 
@@ -100,7 +111,10 @@ class RangeDopplerDisplay:
         self.doppler_hz = (doppler_bins - center) * self.params.doppler_resolution_hz
 
     def _setup_plot(self):
-        """Initialize the matplotlib figure - clean heatmap style."""
+        """Initialize the matplotlib figure with viridis heatmap and cursor readout.
+
+        Technique: imshow with bilinear interpolation and vertical colorbar.
+        """
         self._compute_axis_values()
 
         self.fig, self.ax = plt.subplots(figsize=(14, 8))
@@ -143,7 +157,10 @@ class RangeDopplerDisplay:
         self.fig.tight_layout()
 
     def _on_mouse_move(self, event):
-        """Update cursor readout on mouse move."""
+        """Update cursor readout on mouse move with range, Doppler, and power values.
+
+        Technique: bin lookup from mouse coordinates with real-time text overlay.
+        """
         if event.inaxes == self.ax:
             range_km = event.xdata
             doppler_hz = event.ydata
@@ -161,7 +178,10 @@ class RangeDopplerDisplay:
             self.cursor_text.set_text('')
 
     def _update(self, frame):
-        """Animation update callback."""
+        """Animation update callback that refreshes the heatmap with auto-scaling.
+
+        Technique: percentile-based auto-scaling (5th to 99.5th percentile) for dynamic range.
+        """
         with self.lock:
             caf_data = self.caf_data_db.copy()
 
@@ -205,7 +225,10 @@ class RangeDopplerDisplay:
             self.tracks = tracks.copy()
 
     def set_dynamic_range(self, vmin: float, vmax: float):
-        """Set the display dynamic range in dB (disables auto-scale)."""
+        """Set the display dynamic range in dB and disable auto-scale.
+
+        Technique: direct clim update on imshow artist.
+        """
         self.auto_scale = False
         if self.im is not None:
             self.im.set_clim(vmin, vmax)

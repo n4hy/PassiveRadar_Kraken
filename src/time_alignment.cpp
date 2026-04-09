@@ -25,7 +25,15 @@ struct MaxResult {
     Complex c_val;
 };
 
-// Reuses logic similar to CAF but optimized for seeking peak
+/**
+ * TimeAligner - FFT-based cross-correlation for delay and phase estimation
+ *
+ * Technique: Computes the cross-correlation between reference and surveillance
+ * signals via FFT: IFFT(FFT(surv) * conj(FFT(ref))). Finds the peak of the
+ * cross-correlation to estimate the integer sample delay and carrier phase
+ * offset between channels. Uses FFTW3 for FFT computation and optionally
+ * NEON-optimized conjugate multiply and magnitude computation via OptMathKernels.
+ */
 class TimeAligner {
     int n_samples;
     int fft_len;
@@ -40,6 +48,12 @@ public:
     TimeAligner(TimeAligner&&) = delete;
     TimeAligner& operator=(TimeAligner&&) = delete;
 
+    /**
+     * TimeAligner - Construct time aligner for given sample count
+     *
+     * Technique: Allocates FFTW buffers and plans with next-power-of-2 FFT
+     * length >= 2*n_samples for linear (non-circular) cross-correlation.
+     */
     TimeAligner(int samples) : n_samples(samples) {
         // Initialize FFTW thread support (centralized, safe to call multiple times)
         kraken_fftw_init();
@@ -73,6 +87,7 @@ public:
         interleaved_prod.resize(2 * fft_len);
     }
 
+    /** ~TimeAligner - Release FFTW plans and buffers */
     ~TimeAligner() {
         fftwf_destroy_plan(fwd_ref);
         fftwf_destroy_plan(fwd_surv);
@@ -82,7 +97,16 @@ public:
         fftwf_free(buf_prod);
     }
 
-    // Returns delay (samples) and phase (radians) of peak correlation
+    /**
+     * compute_offset - Estimate inter-channel delay and phase via cross-correlation peak
+     *
+     * Technique: Zero-pads ref and surv to FFT length, computes FFT of both,
+     * multiplies surv_FFT * conj(ref_FFT) (NEON-optimized or scalar), IFFTs
+     * the product, then finds the peak magnitude. Peak index gives integer
+     * sample delay (converted to signed via wrap-around), peak complex value
+     * gives carrier phase offset via atan2. Optionally uses NEON batch
+     * magnitude-squared for faster peak search.
+     */
     void compute_offset(const Complex* ref, const Complex* surv, int* out_delay, float* out_phase) {
         std::memset(buf_ref, 0, fft_len * sizeof(fftwf_complex));
         std::memset(buf_surv, 0, fft_len * sizeof(fftwf_complex));
@@ -173,8 +197,16 @@ public:
 };
 
 extern "C" {
+    /** align_create - C API: Allocate time aligner for n samples */
     void* align_create(int n) { return new TimeAligner(n); }
+    /** align_destroy - C API: Free time aligner instance */
     void align_destroy(void* p) { if (p) delete static_cast<TimeAligner*>(p); }
+    /**
+     * align_compute - C API: Compute delay (samples) and phase (radians) between ref and surv
+     *
+     * Technique: Delegates to TimeAligner::compute_offset for FFT-based
+     * cross-correlation peak detection.
+     */
     void align_compute(void* p, const float* ref, const float* surv, int* delay, float* phase) {
         if (!p || !ref || !surv) return;
         static_cast<TimeAligner*>(p)->compute_offset(

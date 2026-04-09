@@ -39,6 +39,10 @@ class RemoteRadarDisplay:
 
     def __init__(self, base_url: str = 'https://radar3.retnode.com',
                  poll_interval: float = 1.0):
+        """Initialize remote radar display with server URL and polling configuration.
+
+        Technique: threaded HTTP polling with lock-guarded shared state for display updates.
+        """
         self.base_url = base_url.rstrip('/')
         self.poll_interval = poll_interval
 
@@ -181,7 +185,10 @@ class RemoteRadarDisplay:
         self.fig.tight_layout()
 
     def _on_mouse_move(self, event):
-        """Cursor readout."""
+        """Update cursor readout with delay, Doppler, and power at mouse position.
+
+        Technique: nearest-bin lookup via searchsorted on sorted axes.
+        """
         if event.inaxes != self.ax:
             self.cursor_text.set_text('')
             return
@@ -316,6 +323,10 @@ class RemoteRadarDisplay:
 
 
 def main():
+    """Parse command-line arguments and launch the remote radar display client.
+
+    Technique: argparse CLI with server URL and poll interval options.
+    """
     parser = argparse.ArgumentParser(
         description='Remote Delay-Doppler Display for KrakenSDR Passive Radar'
     )

@@ -470,24 +470,30 @@ class dashboard_sink(gr.sync_block):
         self.widgets['btn_clear'].on_clicked(self._on_clear)
 
     def _on_cfar_changed(self, val):
+        """Handle CFAR threshold slider change."""
         self.cfar_threshold = val
 
     def _on_display_changed(self, val):
+        """Handle color min/max slider changes for CAF display scaling."""
         self.color_min = self.widgets['color_min'].val
         self.color_max = self.widgets['color_max'].val
 
     def _on_decay_changed(self, val):
+        """Handle max-hold decay rate slider change."""
         self.max_hold_decay = val
 
     def _on_ppi_changed(self, val):
+        """Handle PPI range slider change and update polar axis limits."""
         self.ppi_range_km = val
         self.axes['ppi'].set_ylim(0, val)
 
     def _on_reset(self, event):
+        """Reset the max-hold CAF accumulator to None."""
         with self.lock:
             self.max_hold_caf = None
 
     def _on_clear(self, event):
+        """Clear all stored detection history."""
         with self.lock:
             self.detection_history.clear()
 

@@ -9,7 +9,15 @@ from conftest import find_kernel_lib
 
 
 class TestCafCpp(unittest.TestCase):
+    """Test the C++ CAF processing library via ctypes.
+
+    Technique: cross-correlate a signal with its delayed copy and check peak location.
+    """
     def test_caf_process(self):
+        """Verify CAF peak appears at the correct delay bin for a known shift.
+
+        Technique: circular-shift reference by 100 samples, expect peak at index 100.
+        """
         lib_path = find_kernel_lib("caf_processing")
 
         if not lib_path.exists():

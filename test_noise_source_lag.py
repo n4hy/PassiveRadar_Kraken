@@ -29,6 +29,10 @@ class noise_lag_flowgraph(gr.top_block):
     """Minimal 5-channel flowgraph with vector probes for lag measurement."""
 
     def __init__(self, freq=103.7e6, gain=49.6):
+        """Initialize 5-channel flowgraph with vector probes for lag measurement.
+
+        Technique: DC block, LPF/decimate, stream-to-vector, probe per channel.
+        """
         gr.top_block.__init__(self, "Noise Source Lag Test")
 
         samp_rate = 2_400_000
@@ -107,6 +111,11 @@ def correlate(ref, surv):
 
 
 def main():
+    """Measure noise source signal propagation latency through the GNU Radio pipeline.
+
+    Technique: monitors cross-correlation between channels after noise source toggle
+    to determine per-channel arrival time.
+    """
     parser = argparse.ArgumentParser(
         description="Measure noise-source lag through GNU Radio pipeline")
     parser.add_argument('--freq', type=float, default=103.7e6,

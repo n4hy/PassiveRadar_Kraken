@@ -68,7 +68,9 @@ struct ECAProcessorGPU {
 };
 
 /**
- * CUDA Kernel: Convert interleaved float to cuFloatComplex
+ * interleaved_to_complex_kernel - Convert interleaved float pairs to cuFloatComplex
+ *
+ * GPU: One thread per complex sample; maps (I,Q) pairs to cuFloatComplex structs.
  */
 __global__ void interleaved_to_complex_kernel(const float* __restrict__ input,
                                                 cuFloatComplex* __restrict__ output,
@@ -80,7 +82,9 @@ __global__ void interleaved_to_complex_kernel(const float* __restrict__ input,
 }
 
 /**
- * CUDA Kernel: Convert cuFloatComplex to interleaved float
+ * complex_to_interleaved_kernel - Convert cuFloatComplex back to interleaved float pairs
+ *
+ * GPU: One thread per complex sample; extracts real/imag to (I,Q) float pairs.
  */
 __global__ void complex_to_interleaved_kernel(const cuFloatComplex* __restrict__ input,
                                                 float* __restrict__ output,
@@ -93,8 +97,12 @@ __global__ void complex_to_interleaved_kernel(const cuFloatComplex* __restrict__
 }
 
 /**
- * CUDA Kernel: Compute dot product of two complex vectors
- * Result stored in shared memory and reduced
+ * complex_dot_kernel - GPU parallel complex dot product with shared memory reduction
+ *
+ * Technique: Each thread computes a * conj(b) for one element, accumulates
+ * partial sums in shared memory, then performs tree reduction within the block.
+ * Final block results are atomically accumulated into the output.
+ * GPU: 256-thread blocks with shared memory reduction and atomic global accumulation.
  */
 __global__ void complex_dot_kernel(const cuFloatComplex* __restrict__ a,
                                     const cuFloatComplex* __restrict__ b,
@@ -139,7 +147,11 @@ __global__ void complex_dot_kernel(const cuFloatComplex* __restrict__ a,
 }
 
 /**
- * CUDA Kernel: Add diagonal loading to matrix
+ * add_diagonal_kernel - Add regularization to autocorrelation matrix diagonal
+ *
+ * Technique: Adds scalar loading value to the real part of each diagonal element
+ * for numerical stability in subsequent Cholesky decomposition.
+ * GPU: One thread per diagonal element.
  */
 __global__ void add_diagonal_kernel(cuFloatComplex* __restrict__ matrix,
                                      int n, float loading) {
@@ -153,9 +165,11 @@ __global__ void add_diagonal_kernel(cuFloatComplex* __restrict__ matrix,
 }
 
 /**
- * CUDA Kernel: Apply FIR filter (convolution)
- * Matches correlation indexing: output[n] = sum_j(w[j] * ref[base - j + n])
- * With start_idx = base - (num_taps - 1), use reversed tap order.
+ * apply_fir_kernel - Apply optimal FIR filter weights to reference signal
+ *
+ * Technique: Computes output[n] = sum_j(w[j] * ref[start_idx + n + (num_taps-1-j)])
+ * using reversed tap order to match correlation indexing from the Wiener-Hopf solution.
+ * GPU: One thread per output sample; each thread loops over num_taps filter coefficients.
  */
 __global__ void apply_fir_kernel(const cuFloatComplex* __restrict__ w,
                                   const cuFloatComplex* __restrict__ ref,
@@ -177,7 +191,10 @@ __global__ void apply_fir_kernel(const cuFloatComplex* __restrict__ w,
 }
 
 /**
- * CUDA Kernel: Compute error (surveillance - filtered)
+ * compute_error_kernel - Compute clutter-cancelled error signal
+ *
+ * Technique: Element-wise subtraction: error[i] = surveillance[i] - filtered[i].
+ * GPU: One thread per sample.
  */
 __global__ void compute_error_kernel(const cuFloatComplex* __restrict__ surv,
                                       const cuFloatComplex* __restrict__ filtered,
@@ -190,8 +207,12 @@ __global__ void compute_error_kernel(const cuFloatComplex* __restrict__ surv,
 }
 
 /**
- * Host function: Solve linear system R*w = p using Cholesky decomposition (CPU fallback)
- * Used when cuSOLVER is not available or for small matrices
+ * solve_linear_system_cpu - CPU fallback for Cholesky-based linear system solve
+ *
+ * Technique: Column-major Cholesky factorization R = L*L^H, forward substitution
+ * L*y = p, backward substitution L^H*w = y. Used when cuSOLVER fails or is
+ * unavailable. Handles non-positive-definite matrices gracefully with diagonal
+ * regularization fallback.
  */
 void solve_linear_system_cpu(cuFloatComplex* h_R, cuFloatComplex* h_p,
                               cuFloatComplex* h_w, int n) {
@@ -265,7 +286,11 @@ void solve_linear_system_cpu(cuFloatComplex* h_R, cuFloatComplex* h_p,
 
 #if HAVE_CUSOLVER
 /**
- * GPU function: Solve linear system R*w = p using cuSOLVER Cholesky
+ * solve_linear_system_gpu - Solve Wiener-Hopf equation via cuSOLVER Cholesky
+ *
+ * Technique: Uses cusolverDnCpotrf for GPU-accelerated Cholesky factorization
+ * of the autocorrelation matrix R, then cusolverDnCpotrs for triangular solve.
+ * Both operations run on the processor's CUDA stream.
  */
 int solve_linear_system_gpu(ECAProcessorGPU* proc, int n) {
     cusolverStatus_t status;
@@ -314,7 +339,12 @@ int solve_linear_system_gpu(ECAProcessorGPU* proc, int n) {
 #endif
 
 /**
- * Create GPU ECA-B processor
+ * eca_gpu_create - Allocate and initialize GPU ECA-B clutter canceller
+ *
+ * Technique: Creates cuSOLVER/cuBLAS handles for GPU-accelerated Cholesky solve,
+ * allocates device memory for reference history, autocorrelation matrix, filter
+ * weights, and working buffers. Queries cuSOLVER workspace requirements.
+ * Creates dedicated CUDA stream and pinned host memory for fast DMA transfers.
  */
 void* eca_gpu_create(int num_taps, int max_delay) {
     if (num_taps <= 0) {
@@ -420,7 +450,10 @@ void* eca_gpu_create(int num_taps, int max_delay) {
 }
 
 /**
- * Destroy GPU ECA-B processor
+ * eca_gpu_destroy - Free all GPU resources for ECA-B processor
+ *
+ * Technique: Destroys cuSOLVER/cuBLAS handles, frees device and pinned
+ * host memory, destroys CUDA stream, and deletes processor state.
  */
 void eca_gpu_destroy(void* handle) {
     if (!handle) return;
@@ -452,7 +485,17 @@ void eca_gpu_destroy(void* handle) {
 }
 
 /**
- * Process samples through GPU ECA-B filter
+ * eca_gpu_process - Execute one block of GPU-accelerated ECA-B clutter cancellation
+ *
+ * Technique: (1) Copies reference history and new input to device,
+ * (2) builds autocorrelation matrix R via batched complex dot products on GPU,
+ * (3) adds diagonal loading for numerical stability,
+ * (4) builds cross-correlation vector p via complex dot products,
+ * (5) solves Wiener-Hopf equation R*w = p using cuSOLVER Cholesky (GPU) with
+ *     CPU fallback on failure,
+ * (6) applies optimal FIR filter to reference via GPU kernel,
+ * (7) computes error = surv - filtered on GPU,
+ * (8) transfers result to host and updates reference history.
  */
 void eca_gpu_process(void* handle, const float* ref_in, const float* surv_in,
                      float* out_err, int n_samples) {
@@ -606,7 +649,9 @@ void eca_gpu_process(void* handle, const float* ref_in, const float* surv_in,
 }
 
 /**
- * Set delay
+ * eca_gpu_set_delay - Thread-safe setter for reference-surveillance delay alignment
+ *
+ * Technique: Atomic store with release semantics for cross-thread visibility.
  */
 void eca_gpu_set_delay(void* handle, int delay_samples) {
     if (!handle) return;
@@ -619,7 +664,7 @@ void eca_gpu_set_delay(void* handle, int delay_samples) {
 }
 
 /**
- * Get delay
+ * eca_gpu_get_delay - Thread-safe getter for current delay alignment (samples)
  */
 int eca_gpu_get_delay(void* handle) {
     if (!handle) return 0;

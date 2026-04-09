@@ -110,6 +110,10 @@ class BlockDiagnostics:
     ratio (actual/required) is the bottleneck.
     """
     def __init__(self, interval_sec=5.0):
+        """Initialize diagnostics with sampling interval and empty block list.
+
+        Technique: periodic background thread sampling nitems_written counters.
+        """
         self.interval = interval_sec
         self.blocks = []  # (name, block, port, expected_rate_sps)
         self._prev = {}   # name -> (time, nitems)
@@ -117,17 +121,33 @@ class BlockDiagnostics:
         self._thread = None
 
     def add(self, name, block, port=0, expected_rate=0):
+        """Register a block for throughput monitoring.
+
+        Technique: stores block reference and expected rate for ratio comparison.
+        """
         self.blocks.append((name, block, port, expected_rate))
 
     def start(self):
+        """Start the background diagnostics thread.
+
+        Technique: daemon thread with periodic sampling loop.
+        """
         self._stop.clear()
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
 
     def stop(self):
+        """Signal the diagnostics thread to stop.
+
+        Technique: threading.Event signal for graceful shutdown.
+        """
         self._stop.set()
 
     def _run(self):
+        """Background loop that periodically samples and prints block throughput.
+
+        Technique: delta nitems_written / delta time to compute items/sec per block.
+        """
         # Initial snapshot
         time.sleep(2.0)  # let flowgraph settle
         for name, blk, port, _ in self.blocks:
@@ -188,6 +208,10 @@ class PhaseCorrectorBlock(gr.sync_block):
                  initial_phase: float = 0.0, drift_rate: float = 0.0,
                  cal_timestamp: float = 0.0, sample_rate: float = 2.4e6,
                  settling_samples: int = 0):
+        """Initialize per-channel phase corrector with calibration parameters.
+
+        Technique: NCO-based phase rotation with cached phasor for efficiency.
+        """
         gr.sync_block.__init__(
             self,
             name=f"Phase Corrector Ch{channel}",
@@ -219,6 +243,10 @@ class PhaseCorrectorBlock(gr.sync_block):
         self._sample_count = 0  # Reset sample count; dt computed from samples, not wall clock
 
     def work(self, input_items, output_items):
+        """Apply phase correction with drift compensation, or output zeros during calibration.
+
+        Technique: single-phasor multiply with lazy recomputation when correction drifts > 0.01 rad.
+        """
         samples = input_items[0]
         n_samples = len(samples)
 
@@ -253,12 +281,22 @@ class PhaseCorrectorBlock(gr.sync_block):
 
 
 class PassiveRadarTopBlock(gr.top_block):
+    """Main passive radar GNU Radio top block with full signal processing chain.
+
+    Technique: multi-channel pipeline with phase correction, ECA, CAF,
+    Doppler processing, CFAR detection, clustering, AoA estimation, and tracking.
+    """
     def __init__(self, freq=100e6, gain=30, geometry='ULA', calibration_file=None,
                  b3_signal_type='passthrough', b3_fft_size=8192, b3_guard_interval=192,
                  source_type='kraken', if_gain=40.0, rf_gain=0.0,
                  bandwidth=0, sample_rate=1e6, skip_aoa=False, cpi_len=2048,
                  signal_bw=0, pfa=1e-6, min_cluster_size=2,
                  min_snr_db=0.0):
+        """Initialize the passive radar processing pipeline with all blocks.
+
+        Technique: constructs and connects source, phase correction, AGC,
+        Block B3 reconstructor, ECA, CAF, Doppler, CFAR, clustering, AoA, and tracker.
+        """
         gr.top_block.__init__(self, "Passive Radar Run")
 
         # Parameters
@@ -383,6 +421,10 @@ class PassiveRadarTopBlock(gr.top_block):
 
         # Helper: output after resampler/phase-mult (or source if neither)
         def _resampled_out(ch):
+            """Return the block output port after resampling/phase-mult for channel ch.
+
+            Technique: conditional dispatch based on pipeline configuration.
+            """
             if self.resamplers:
                 return (self.resamplers[ch], 0)
             if self.phase_mults:
@@ -409,6 +451,10 @@ class PassiveRadarTopBlock(gr.top_block):
 
         # Helper: output after phase correction (or resampler if no cal)
         def _corrected_out(ch):
+            """Return the block output port after phase correction for channel ch.
+
+            Technique: conditional dispatch through rotator or resampler.
+            """
             if self.phase_rotators:
                 return (self.phase_rotators[ch], 0)
             return _resampled_out(ch)
@@ -529,6 +575,10 @@ class PassiveRadarTopBlock(gr.top_block):
 
         # Power source for CFAR: mag_sq blocks (AoA mode) or doppler blocks (skip-AoA)
         def power_src(i):
+            """Return the power output source for surveillance channel i.
+
+            Technique: selects mag_sq block (AoA mode) or direct Doppler output.
+            """
             if need_complex_doppler:
                 return (self.mag_sq_blocks[i], 0)
             return (self.doppler_blocks[i], 0)
@@ -752,6 +802,10 @@ class PassiveRadarTopBlock(gr.top_block):
         self._recal_stop = threading.Event()
 
         def recal_loop():
+            """Background loop triggering periodic calibration at fixed interval.
+
+            Technique: Event.wait with timeout for interruptible sleep.
+            """
             while not self._recal_stop.wait(interval_sec):
                 try:
                     self.trigger_calibration(reason="periodic")
@@ -796,8 +850,16 @@ class PassiveRadarTopBlock(gr.top_block):
 
 
 class RadarSink(gr.sync_block):
+    """GNU Radio sink that consumes tracker or Doppler output and drives display updates.
+
+    Technique: rate-limited callback dispatch from GNU Radio work thread to display.
+    """
     def __init__(self, tracker_block=None, display_callback=None, vector_len=1,
                  num_range_bins=0, num_doppler_bins=0, max_range_bin=0):
+        """Initialize radar sink with optional tracker and display callback.
+
+        Technique: configures vector input signature and display rate limiting.
+        """
         gr.sync_block.__init__(
             self,
             name="Radar Sink",
@@ -814,6 +876,10 @@ class RadarSink(gr.sync_block):
         self.rd_display_callback = None  # Set externally for range-Doppler display
 
     def work(self, input_items, output_items):
+        """Consume input vectors and trigger display updates at controlled rate.
+
+        Technique: time-gated callback to avoid overwhelming the display thread.
+        """
         n = len(input_items[0])
         now = time.time()
         if now - self.last_display_time >= self.display_interval:
@@ -841,6 +907,10 @@ class RadarSink(gr.sync_block):
         return n
 
 def main():
+    """Parse CLI arguments and run the passive radar processing pipeline.
+
+    Technique: configures source, calibration, and display mode from command-line options.
+    """
     parser = argparse.ArgumentParser(
         description="Passive Bistatic Radar using KrakenSDR or RSPduo",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -924,7 +994,10 @@ Signal Flow (RSPduo, dual-tuner):
 
     # --- OS-level buffer preflight check ---
     def check_os_buffers():
-        """Check and warn about OS-level buffer settings critical for 5-dongle SDR."""
+        """Check and warn about OS-level USB and page buffer settings for 5-dongle SDR.
+
+        Technique: reads /sys filesystem to verify usbfs_memory_mb and page size.
+        """
         issues = []
         try:
             with open('/sys/module/usbcore/parameters/usbfs_memory_mb') as f:
@@ -1030,6 +1103,10 @@ Signal Flow (RSPduo, dual-tuner):
     shutdown_done = threading.Event()
 
     def cleanup():
+        """Stop flowgraph and restart SDRplay service on any exit path.
+
+        Technique: atexit-registered cleanup with one-shot guard via Event.
+        """
         if shutdown_done.is_set():
             return
         shutdown_done.set()
@@ -1056,6 +1133,10 @@ Signal Flow (RSPduo, dual-tuner):
     atexit.register(cleanup)
 
     def sigint_handler(signum, frame):
+        """Handle SIGINT/SIGTERM by running cleanup and exiting.
+
+        Technique: delegates to cleanup() then sys.exit for clean termination.
+        """
         cleanup()
         sys.exit(0)
 
@@ -1112,6 +1193,10 @@ Signal Flow (RSPduo, dual-tuner):
         tb.start_periodic_recal(interval_sec=args.recal_interval)
 
         def wait_gr():
+            """Block until GNU Radio flowgraph finishes in a daemon thread.
+
+            Technique: offloads blocking wait to thread so main thread runs display.
+            """
             tb.wait()
 
         t = threading.Thread(target=wait_gr, daemon=True)
@@ -1130,6 +1215,10 @@ Signal Flow (RSPduo, dual-tuner):
         tb.display_ref = disp
 
         def run_gr():
+            """Start and wait for GNU Radio flowgraph in a daemon thread.
+
+            Technique: offloads blocking start+wait to thread so main thread runs display.
+            """
             tb.start()
             tb.wait()
 

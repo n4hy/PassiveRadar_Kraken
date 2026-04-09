@@ -14,6 +14,16 @@
 // Use float for compatibility with np.complex64 (GNU Radio standard)
 using Complex = std::complex<float>;
 
+/**
+ * AdaptiveSignalConditioner - NLMS adaptive filter for clutter cancellation
+ *
+ * Technique: Implements Normalized Least Mean Squares (NLMS) adaptive filtering
+ * to cancel direct-path interference from surveillance channels. Uses a circular
+ * buffer for reference signal history and per-sample weight updates with
+ * energy-normalized step size: w[k] += (mu * conj(e)) / (||r||^2 + eps) * r[k].
+ * Supports multi-channel processing and optionally uses NEON-optimized
+ * complex operations via OptMathKernels.
+ */
 class AdaptiveSignalConditioner {
 private:
     size_t filter_length;
@@ -28,13 +38,26 @@ private:
     size_t r_history_pos;  // Points to most recent sample (index 0 in logical view)
 
 public:
+    /**
+     * AdaptiveSignalConditioner - Construct NLMS filter with given length and step size
+     *
+     * Technique: Initializes circular buffer for reference history and sets
+     * NLMS learning rate (mu) and regularization epsilon.
+     */
     AdaptiveSignalConditioner(size_t len, float step_size = 0.1)
         : filter_length(len), mu(step_size), epsilon(1e-8f), r_history_pos(0) {
         // Initialize history buffer
         r_history.resize(filter_length, Complex(0.0f, 0.0f));
     }
 
-    // Original process method (returns y, the estimate/correlated part)
+    /**
+     * process - Multi-channel NLMS processing returning correlated component estimates
+     *
+     * Technique: For each sample, updates reference history, computes filter
+     * output y = w^H * r for each surveillance channel, calculates error
+     * e = d - y, and updates weights via NLMS rule. Returns the estimated
+     * correlated component (y) for each channel.
+     */
     std::vector<std::vector<Complex>> process(const std::vector<std::vector<Complex>*>& signal_ptrs) {
         if (signal_ptrs.empty()) throw std::runtime_error("No signals provided.");
 
@@ -69,8 +92,13 @@ public:
         return output_signals;
     }
 
-    // New method for C interface: Single channel, returns Error (e)
-    // out_err must be pre-allocated with size n_samples
+    /**
+     * process_cancellation_single - Single-channel NLMS cancellation (C API backend)
+     *
+     * Technique: Per-sample NLMS processing for one surveillance channel.
+     * Outputs the error signal e = d - y (clutter-cancelled surveillance).
+     * Used by the C API nlms_process function.
+     */
     void process_cancellation_single(const Complex* ref_in, const Complex* surv_in, Complex* out_err, size_t n_samples) {
          if (n_samples == 0) return;
          if (weights.empty()) {
@@ -93,17 +121,24 @@ public:
     }
 
 private:
+    /** update_history - Insert new sample into circular reference buffer (O(1)) */
     void update_history(Complex val) {
         // Circular buffer: O(1) instead of O(n) shift
         r_history_pos = (r_history_pos == 0) ? filter_length - 1 : r_history_pos - 1;
         r_history[r_history_pos] = val;
     }
 
-    // Access history element k (0 = most recent)
+    /** history_at - Access history element k (0 = most recent) from circular buffer */
     inline Complex history_at(size_t k) const {
         return r_history[(r_history_pos + k) % filter_length];
     }
 
+    /**
+     * get_history_energy - Compute total energy of reference history buffer
+     *
+     * Technique: Sum of |z|^2 over all history elements. Uses NEON dot product
+     * on interleaved re/im data when OptMathKernels is available.
+     */
     float get_history_energy() {
 #ifdef HAVE_OPTMATHKERNELS
         // r_history is contiguous; treat as interleaved re/im pairs
@@ -119,7 +154,12 @@ private:
 #endif
     }
 
-    // Linearize circular buffer into contiguous scratch for NEON operations
+    /**
+     * linearize_history - Copy circular buffer to contiguous scratch buffer
+     *
+     * Technique: Linearizes the circular reference history into a contiguous
+     * array suitable for NEON vectorized operations.
+     */
     void linearize_history(std::vector<Complex>& scratch) const {
         scratch.resize(filter_length);
         for (size_t k = 0; k < filter_length; ++k) {
@@ -127,6 +167,13 @@ private:
         }
     }
 
+    /**
+     * filter - Compute FIR filter output y = sum(conj(w[k]) * h[k])
+     *
+     * Technique: Complex inner product between weight vector and reference
+     * history. Uses NEON complex dot product when OptMathKernels is available,
+     * otherwise scalar loop with std::conj.
+     */
     Complex filter(size_t ch) {
 #ifdef HAVE_OPTMATHKERNELS
         // Linearize history for vectorized dot product
@@ -154,6 +201,14 @@ private:
 #endif
     }
 
+    /**
+     * update_weights - NLMS weight update rule
+     *
+     * Technique: w[k] += (mu * conj(e) / (||r||^2 + eps)) * r[k].
+     * Normalizes step by reference energy to ensure convergence regardless
+     * of input power level. Skips update on near-zero energy to prevent
+     * numerical instability. Uses NEON-optimized complex scale when available.
+     */
     void update_weights(size_t ch, Complex e, float r_energy) {
         // Skip update if energy is too low to avoid numerical instability
         if (r_energy < epsilon) return;
@@ -183,14 +238,22 @@ private:
 };
 
 extern "C" {
+    /** nlms_create - C API: Allocate NLMS adaptive filter with given taps and step size */
     void* nlms_create(int taps, float mu) {
         return new AdaptiveSignalConditioner(static_cast<size_t>(taps), mu);
     }
 
+    /** nlms_destroy - C API: Free NLMS filter instance */
     void nlms_destroy(void* ptr) {
         if (ptr) delete static_cast<AdaptiveSignalConditioner*>(ptr);
     }
 
+    /**
+     * nlms_process - C API: Run single-channel NLMS cancellation on interleaved complex buffers
+     *
+     * Technique: Reinterprets float buffers as complex, delegates to
+     * AdaptiveSignalConditioner::process_cancellation_single.
+     */
     void nlms_process(void* ptr, const float* ref_in, const float* surv_in, float* out_err, int n_samples) {
         if (!ptr || !ref_in || !surv_in || !out_err || n_samples <= 0) return;
         AdaptiveSignalConditioner* obj = static_cast<AdaptiveSignalConditioner*>(ptr);
@@ -208,12 +271,21 @@ extern "C" {
 // ==========================================
 #ifndef LIBRARY_BUILD
 
+/** get_power - Compute average power of a complex signal vector (unit test helper) */
 float get_power(const std::vector<Complex>& v) {
     float p = 0;
     for(auto c : v) p += std::norm(c);
     return p / v.size();
 }
 
+/**
+ * generate_test_data - Create synthetic reference + surveillance test signals
+ *
+ * Technique: Generates reference signal R as Gaussian noise, creates
+ * surveillance S as delayed/phase-rotated R plus strong clutter tone
+ * (simulating direct-path interference) plus additive noise. IdealS
+ * holds the clutter-free signal for EVM computation.
+ */
 void generate_test_data(size_t N, std::vector<Complex>& R, std::vector<Complex>& S, std::vector<Complex>& IdealS) {
     R.resize(N);
     S.resize(N);
@@ -240,6 +312,7 @@ void generate_test_data(size_t N, std::vector<Complex>& R, std::vector<Complex>&
     }
 }
 
+/** main - Unit test: verify NLMS clutter cancellation achieves EVM < -15 dB */
 int main() {
     std::cout << "--- NLMS Signal Conditioner Unit Test ---" << std::endl;
     

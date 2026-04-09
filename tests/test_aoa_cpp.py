@@ -10,7 +10,15 @@ from conftest import find_kernel_lib
 
 
 class TestAoACpp(unittest.TestCase):
+    """Test AoA estimation via C++ Doppler and AoA libraries loaded with ctypes.
+
+    Technique: Bartlett beamforming on simulated ULA phase progression.
+    """
     def setUp(self):
+        """Load Doppler and AoA C++ libraries and configure ctypes signatures.
+
+        Technique: ctypes CDLL loading with explicit argtypes/restype.
+        """
         # Locate libraries using centralized find_kernel_lib
         lib_doppler_path = find_kernel_lib("doppler_processing")
         lib_aoa_path = find_kernel_lib("aoa_processing")
@@ -51,6 +59,10 @@ class TestAoACpp(unittest.TestCase):
         self.aoa_lib.aoa_process.restype = None
 
     def test_aoa_estimation(self):
+        """Verify AoA estimation recovers a known source angle within 2 degrees.
+
+        Technique: simulate ULA plane-wave phase progression, run Doppler then AoA beamscan.
+        """
         # 1. Setup Parameters
         fft_len = 16
         doppler_len = 16
@@ -126,7 +138,15 @@ class TestAoACpp(unittest.TestCase):
         self.aoa_lib.aoa_destroy(aoa_obj)
 
 class TestAoAMusicCpp(unittest.TestCase):
+    """Test MUSIC-based AoA estimation via the C++ AoA library.
+
+    Technique: MUSIC algorithm with eigenvalue decomposition of covariance matrix.
+    """
     def setUp(self):
+        """Load AoA C++ library and configure MUSIC function signature.
+
+        Technique: ctypes CDLL loading with explicit argtypes/restype.
+        """
         lib_aoa_path = find_kernel_lib("aoa_processing")
 
         if not lib_aoa_path.exists():

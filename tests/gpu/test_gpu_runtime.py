@@ -187,7 +187,10 @@ class TestPythonAPIConsistency:
 
     @staticmethod
     def _reload_display_package():
-        """Ensure we load the display package (not OOT module)."""
+        """Ensure we load the display package (not OOT module).
+
+        Technique: clear cached OOT module from sys.modules so repo-root package loads.
+        """
         # The OOT module (gr-kraken_passive_radar/python/kraken_passive_radar)
         # may be cached in sys.modules from other tests. Clear it so we can
         # import the display/GUI package from the repo root.

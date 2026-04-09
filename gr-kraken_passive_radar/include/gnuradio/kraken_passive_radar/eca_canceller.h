@@ -34,8 +34,14 @@ public:
      */
     static sptr make(int num_taps, float reg_factor, int num_surv);
 
-    // Runtime parameter setters (callbacks from GRC)
+    /**
+     * set_num_taps - Update the number of FIR filter taps (clutter delay spread) at runtime
+     */
     virtual void set_num_taps(int num_taps) = 0;
+
+    /**
+     * set_reg_factor - Update the diagonal loading regularization factor at runtime
+     */
     virtual void set_reg_factor(float reg_factor) = 0;
 };
 

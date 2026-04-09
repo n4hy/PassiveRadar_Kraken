@@ -39,6 +39,11 @@ class ConditioningBlock(gr.sync_block):
     Applies AGC/Conditioning using C++ kernel.
     """
     def __init__(self, rate=1e-5):
+        """Initialize the conditioning block with a given AGC adaptation rate.
+
+        Technique: Loads a C++ shared library for AGC processing and creates
+        an opaque state object with the specified convergence rate.
+        """
         gr.sync_block.__init__(
             self,
             name="Conditioning",
@@ -50,6 +55,11 @@ class ConditioningBlock(gr.sync_block):
         self.obj = self.lib.cond_create(ctypes.c_float(rate))
 
     def _load_lib(self):
+        """Load the conditioning C++ shared library and configure ctypes signatures.
+
+        Technique: Uses _find_kernel_lib to locate the .so file, then declares
+        argtypes/restype for cond_create, cond_destroy, and cond_process.
+        """
         path = _find_kernel_lib("libkraken_conditioning.so")
         lib = ctypes.cdll.LoadLibrary(path)
         lib.cond_create.restype = ctypes.c_void_p
@@ -59,6 +69,11 @@ class ConditioningBlock(gr.sync_block):
         return lib
 
     def work(self, input_items, output_items):
+        """Process a batch of complex samples through the AGC kernel in-place.
+
+        Technique: Copies input to a contiguous buffer, passes it to the C++
+        cond_process function, then copies the conditioned result to the output.
+        """
         in0 = input_items[0]
         out0 = output_items[0]
         n = len(in0)
@@ -74,6 +89,7 @@ class ConditioningBlock(gr.sync_block):
         return n
 
     def __del__(self):
+        """Release the C++ conditioning state object."""
         if hasattr(self, 'lib') and hasattr(self, 'obj'):
             self.lib.cond_destroy(self.obj)
 
@@ -82,6 +98,11 @@ class CafBlock(gr.basic_block):
     Computes Range Profile using C++ CAF kernel.
     """
     def __init__(self, n_samples=4096):
+        """Initialize the CAF block with the given FFT/sample size.
+
+        Technique: Creates a C++ CAF processor state for cross-ambiguity
+        function computation between reference and surveillance channels.
+        """
         self.n_samples = n_samples
         gr.basic_block.__init__(
             self,
@@ -100,6 +121,12 @@ class CafBlock(gr.basic_block):
         return [req] * ninputs
 
     def _load_lib(self):
+        """Load the CAF processing C++ library and its FFTW dependency.
+
+        Technique: Pre-loads the FFTW initialization library before the CAF
+        library to satisfy dynamic linker dependencies, then configures
+        ctypes signatures for caf_create and caf_process.
+        """
         # CAF depends on libkraken_fftw_init.so; pre-load with explicit path
         fftw_init_path = _find_kernel_lib("libkraken_fftw_init.so")
         ctypes.cdll.LoadLibrary(fftw_init_path)
@@ -112,6 +139,12 @@ class CafBlock(gr.basic_block):
         return lib
 
     def general_work(self, input_items, output_items):
+        """Compute range profiles by cross-correlating reference and surveillance chunks.
+
+        Technique: Divides the input streams into n_samples-sized chunks and
+        calls the C++ caf_process kernel on each chunk pair, producing one
+        output vector per chunk.
+        """
         ref = input_items[0]
         surv = input_items[1]
         out = output_items[0]
@@ -148,6 +181,11 @@ class BackendBlock(gr.sync_block):
         blocks) instead for better performance and flexibility.
     """
     def __init__(self, rows, cols, num_inputs=1):
+        """Initialize the backend block with grid dimensions and number of inputs.
+
+        Technique: Loads a C++ library providing fusion_process (multi-channel
+        averaging) and cfar_2d (2D constant false alarm rate detection).
+        """
         warnings.warn(
             "BackendBlock is deprecated. Use "
             "gnuradio.kraken_passive_radar.cfar_detector + detection_cluster "
@@ -170,6 +208,11 @@ class BackendBlock(gr.sync_block):
         self.lib = self._load_lib()
 
     def _load_lib(self):
+        """Load the backend C++ library for fusion and CFAR detection.
+
+        Technique: Configures ctypes signatures for fusion_process (multi-input
+        averaging) and cfar_2d (2D cell-averaging CFAR).
+        """
         path = _find_kernel_lib("libkraken_backend.so")
         lib = ctypes.cdll.LoadLibrary(path)
         lib.fusion_process.argtypes = [ctypes.POINTER(ctypes.POINTER(ctypes.c_float)), ctypes.c_int, ctypes.POINTER(ctypes.c_float), ctypes.c_int]
@@ -177,6 +220,12 @@ class BackendBlock(gr.sync_block):
         return lib
 
     def work(self, input_items, output_items):
+        """Fuse multi-channel inputs and apply 2D CFAR detection per vector.
+
+        Technique: For each input vector, calls fusion_process to average
+        across channels, then applies cfar_2d with guard=2, training=4,
+        and threshold=15 dB to produce a detection map.
+        """
         n_vecs = len(input_items[0])
         out = output_items[0]
 
@@ -205,6 +254,12 @@ class TimeAlignmentBlock(gr.sync_block):
     Computes delay/phase offset between Ref and Surv.
     """
     def __init__(self, n_samples=4096, interval_sec=1.0, samp_rate=2.4e6):
+        """Initialize the time alignment probe with sample size and reporting interval.
+
+        Technique: Creates a C++ alignment processor that computes cross-correlation
+        delay and phase offset between reference and surveillance channels at a
+        configurable interval.
+        """
         gr.sync_block.__init__(
             self,
             name="Time Alignment Probe",
@@ -219,6 +274,12 @@ class TimeAlignmentBlock(gr.sync_block):
         self.obj = self.lib.align_create(n_samples)
 
     def _load_lib(self):
+        """Load the time alignment C++ library and its FFTW dependency.
+
+        Technique: Pre-loads FFTW initialization, then loads the alignment library
+        and configures ctypes signatures for align_create, align_destroy, and
+        align_compute.
+        """
         # Time alignment depends on libkraken_fftw_init.so
         fftw_init_path = _find_kernel_lib("libkraken_fftw_init.so")
         ctypes.cdll.LoadLibrary(fftw_init_path)  # Pre-load dependency
@@ -232,6 +293,12 @@ class TimeAlignmentBlock(gr.sync_block):
         return lib
 
     def work(self, input_items, output_items):
+        """Periodically compute and print the delay and phase offset between channels.
+
+        Technique: Counts processed samples and triggers alignment computation
+        via the C++ kernel once per configured interval, printing the measured
+        sample delay and phase offset in radians.
+        """
         ref = input_items[0]
         surv = input_items[1]
         n = len(ref)
@@ -254,6 +321,7 @@ class TimeAlignmentBlock(gr.sync_block):
         return n
 
     def __del__(self):
+        """Release the C++ alignment state object."""
         if hasattr(self, 'lib') and hasattr(self, 'obj'):
             self.lib.align_destroy(self.obj)
 
@@ -267,6 +335,11 @@ class AoAProcessingBlock:
         block with Bartlett beamforming) instead.
     """
     def __init__(self, num_antennas=5, spacing=0.0, geometry='ULA'):
+        """Initialize the AoA processor with antenna array parameters.
+
+        Technique: Creates a C++ AoA processing state configured for either
+        ULA or UCA geometry with the specified number of antennas and spacing.
+        """
         warnings.warn(
             "AoAProcessingBlock is deprecated. Use "
             "gnuradio.kraken_passive_radar.aoa_estimator (C++ block) instead.",
@@ -291,6 +364,11 @@ class AoAProcessingBlock:
         ]
 
     def _load_lib(self):
+        """Load the AoA processing C++ library and configure ctypes signatures.
+
+        Technique: Locates and loads the shared library, then declares
+        argtypes/restype for aoa_create.
+        """
         path = _find_kernel_lib("libkraken_aoa_processing.so")
         lib = ctypes.cdll.LoadLibrary(path)
         lib.aoa_create.restype = ctypes.c_void_p
@@ -318,5 +396,6 @@ class AoAProcessingBlock:
         return out_spec
 
     def __del__(self):
+        """Release the C++ AoA processor state object."""
         if hasattr(self, 'lib') and hasattr(self, 'obj'):
             self.lib.aoa_destroy(self.obj)

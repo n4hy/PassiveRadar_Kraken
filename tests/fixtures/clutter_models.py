@@ -9,6 +9,10 @@ class ClutterGenerator:
     """Generate realistic clutter for passive radar testing."""
 
     def __init__(self, sample_rate: float = 2.4e6):
+        """Initialize clutter generator with given sample rate.
+
+        Technique: store sample rate for delay-to-sample conversions.
+        """
         self.sample_rate = sample_rate
 
     def generate_direct_path(self, ref_signal: np.ndarray,

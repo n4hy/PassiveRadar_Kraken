@@ -31,7 +31,10 @@ NSIGMA = 2 * NX + 1  # 11 sigma points
 
 
 def load_ukf_gpu_lib():
-    """Load the UKF GPU library if available."""
+    """Load the UKF GPU library if available.
+
+    Technique: search multiple build directory paths and return first loadable CDLL.
+    """
     lib_paths = [
         Path(__file__).parents[2] / 'build' / 'lib' / 'libkraken_ukf_gpu.so',
         Path(__file__).parents[2] / 'src' / 'build' / 'lib' / 'libkraken_ukf_gpu.so',

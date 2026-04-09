@@ -43,6 +43,10 @@ class FiveChannelDemo:
     """Fully simulated 5-channel dashboard for demonstration."""
 
     def __init__(self):
+        """Initialize demo with simulated targets and display configuration.
+
+        Technique: pre-configured target list with kinematic state vectors.
+        """
         self.running = False
         self._start_time = None
 
@@ -75,7 +79,10 @@ class FiveChannelDemo:
         self.anim = None
 
     def _generate_caf(self, t: float, channel_offset: float = 0) -> np.ndarray:
-        """Generate simulated CAF with targets."""
+        """Generate simulated CAF with targets.
+
+        Technique: Gaussian blobs in delay-Doppler space over exponential noise floor.
+        """
         delay_bins = np.linspace(self.delay_range[0], self.delay_range[1], 200)
         doppler_bins = np.linspace(self.doppler_range[0], self.doppler_range[1], 150)
         D, R = np.meshgrid(doppler_bins, delay_bins, indexing='ij')
@@ -107,7 +114,10 @@ class FiveChannelDemo:
         return caf_db, delay_bins, doppler_bins
 
     def _setup_main_figure(self):
-        """Setup main display figure."""
+        """Setup main display figure with 4x3 grid of subplot panels.
+
+        Technique: matplotlib subplot grid with imshow heatmaps, scatter overlays, and bar charts.
+        """
         self.fig = plt.figure(figsize=(20, 14))
         self.fig.canvas.manager.set_window_title('KrakenSDR 5-Channel Demo')
 
@@ -226,7 +236,10 @@ class FiveChannelDemo:
         self.fig.tight_layout()
 
     def _setup_control_figure(self):
-        """Setup control panel figure."""
+        """Setup control panel figure with target management buttons and speed slider.
+
+        Technique: matplotlib widget-based GUI with Button and Slider controls.
+        """
         self.ctrl_fig = plt.figure(figsize=(4, 8))
         self.ctrl_fig.canvas.manager.set_window_title('Controls')
 
@@ -254,7 +267,10 @@ class FiveChannelDemo:
                            bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.8))
 
     def _add_target(self, event):
-        """Add a random target."""
+        """Add a random target with uniformly distributed kinematic parameters.
+
+        Technique: random sampling of delay, Doppler, SNR, and azimuth state.
+        """
         target = SimulatedTarget(
             delay_km=np.random.uniform(5, 50),
             doppler_hz=np.random.uniform(-200, 200),
@@ -280,7 +296,10 @@ class FiveChannelDemo:
             self.anim = None
 
     def _update(self, frame):
-        """Animation update."""
+        """Animation update for all panels including CAFs, PPI, health, trails, and waterfalls.
+
+        Technique: FuncAnimation callback updating matplotlib artists from simulated target state.
+        """
         if not self.running or self.fig is None:
             return []
         t = (time.time() - self._start_time) * self.speed_slider.val
@@ -399,7 +418,10 @@ class FiveChannelDemo:
         return list(self.artists.values())
 
     def start(self):
-        """Start the demo."""
+        """Start the demo with interactive matplotlib animation loop.
+
+        Technique: FuncAnimation at 10 fps with interactive mode toggling for blocking display.
+        """
         self.running = True
         self._start_time = time.time()
 
@@ -428,6 +450,10 @@ class FiveChannelDemo:
 
 
 def main():
+    """Launch the five-channel demo with simulated moving targets.
+
+    Technique: instantiates FiveChannelDemo and starts interactive display.
+    """
     print("=" * 60)
     print("KrakenSDR 5-Channel Dashboard DEMO")
     print("=" * 60)

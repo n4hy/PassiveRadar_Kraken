@@ -19,33 +19,53 @@ extern "C" {
  * Device Memory Allocation
  */
 
-// Allocate device memory
+/**
+ * kraken_gpu_alloc - Allocate device (GPU) memory
+ */
 void* kraken_gpu_alloc(size_t size);
 
-// Free device memory
+/**
+ * kraken_gpu_free - Free device (GPU) memory
+ */
 void kraken_gpu_free(void* ptr);
 
-// Allocate pinned host memory (faster transfers)
+/**
+ * kraken_gpu_alloc_host - Allocate pinned (page-locked) host memory for faster DMA transfers
+ */
 void* kraken_gpu_alloc_host(size_t size);
 
-// Free pinned host memory
+/**
+ * kraken_gpu_free_host - Free pinned host memory
+ */
 void kraken_gpu_free_host(void* ptr);
 
 /**
  * Memory Transfers
  */
 
-// Host to Device (synchronous)
+/**
+ * kraken_gpu_memcpy_h2d - Synchronous host-to-device memory copy
+ */
 int kraken_gpu_memcpy_h2d(void* dst, const void* src, size_t size);
 
-// Device to Host (synchronous)
+/**
+ * kraken_gpu_memcpy_d2h - Synchronous device-to-host memory copy
+ */
 int kraken_gpu_memcpy_d2h(void* dst, const void* src, size_t size);
 
-// Device to Device
+/**
+ * kraken_gpu_memcpy_d2d - Device-to-device memory copy
+ */
 int kraken_gpu_memcpy_d2d(void* dst, const void* src, size_t size);
 
-// Async transfers (require cudaStream_t, for advanced use)
+/**
+ * kraken_gpu_memcpy_h2d_async - Asynchronous host-to-device memory copy on a CUDA stream
+ */
 int kraken_gpu_memcpy_h2d_async(void* dst, const void* src, size_t size, void* stream);
+
+/**
+ * kraken_gpu_memcpy_d2h_async - Asynchronous device-to-host memory copy on a CUDA stream
+ */
 int kraken_gpu_memcpy_d2h_async(void* dst, const void* src, size_t size, void* stream);
 
 /**
@@ -54,19 +74,29 @@ int kraken_gpu_memcpy_d2h_async(void* dst, const void* src, size_t size, void* s
 
 typedef struct KrakenGPUMemoryPool KrakenGPUMemoryPool;
 
-// Create memory pool
+/**
+ * kraken_gpu_memory_pool_create - Create a GPU memory pool for persistent allocation reuse
+ */
 KrakenGPUMemoryPool* kraken_gpu_memory_pool_create(void);
 
-// Destroy memory pool (frees all allocations)
+/**
+ * kraken_gpu_memory_pool_destroy - Destroy memory pool and free all device allocations
+ */
 void kraken_gpu_memory_pool_destroy(KrakenGPUMemoryPool* pool);
 
-// Allocate from pool (reuses freed memory if available)
+/**
+ * kraken_gpu_memory_pool_alloc - Allocate from pool, reusing freed blocks when possible
+ */
 void* kraken_gpu_memory_pool_alloc(KrakenGPUMemoryPool* pool, size_t size);
 
-// Return memory to pool (doesn't actually free, marks as available)
+/**
+ * kraken_gpu_memory_pool_free - Return memory to pool without freeing (marks as available for reuse)
+ */
 void kraken_gpu_memory_pool_free(KrakenGPUMemoryPool* pool, void* ptr);
 
-// Get memory usage statistics
+/**
+ * kraken_gpu_memory_pool_stats - Query total allocated bytes, in-use bytes, and allocation count
+ */
 void kraken_gpu_memory_pool_stats(KrakenGPUMemoryPool* pool,
                                    size_t* total_allocated,
                                    size_t* total_in_use,

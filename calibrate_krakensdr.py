@@ -14,6 +14,11 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "gr-kraken_passive_radar
 from kraken_passive_radar.krakensdr_source import krakensdr_source
 
 def calibrate(args):
+    """Perform phase calibration of KrakenSDR channels using internal noise source.
+
+    Technique: FFT cross-correlation of noise-source samples across all 5 channels
+    to compute per-channel phase offsets relative to ch0.
+    """
     print("Starting KrakenSDR Calibration...")
     print("Ensure antennas are disconnected or noise source is dominant.")
 

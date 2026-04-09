@@ -38,7 +38,10 @@ class TestPipelineIntegration(unittest.TestCase):
             raise unittest.SkipTest("No processing libraries found")
 
     def _run_eca(self, ref, surv, num_taps=64):
-        """Run ECA clutter cancellation."""
+        """Run ECA clutter cancellation via C++ library.
+
+        Technique: batch least-squares clutter filter estimation and subtraction.
+        """
         if 'eca_b_clutter_canceller' not in self.libs:
             return surv  # Pass through if not available
 
@@ -73,7 +76,10 @@ class TestPipelineIntegration(unittest.TestCase):
         return out_c
 
     def _run_caf(self, ref, surv):
-        """Run CAF processing."""
+        """Run CAF processing via C++ library or numpy fallback.
+
+        Technique: FFT-based cross-correlation (conjugate multiply in frequency domain).
+        """
         if 'caf_processing' not in self.libs:
             # Fallback to numpy
             return np.fft.ifft(np.fft.fft(surv) * np.conj(np.fft.fft(ref)))
@@ -107,7 +113,10 @@ class TestPipelineIntegration(unittest.TestCase):
         return out_c
 
     def _run_cfar(self, caf_power, guard=2, ref_cells=4, pfa=1e-4):
-        """Run CFAR detection (Python reference)."""
+        """Run CFAR detection (Python reference implementation).
+
+        Technique: 1D cell-averaging CFAR with guard and reference cells.
+        """
         n = len(caf_power)
         detections = np.zeros(n, dtype=bool)
 
@@ -202,7 +211,10 @@ class TestPipelineIntegration(unittest.TestCase):
 
 
 class TestProcessingChainValidation(unittest.TestCase):
-    """Validate processing chain data flow."""
+    """Validate processing chain data flow and conservation properties.
+
+    Technique: verify dimensions and power levels through numpy-based pipeline.
+    """
 
     def test_signal_dimensions(self):
         """Verify signal dimensions are preserved through chain."""

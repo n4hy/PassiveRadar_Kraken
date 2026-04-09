@@ -97,6 +97,10 @@ def fm_reference_signal(cpi_samples, sample_rate):
 def target_with_delay_doppler(fm_reference_signal, sample_rate):
     """Factory fixture for creating target signals with delay and Doppler."""
     def _create_target(delay_samples, doppler_hz, snr_db=20):
+        """Create a target signal with specified delay, Doppler shift, and SNR.
+
+        Technique: circular shift for delay, complex exponential for Doppler, additive noise for SNR.
+        """
         n = len(fm_reference_signal)
         t = np.arange(n) / sample_rate
 

@@ -175,8 +175,11 @@ __global__ void extract_magnitude_kernel(
 }
 
 /**
- * Precompute Doppler phasors on GPU
- * Phasor[doppler, t] = exp(-j * 2 * pi * fd * t / sample_rate)
+ * precompute_doppler_phasors - Pre-generate Doppler shift phasor table on GPU
+ *
+ * Technique: Computes exp(-j*2*pi*fd*t/fs) for all (doppler, time) pairs on
+ * CPU, then transfers the n_doppler x n_samples complex phasor table to GPU
+ * device memory for reuse across CPI processing calls.
  */
 static int precompute_doppler_phasors(CAFProcessorGPU* proc) {
     size_t phasor_size = proc->n_doppler * proc->n_samples * sizeof(cufftComplex);
@@ -215,7 +218,13 @@ static int precompute_doppler_phasors(CAFProcessorGPU* proc) {
 }
 
 /**
- * Create CAF processor instance
+ * caf_gpu_create_full - Allocate and initialize GPU CAF processor
+ *
+ * Technique: Allocates device memory for reference, surveillance, Doppler-shifted
+ * signals, FFT outputs, and cross-correlation buffers. Creates cuFFT plans
+ * (single for surveillance, batched for n_doppler reference/IFFT). Pre-computes
+ * Doppler phasor table. Allocates pinned host memory for fast DMA transfers.
+ * All operations bound to a dedicated CUDA stream for async execution.
  */
 extern "C"
 void* caf_gpu_create_full(int n_samples, int n_doppler, int n_range,
@@ -321,7 +330,10 @@ void* caf_gpu_create_full(int n_samples, int n_doppler, int n_range,
 }
 
 /**
- * Destroy CAF processor instance
+ * caf_gpu_destroy - Free all GPU resources for CAF processor
+ *
+ * Technique: Destroys cuFFT plans, frees device and pinned host memory,
+ * destroys CUDA stream, and deletes processor state.
  */
 extern "C"
 void caf_gpu_destroy(void* handle) {

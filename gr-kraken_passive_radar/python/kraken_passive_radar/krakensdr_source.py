@@ -11,6 +11,12 @@ class krakensdr_source(gr.hier_block2):
     Wraps osmosdr.source configured for 5 coherent channels.
     """
     def __init__(self, frequency=100e6, sample_rate=2.4e6, gain=30.0):
+        """Initialize the KrakenSDR 5-channel coherent source.
+
+        Technique: Creates an osmosdr.source with 5 RTL-SDR channels addressed
+        by serial numbers 1000-1004, configures each channel for manual gain,
+        and connects all 5 internal ports to the hier_block2 outputs.
+        """
         gr.hier_block2.__init__(
             self,
             "KrakenSDR Source",
@@ -61,15 +67,18 @@ class krakensdr_source(gr.hier_block2):
             self.connect((self.osmosdr, i), (self, i))
 
     def set_frequency(self, freq):
+        """Set the center frequency on all 5 KrakenSDR channels."""
         self.frequency = freq
         for i in range(5):
             self.osmosdr.set_center_freq(freq, i)
 
     def set_sample_rate(self, rate):
+        """Set the sample rate on the underlying osmosdr source."""
         self.sample_rate = rate
         self.osmosdr.set_sample_rate(rate)
 
     def set_gain(self, gain):
+        """Set the RF gain on all 5 KrakenSDR channels."""
         self.gain = gain
         for i in range(5):
             self.osmosdr.set_gain(gain, i)
@@ -111,6 +120,7 @@ class krakensdr_source(gr.hier_block2):
             ctypes.util.find_library('usb-1.0') or 'libusb-1.0.so.0')
 
         class DevDesc(ctypes.Structure):
+            """USB device descriptor structure matching libusb_device_descriptor layout."""
             _fields_ = [
                 ('bLength', ctypes.c_uint8),
                 ('bDescriptorType', ctypes.c_uint8),
@@ -211,6 +221,7 @@ class krakensdr_source(gr.hier_block2):
 
             try:
                 def read_reg(addr, block):
+                    """Read a single byte from an RTL2832U register via USB vendor control transfer."""
                     data = (ctypes.c_uint8 * 1)()
                     r = libusb.libusb_control_transfer(
                         handle, CTRL_IN, 0,
@@ -221,6 +232,7 @@ class krakensdr_source(gr.hier_block2):
                     return data[0]
 
                 def write_reg(addr, block, val):
+                    """Write a single byte to an RTL2832U register via USB vendor control transfer."""
                     data = (ctypes.c_uint8 * 1)(val & 0xFF)
                     # RTL2832U requires 0x10 flag in wIndex for writes
                     # (see rtlsdr_write_reg in librtlsdr.c line 494)

@@ -23,7 +23,15 @@ from gnuradio.kraken_passive_radar import krakensdr_source
 
 
 class stability_flowgraph(gr.top_block):
+    """Minimal 5-channel flowgraph with vector probes for phase stability testing.
+
+    Technique: DC block, LPF/decimate, stream-to-vector, probe per channel.
+    """
     def __init__(self, freq=103.7e6, gain=49.6):
+        """Initialize 5-channel flowgraph for phase drift measurement.
+
+        Technique: per-channel DC block, LPF/decimation, and vector probe chain.
+        """
         gr.top_block.__init__(self, "Phase Stability Test")
         samp_rate = 2_400_000
         signal_bw = 250_000
@@ -50,6 +58,10 @@ class stability_flowgraph(gr.top_block):
             self.connect((self.src, ch), dc, lpf, s2v, probe)
 
     def read_vector(self, ch):
+        """Return the latest contiguous sample vector from channel ch.
+
+        Technique: reads probe_signal_vc output as complex64 array.
+        """
         return np.array(self._probes[ch].level(), dtype=np.complex64)
 
 
@@ -95,6 +107,11 @@ def measure_phase(tb, ref_ch=0, surv_ch=1):
 
 
 def main():
+    """Run phase stability measurement at configurable intervals and fit drift models.
+
+    Technique: repeated noise-source calibration snapshots with linear and
+    parabolic polynomial fits to characterize phase drift rate.
+    """
     import argparse
     parser = argparse.ArgumentParser(description="Phase stability test")
     parser.add_argument('--freq', type=float, default=103.7e6)

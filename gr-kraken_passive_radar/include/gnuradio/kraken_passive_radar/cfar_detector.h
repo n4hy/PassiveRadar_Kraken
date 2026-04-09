@@ -60,12 +60,29 @@ public:
                      int cfar_type = 0,
                      int os_k = 0);
 
+    /**
+     * set_pfa - Update the probability of false alarm and recompute the threshold multiplier
+     */
     virtual void set_pfa(float pfa) = 0;
+
+    /**
+     * set_cfar_type - Select CFAR variant: 0=CA, 1=GO, 2=SO, 3=OS
+     */
     virtual void set_cfar_type(int cfar_type) = 0;
+
+    /**
+     * set_guard_cells - Set guard cell counts in range and Doppler dimensions
+     */
     virtual void set_guard_cells(int range, int doppler) = 0;
+
+    /**
+     * set_ref_cells - Set reference (training) cell counts in range and Doppler dimensions
+     */
     virtual void set_ref_cells(int range, int doppler) = 0;
-    
-    // Get detection count from last processed frame
+
+    /**
+     * get_num_detections - Return the number of detections from the last processed frame
+     */
     virtual int get_num_detections() const = 0;
 };
 

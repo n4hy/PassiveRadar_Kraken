@@ -76,7 +76,11 @@ __global__ void cfar_2d_kernel(const float* __restrict__ input,
 }
 
 /**
- * 2D CA-CFAR Detection (GPU version)
+ * cfar_gpu_2d - Run 2D Cell-Averaging CFAR detection on a range-Doppler map
+ *
+ * Technique: Allocates device memory, transfers the input matrix to GPU,
+ *   launches the CA-CFAR kernel, and copies the binary detection mask back
+ *   to host memory
  */
 extern "C"
 void cfar_gpu_2d(const float* input, float* output, int rows, int cols,

@@ -22,6 +22,14 @@ enum ArrayType {
     URA = 1     // Uniform Rectangular Array (2x2 Square)
 };
 
+/**
+ * AoAProcessor - Angle-of-Arrival estimation engine for passive radar
+ *
+ * Technique: Supports Bartlett beamforming and MUSIC algorithms for
+ * both 1D (azimuth-only) and 2D (azimuth + elevation) AoA estimation.
+ * Handles ULA (Uniform Linear Array) and URA (Uniform Rectangular Array)
+ * geometries with optional reference antenna inclusion.
+ */
 class AoAProcessor {
 private:
     int num_antennas;
@@ -29,6 +37,12 @@ private:
     ArrayType type;
 
 public:
+    /**
+     * AoAProcessor - Construct AoA processor with array geometry parameters
+     *
+     * Technique: Stores antenna count, element spacing, and array type
+     * (ULA or URA) for use in subsequent beamforming computations.
+     */
     AoAProcessor(int n_ant, float spacing, int array_type)
         : num_antennas(n_ant), d_spacing(spacing), type(static_cast<ArrayType>(array_type)) {
     }
@@ -278,16 +292,36 @@ public:
 };
 
 extern "C" {
+    /**
+     * aoa_create - Allocate and initialize an AoA processor instance
+     *
+     * Technique: Factory function exposed via C API for ctypes binding.
+     * Creates an AoAProcessor with the specified array geometry.
+     */
     void* aoa_create(int n_ant, float spacing, int type) {
         if (n_ant <= 0) return nullptr;
         return new AoAProcessor(n_ant, spacing, type);
     }
 
+    /**
+     * aoa_destroy - Free an AoA processor instance
+     *
+     * Technique: Releases memory allocated by aoa_create.
+     */
     void aoa_destroy(void* ptr) {
         if (ptr) delete static_cast<AoAProcessor*>(ptr);
     }
 
-    // 1D (Legacy/Simple) - Scans Azimuth -90 to +90 at Elevation 0
+    /**
+     * aoa_process - 1D Bartlett beamforming AoA estimation (legacy API)
+     *
+     * Technique: Scans azimuth from -90 to +90 degrees at elevation 0
+     * using conventional Bartlett beamforming on a ULA (Ch1..4).
+     * Computes P(theta) = |a^H * x|^2 for each scan angle, where a is the
+     * steering vector. Optionally uses NEON-optimized steering vector
+     * generation and complex dot products via OptMathKernels.
+     * Output is power spectrum in dB.
+     */
     void aoa_process(void* ptr, const float* inputs, float lambda, float* output, int n_angles) {
         if (!ptr || !inputs || !output || n_angles <= 0 || lambda <= 0.0f) return;
         AoAProcessor* obj = static_cast<AoAProcessor*>(ptr);
@@ -351,8 +385,14 @@ extern "C" {
 #endif
     }
 
-    // 3D Process
-    // output size: n_az * n_el
+    /**
+     * aoa_process_3d - 2D Bartlett beamforming over azimuth and elevation
+     *
+     * Technique: Delegates to AoAProcessor::compute_bartlett_3d to scan
+     * a full azimuth (-180..180) x elevation (0..90) grid. Supports both
+     * ULA and URA geometries with optional reference antenna inclusion.
+     * Output is n_az * n_el power spectrum values in dB.
+     */
     void aoa_process_3d(void* ptr, const float* inputs, float lambda, float* output,
                         int n_az, int n_el, bool use_ref) {
         if (!ptr || !inputs || !output || n_az <= 0 || n_el <= 0 || lambda <= 0.0f) return;
@@ -361,15 +401,17 @@ extern "C" {
         obj->compute_bartlett_3d(c_inputs, lambda, output, n_az, n_el, use_ref);
     }
 
-    // MUSIC 1D AoA estimation
-    // snapshots: n_ant * n_snapshots interleaved complex floats (row-major: snapshot_i at offset i*n_ant)
-    // n_ant: number of antenna elements
-    // n_snapshots: number of snapshots
-    // n_sources: number of assumed sources (must be < n_ant)
-    // d_spacing: element spacing in meters (0 = lambda/2)
-    // lambda: wavelength in meters
-    // output: n_angles floats (MUSIC pseudo-spectrum in dB)
-    // n_angles: number of scan angles (-90 to +90)
+    /**
+     * aoa_process_music - MUSIC algorithm for 1D AoA estimation
+     *
+     * Technique: Implements the MUltiple SIgnal Classification (MUSIC) algorithm.
+     * Builds spatial covariance matrix R from snapshot data, applies diagonal
+     * loading for numerical stability, then performs eigendecomposition via
+     * Eigen's SelfAdjointEigenSolver. Constructs noise subspace projector
+     * En*En^H from the smallest eigenvectors. Scans azimuth -90 to +90 degrees,
+     * computing MUSIC pseudo-spectrum P(theta) = 1 / (a^H * En*En^H * a).
+     * Assumes ULA geometry. Output in dB.
+     */
     void aoa_process_music(const float* snapshots, int n_ant, int n_snapshots,
                            int n_sources, float d_spacing, float lambda,
                            float* output, int n_angles) {
@@ -422,9 +464,15 @@ extern "C" {
         }
     }
 
-    // MUSIC 3D (azimuth + elevation) AoA estimation
-    // Same snapshot format as aoa_process_music but scans az x el grid
-    // output size: n_az * n_el
+    /**
+     * aoa_process_3d_music - MUSIC algorithm for 2D AoA estimation (azimuth + elevation)
+     *
+     * Technique: Extends the MUSIC algorithm to a 2D azimuth (-180..180) x
+     * elevation (0..90) scan grid. Builds covariance matrix and noise subspace
+     * projector identically to aoa_process_music, then evaluates the MUSIC
+     * pseudo-spectrum over all (az, el) pairs. Assumes ULA along X axis.
+     * Output is n_az * n_el values in dB (row-major, elevation-major).
+     */
     void aoa_process_3d_music(const float* snapshots, int n_ant, int n_snapshots,
                               int n_sources, float d_spacing, float lambda,
                               float* output, int n_az, int n_el) {

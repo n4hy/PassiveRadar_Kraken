@@ -55,13 +55,19 @@ extern "C" {
  * Utility Functions
  */
 
-// Get human-readable device name
+/**
+ * kraken_gpu_get_error_string - Return a human-readable string for a CUDA error code
+ */
 const char* kraken_gpu_get_error_string(cudaError_t error);
 
-// Print GPU device information
+/**
+ * kraken_gpu_print_device_info - Print GPU device name, memory, and compute capability to stderr
+ */
 void kraken_gpu_print_device_info(int device_id);
 
-// Query CUDA compute capability
+/**
+ * kraken_gpu_get_compute_capability - Query the CUDA compute capability major*10+minor for a device
+ */
 int kraken_gpu_get_compute_capability(int device_id);
 
 #ifdef __cplusplus

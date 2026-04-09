@@ -40,7 +40,10 @@ class TestCAFComputation(unittest.TestCase):
         cls.lib.caf_process.restype = None
 
     def _compute_caf(self, ref, surv):
-        """Helper to compute CAF."""
+        """Helper to compute CAF via C++ library.
+
+        Technique: create/process/destroy pattern with ctypes pointers.
+        """
         n = len(ref)
         obj = self.lib.caf_create(n)
         self.assertIsNotNone(obj)

@@ -302,7 +302,13 @@ __global__ void state_update_kernel(
 }
 
 /**
- * Create UKF GPU processor
+ * ukf_gpu_create - Allocate and initialize GPU UKF processor for multi-target tracking
+ *
+ * Technique: Computes UKF scaling parameters (lambda, gamma, weights) from alpha/beta/kappa.
+ * Allocates device memory for batched state vectors, sqrt covariance matrices, sigma
+ * points, measurement predictions, innovations, and Kalman gain for up to max_tracks
+ * simultaneous targets. Creates cuBLAS handle and optionally configures CUDA 11.2+
+ * stream-ordered memory pool.
  */
 extern "C"
 void* ukf_gpu_create(int max_tracks, float alpha, float beta, float kappa) {
@@ -397,7 +403,10 @@ void* ukf_gpu_create(int max_tracks, float alpha, float beta, float kappa) {
 }
 
 /**
- * Destroy UKF GPU processor
+ * ukf_gpu_destroy - Free all GPU resources for UKF processor
+ *
+ * Technique: Destroys cuBLAS handle, frees all device memory allocations,
+ * destroys CUDA stream, and deletes processor state.
  */
 extern "C"
 void ukf_gpu_destroy(void* handle) {
@@ -425,7 +434,9 @@ void ukf_gpu_destroy(void* handle) {
 }
 
 /**
- * Set process noise covariance (sqrt form)
+ * ukf_gpu_set_process_noise - Upload process noise sqrt covariance to GPU
+ *
+ * Technique: Host-to-device transfer of NX x NX lower-triangular sqrt(Q) matrix.
  */
 extern "C"
 void ukf_gpu_set_process_noise(void* handle, const float* sqrt_Q) {
@@ -436,7 +447,9 @@ void ukf_gpu_set_process_noise(void* handle, const float* sqrt_Q) {
 }
 
 /**
- * Set measurement noise covariance (sqrt form)
+ * ukf_gpu_set_measurement_noise - Upload measurement noise sqrt covariance to GPU
+ *
+ * Technique: Host-to-device transfer of NY x NY lower-triangular sqrt(R) matrix.
  */
 extern "C"
 void ukf_gpu_set_measurement_noise(void* handle, const float* sqrt_R) {
@@ -447,7 +460,13 @@ void ukf_gpu_set_measurement_noise(void* handle, const float* sqrt_R) {
 }
 
 /**
- * Batch predict step for all tracks
+ * ukf_gpu_predict - Batched UKF prediction step for all active tracks
+ *
+ * Technique: (1) Generates 2*NX+1 sigma points per track from state and sqrt
+ * covariance using Cholesky-based spreading, (2) propagates all sigma points
+ * through the coordinated-turn state transition model in parallel,
+ * (3) computes weighted predicted mean from propagated sigma points.
+ * All operations execute on a dedicated CUDA stream.
  */
 extern "C"
 void ukf_gpu_predict(void* handle, int n_tracks, float dt) {
@@ -482,7 +501,15 @@ void ukf_gpu_predict(void* handle, int n_tracks, float dt) {
 }
 
 /**
- * Batch update step for all tracks
+ * ukf_gpu_update - Batched UKF measurement update step for all active tracks
+ *
+ * Technique: (1) Maps propagated sigma points through measurement function
+ * h(x) = [range, doppler, atan2(doppler_rate, range_rate)],
+ * (2) computes predicted measurement mean via weighted sum,
+ * (3) computes innovation y = z - z_pred,
+ * (4) applies state update x += K*y using pre-computed Kalman gain.
+ * Uses stream-ordered memory allocation (cudaMallocAsync) on CUDA 11.2+
+ * for temporary buffers.
  */
 extern "C"
 void ukf_gpu_update(void* handle, const float* measurements, int n_tracks) {
@@ -548,9 +575,7 @@ void ukf_gpu_update(void* handle, const float* measurements, int n_tracks) {
     cudaStreamSynchronize(proc->stream);
 }
 
-/**
- * Get current track states
- */
+/** ukf_gpu_get_states - Download current track state vectors from GPU to host */
 extern "C"
 void ukf_gpu_get_states(void* handle, float* states_out, int n_tracks) {
     if (!handle || !states_out || n_tracks <= 0) return;
@@ -559,9 +584,7 @@ void ukf_gpu_get_states(void* handle, float* states_out, int n_tracks) {
     kraken_gpu_memcpy_d2h(states_out, proc->d_states, n_tracks * NX * sizeof(float));
 }
 
-/**
- * Set track states
- */
+/** ukf_gpu_set_states - Upload track state vectors from host to GPU */
 extern "C"
 void ukf_gpu_set_states(void* handle, const float* states_in, int n_tracks) {
     if (!handle || !states_in || n_tracks <= 0) return;
@@ -570,9 +593,7 @@ void ukf_gpu_set_states(void* handle, const float* states_in, int n_tracks) {
     kraken_gpu_memcpy_h2d(proc->d_states, states_in, n_tracks * NX * sizeof(float));
 }
 
-/**
- * Set track covariance (sqrt form)
- */
+/** ukf_gpu_set_covariance - Upload sqrt covariance matrices from host to GPU */
 extern "C"
 void ukf_gpu_set_covariance(void* handle, const float* sqrt_P_in, int n_tracks) {
     if (!handle || !sqrt_P_in || n_tracks <= 0) return;
@@ -582,7 +603,9 @@ void ukf_gpu_set_covariance(void* handle, const float* sqrt_P_in, int n_tracks) 
 }
 
 /**
- * Check if GPU UKF is available
+ * ukf_gpu_is_available - Check if CUDA devices are present for GPU UKF
+ *
+ * Technique: Queries cudaGetDeviceCount; returns 1 if any device is available.
  */
 extern "C"
 int ukf_gpu_is_available(void) {

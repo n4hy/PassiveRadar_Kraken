@@ -180,6 +180,10 @@ class AOAEstimator:
         antenna_spacing_m: float = 1.5,  # Half-wavelength spacing
         array_type: str = 'linear',  # 'linear' or 'rectangular'
     ):
+        """Initialize AOA estimator with array geometry parameters.
+
+        Technique: phase-difference based bearing estimation for linear or rectangular arrays.
+        """
         self.wavelength_m = wavelength_m
         self.antenna_spacing_m = antenna_spacing_m
         self.array_type = array_type
@@ -286,6 +290,10 @@ class FiveChannelDashboard:
         poll_interval: float = 1.0,
         params: Optional[ProcessingParams] = None,
     ):
+        """Initialize the 5-channel dashboard with server connection and processing pipeline.
+
+        Technique: threaded polling with lock-guarded shared state for display updates.
+        """
         self.base_url = base_url.rstrip('/')
         self.poll_interval = poll_interval
         self.params = params if params else ProcessingParams()
@@ -576,7 +584,10 @@ class FiveChannelDashboard:
     # ------------------------------------------------------------------ #
 
     def _setup_plot(self):
-        """Create the matplotlib figures - main display and separate control panel."""
+        """Create the matplotlib figures with main 4x3 display grid and separate control panel.
+
+        Technique: add_subplot grid with per-channel CAFs, PPI polar, health, trails, and waterfalls.
+        """
         # Main display figure - 3x4 grid layout
         self.fig = plt.figure(figsize=(20, 14))
         self.fig.canvas.manager.set_window_title(
@@ -943,7 +954,10 @@ class FiveChannelDashboard:
         self.artists['maxhold_im'] = im
 
     def _setup_control_window(self):
-        """Setup separate control panel window."""
+        """Setup separate control panel window with sliders, checkboxes, and action buttons.
+
+        Technique: matplotlib widgets in a dedicated figure for real-time parameter tuning.
+        """
         self.ctrl_fig = plt.figure(figsize=(5, 10))
         self.ctrl_fig.canvas.manager.set_window_title('Controls')
 
@@ -1082,18 +1096,30 @@ class FiveChannelDashboard:
     # ------------------------------------------------------------------ #
 
     def _on_source_changed(self, label):
+        """Handle detection source checkbox toggle events.
+
+        Technique: read CheckButtons status and update processing params.
+        """
         status = self.widgets['source'].get_status()
         self.params.show_server_detections = status[0]
         self.params.show_local_detections = status[1]
         self.params.show_local_tracks = status[2]
 
     def _on_cfar_changed(self, val):
+        """Handle CFAR parameter slider changes and rebuild detector.
+
+        Technique: read slider values and reinitialize CfarDetector.
+        """
         self.params.cfar_guard = int(self.widgets['cfar_guard'].val)
         self.params.cfar_train = int(self.widgets['cfar_train'].val)
         self.params.cfar_threshold = self.widgets['cfar_threshold'].val
         self._rebuild_local_processing()
 
     def _on_display_changed(self, val):
+        """Handle display parameter slider changes for color scale and history.
+
+        Technique: update color limits and waterfall time axis ranges.
+        """
         self.params.color_min = self.widgets['color_min'].val
         self.params.color_max = self.widgets['color_max'].val
         self.params.history_duration = self.widgets['history'].val
@@ -1103,10 +1129,18 @@ class FiveChannelDashboard:
         self.axes['wf_doppler'].set_xlim(self.params.history_duration, 0)
 
     def _on_ppi_range_changed(self, val):
+        """Handle PPI range slider change to adjust polar plot radius.
+
+        Technique: update polar axis ylim to match new max range.
+        """
         self.params.ppi_max_range_km = self.widgets['ppi_range'].val
         self.axes['ppi'].set_ylim(0, self.params.ppi_max_range_km)
 
     def _on_tracker_changed(self, val):
+        """Handle tracker parameter slider changes and rebuild tracker.
+
+        Technique: read slider values and reinitialize MultiTargetTracker.
+        """
         self.params.tracker_confirm = int(self.widgets['tracker_confirm'].val)
         self.params.tracker_delete = int(self.widgets['tracker_delete'].val)
         self.params.tracker_gate = self.widgets['tracker_gate'].val
@@ -1471,6 +1505,10 @@ class FiveChannelDashboard:
 
 
 def main():
+    """Parse command-line arguments and launch the five-channel dashboard.
+
+    Technique: argparse CLI with server URL, poll interval, and PPI range options.
+    """
     parser = argparse.ArgumentParser(
         description='Five-Channel KrakenSDR Dashboard'
     )

@@ -122,6 +122,10 @@ class MultiDisplayDashboard:
         poll_interval: float = 1.0,
         params: Optional[ProcessingParams] = None,
     ):
+        """Initialize dashboard with server connection and local processing pipeline.
+
+        Technique: threaded polling with lock-guarded shared state and deque-based history.
+        """
         self.base_url = base_url.rstrip('/')
         self.poll_interval = poll_interval
         self.params = params if params else ProcessingParams()
@@ -319,7 +323,10 @@ class MultiDisplayDashboard:
     def _run_local_processing(
         self, data: np.ndarray, delay: np.ndarray, doppler: np.ndarray
     ) -> Tuple[List[LocalDetection], List[LocalTrack]]:
-        """Run local CFAR, clustering, and tracking."""
+        """Run local CFAR, clustering, and tracking on a single frame.
+
+        Technique: sequential pipeline of CA-CFAR detection, connected-component clustering, and GNN tracking.
+        """
         if not LOCAL_PROCESSING_AVAILABLE:
             return [], []
 
@@ -346,7 +353,10 @@ class MultiDisplayDashboard:
     # ------------------------------------------------------------------ #
 
     def _setup_plot(self):
-        """Create the matplotlib figure with 5 panels and control panel."""
+        """Create the matplotlib figure with 5 display panels and interactive control panel.
+
+        Technique: GridSpec layout with separate display and control regions.
+        """
         # Layout with control panel on right:
         #   +---------------+---------------+------------+
         #   | Delay-Doppler | Max-Hold      |            |
@@ -412,7 +422,10 @@ class MultiDisplayDashboard:
         self.fig.canvas.mpl_connect('close_event', lambda evt: self.stop())
 
     def _setup_delay_doppler_panel(self, ax, title: str):
-        """Setup a delay-Doppler heatmap panel."""
+        """Setup a delay-Doppler heatmap panel with detection overlay scatter plots.
+
+        Technique: imshow heatmap with server, local, and track scatter overlays.
+        """
         ax.set_xlabel('Bistatic Delay (km)', fontsize=10)
         ax.set_ylabel('Doppler Shift (Hz)', fontsize=10)
         ax.set_title(title, fontsize=11, fontweight='bold')
@@ -458,7 +471,10 @@ class MultiDisplayDashboard:
         self.artists[f'{key_prefix}_cbar'] = cbar
 
     def _setup_time_panel(self, ax, title: str, ylabel: str):
-        """Setup a time-series scatter panel."""
+        """Setup a time-series scatter panel for detection history waterfall.
+
+        Technique: scatter plot with reversed time axis showing detections over time.
+        """
         ax.set_xlabel('Time (seconds ago)', fontsize=10)
         ax.set_ylabel(ylabel, fontsize=10)
         ax.set_title(title, fontsize=11, fontweight='bold')
@@ -480,7 +496,10 @@ class MultiDisplayDashboard:
         self.artists[f'{key}_scatter_local'] = scatter_local
 
     def _setup_trails_panel(self, ax):
-        """Setup the delay-Doppler trails panel."""
+        """Setup the delay-Doppler trails panel with current and historical detection markers.
+
+        Technique: layered scatter plots with age-based colormapping for history trails.
+        """
         ax.set_xlabel('Bistatic Delay (km)', fontsize=10)
         ax.set_ylabel('Doppler Shift (Hz)', fontsize=10)
         ax.set_title('Detections in Delay-Doppler (with History Trails)', fontsize=11, fontweight='bold')
@@ -523,7 +542,10 @@ class MultiDisplayDashboard:
         self.artists['trail_history_local'] = scatter_history_local
 
     def _setup_control_panel(self):
-        """Setup the interactive control panel."""
+        """Setup the interactive control panel with sliders, checkboxes, and buttons.
+
+        Technique: matplotlib widgets (Slider, CheckButtons, RadioButtons, Button) for real-time parameter tuning.
+        """
         # Control panel area
         ctrl_left = 0.76
         ctrl_width = 0.22
@@ -789,7 +811,10 @@ class MultiDisplayDashboard:
 
     def _update_dd_panel(self, prefix, data, extent, vmin, vmax,
                          server_dets, local_dets, local_tracks):
-        """Update a delay-Doppler panel."""
+        """Update a delay-Doppler panel with new data, detection markers, and track overlays.
+
+        Technique: set_data/set_extent/set_clim on imshow artist, set_offsets on scatter artists.
+        """
         im = self.artists[f'{prefix}_im']
         im.set_data(data)
         im.set_extent(extent)
@@ -828,7 +853,10 @@ class MultiDisplayDashboard:
             self.artists[f'{prefix}_scatter_tracks'].set_offsets(np.empty((0, 2)))
 
     def _update_time_panels(self, history, now):
-        """Update the time-series panels."""
+        """Update the delay-vs-time and Doppler-vs-time waterfall panels.
+
+        Technique: vectorized source-mask filtering with auto-scaling Y axes.
+        """
         if not history:
             for key in ['dt_scatter_server', 'dt_scatter_local',
                         'dop_scatter_server', 'dop_scatter_local']:
@@ -885,7 +913,10 @@ class MultiDisplayDashboard:
                 np.min(dopplers) - margin, np.max(dopplers) + margin)
 
     def _update_trails_panel(self, history, server_dets, local_dets, local_tracks, now):
-        """Update the trails panel."""
+        """Update the trails panel with current detections, history, and track markers.
+
+        Technique: age-based colormap on scatter history with auto-scaling axes.
+        """
         # Current server detections
         if self.params.show_server_detections and server_dets and 'delay' in server_dets:
             curr_x = np.asarray(server_dets['delay'])
@@ -1001,6 +1032,10 @@ class MultiDisplayDashboard:
 
 
 def main():
+    """Parse command-line arguments and launch the multi-display dashboard.
+
+    Technique: argparse CLI with server URL and poll interval options.
+    """
     parser = argparse.ArgumentParser(
         description='Multi-Display Dashboard for KrakenSDR Passive Radar'
     )

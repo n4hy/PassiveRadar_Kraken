@@ -62,6 +62,10 @@ class CalibrationPanel:
     """
 
     def __init__(self, params: Optional[CalibrationPanelParams] = None):
+        """Initialize calibration panel with display parameters and history buffers.
+
+        Technique: deque-based phase history with configurable maxlen for drift tracking.
+        """
         self.params = params if params else CalibrationPanelParams()
 
         # Data storage (thread-safe)
@@ -95,7 +99,10 @@ class CalibrationPanel:
         self.color_inactive = '#404040'
 
     def _setup_plot(self):
-        """Initialize the matplotlib figure."""
+        """Initialize the matplotlib figure with SNR, status, phase, correlation, and drift panels.
+
+        Technique: 3x4 gridspec layout with specialized subplot for each calibration metric.
+        """
         self.fig = plt.figure(figsize=(14, 8))
         self.fig.canvas.manager.set_window_title('KrakenSDR Calibration Status')
 
@@ -125,7 +132,10 @@ class CalibrationPanel:
         self.fig.suptitle('KrakenSDR Calibration Status', fontsize=14, fontweight='bold')
 
     def _setup_snr_meters(self):
-        """Setup SNR bar meters."""
+        """Setup SNR bar meters with warning and good threshold lines.
+
+        Technique: vertical bar chart with per-channel coloring by SNR level.
+        """
         ax = self.axes['snr']
         ax.set_xlim(-0.5, self.params.num_channels - 0.5)
         ax.set_ylim(self.params.snr_min_db, self.params.snr_max_db)
@@ -152,7 +162,10 @@ class CalibrationPanel:
         ax.grid(True, alpha=0.3, axis='y')
 
     def _setup_status_indicator(self):
-        """Setup overall status indicator."""
+        """Setup overall status indicator with circle patch and text overlay.
+
+        Technique: matplotlib Circle patch with color-coded validity state.
+        """
         ax = self.axes['status']
         ax.set_xlim(-1, 1)
         ax.set_ylim(-1, 1)
@@ -174,7 +187,10 @@ class CalibrationPanel:
                                       ha='center', va='center', fontsize=9, color='white')
 
     def _setup_phase_display(self):
-        """Setup phase offset display."""
+        """Setup phase offset display with diamond markers for each channel.
+
+        Technique: scatter plot on -180 to +180 degree scale with zero reference line.
+        """
         ax = self.axes['phase']
         ax.set_xlim(-0.5, self.params.num_channels - 0.5)
         ax.set_ylim(-180, 180)
@@ -198,7 +214,10 @@ class CalibrationPanel:
         ax.grid(True, alpha=0.3)
 
     def _setup_correlation_display(self):
-        """Setup correlation coefficient display."""
+        """Setup correlation coefficient display with threshold indicators.
+
+        Technique: bar chart on 0-1 scale with warning and good threshold lines.
+        """
         ax = self.axes['corr']
         ax.set_xlim(-0.5, self.params.num_channels - 0.5)
         ax.set_ylim(0, 1)
@@ -224,7 +243,10 @@ class CalibrationPanel:
         ax.grid(True, alpha=0.3, axis='y')
 
     def _setup_drift_history(self):
-        """Setup phase drift history plot."""
+        """Setup phase drift history plot with per-channel surveillance lines.
+
+        Technique: time-series line plot with phase unwrapping relative to initial calibration.
+        """
         ax = self.axes['drift']
         ax.set_xlim(-self.params.history_seconds, 0)
         ax.set_ylim(-10, 10)
@@ -245,7 +267,10 @@ class CalibrationPanel:
         ax.axhline(0, color='white', linestyle='-', alpha=0.3)
 
     def _get_color_for_snr(self, snr_db: float) -> str:
-        """Get color based on SNR value."""
+        """Get color based on SNR value using good/warning/bad thresholds.
+
+        Technique: threshold comparison returning green, yellow, or red hex color.
+        """
         if snr_db >= self.params.snr_good_db:
             return self.color_good
         elif snr_db >= self.params.snr_warning_db:
@@ -254,7 +279,10 @@ class CalibrationPanel:
             return self.color_bad
 
     def _get_color_for_corr(self, corr: float) -> str:
-        """Get color based on correlation value."""
+        """Get color based on correlation value using good/warning/bad thresholds.
+
+        Technique: threshold comparison returning green, yellow, or red hex color.
+        """
         if corr >= self.params.correlation_good:
             return self.color_good
         elif corr >= self.params.correlation_warning:
@@ -334,7 +362,10 @@ class CalibrationPanel:
         return list(self.snr_bars) + list(self.corr_bars) + [self.phase_indicators]
 
     def _update_drift_history(self, status: CalibrationStatus, current_time: float):
-        """Update phase drift history plot."""
+        """Update phase drift history plot with new phase samples.
+
+        Technique: deque-based history with phase unwrapping and auto-scaling Y axis.
+        """
         # Add current phase offsets to history (deque handles maxlen automatically)
         self.time_history.append(current_time)
         for i in range(self.params.num_channels):

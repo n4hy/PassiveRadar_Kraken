@@ -25,6 +25,15 @@ static constexpr float PI = static_cast<float>(M_PI);
 
 using Complex = std::complex<float>;
 
+/**
+ * DopplerProcessor - Slow-time FFT Doppler processing for range-Doppler maps
+ *
+ * Technique: Processes a 2D matrix (Doppler x Range) by applying a Hamming
+ * window along the slow-time (Doppler) dimension, followed by column-wise
+ * FFT and fftshift to center DC. Supports both magnitude-dB and complex
+ * output modes. Uses FFTW3 for FFT computation and optionally OptMathKernels
+ * for NEON-optimized window generation and application.
+ */
 class DopplerProcessor {
 private:
     int fft_len;      // Range bins (Fast-time) - Columns
@@ -44,6 +53,12 @@ public:
     DopplerProcessor(DopplerProcessor&&) = delete;
     DopplerProcessor& operator=(DopplerProcessor&&) = delete;
 
+    /**
+     * DopplerProcessor - Construct Doppler processor with FFT and Doppler dimensions
+     *
+     * Technique: Pre-computes Hamming window, allocates FFTW buffers and plans
+     * for column-wise FFT processing. Uses FFTW_ESTIMATE for fast plan creation.
+     */
     DopplerProcessor(int n_fft, int n_doppler) : fft_len(n_fft), doppler_len(n_doppler) {
         // Initialize FFTW thread support (centralized, safe to call multiple times)
         kraken_fftw_init();
@@ -87,14 +102,21 @@ public:
         }
     }
 
+    /** ~DopplerProcessor - Release FFTW plans and buffers */
     ~DopplerProcessor() {
         fftwf_destroy_plan(plan);
         fftwf_free(in_buf);
         fftwf_free(out_buf);
     }
 
-    // Process logic shared by output modes
-    // Fills 'result' with FFT'd and Shifted data for a column
+    /**
+     * process_column - Extract, window, FFT, and fftshift a single range-bin column
+     *
+     * Technique: Extracts the slow-time column at range bin r from the input matrix,
+     * applies Hamming window (NEON-optimized or scalar), computes FFT via FFTW,
+     * then performs fftshift (NumPy convention) to center the zero-Doppler bin.
+     * Result is stored in the output vector as complex values.
+     */
     void process_column(const Complex* input, int r, std::vector<Complex>& result) {
         result.resize(doppler_len);
 
@@ -152,8 +174,13 @@ public:
         }
     }
 
-    // Input: flatten array of complex floats. Size: doppler_len * fft_len
-    // Output: flatten array of floats (Mag Log). Size: doppler_len * fft_len
+    /**
+     * process - Compute range-Doppler map with log-magnitude output
+     *
+     * Technique: Iterates over all range bins, calling process_column for each,
+     * then converts complex FFT output to dB: 10*log10(|x|^2 + eps).
+     * Output is a flattened doppler_len x fft_len matrix in row-major order.
+     */
     void process(const Complex* input, float* output) {
         std::vector<Complex> shifted_col;
         shifted_col.reserve(doppler_len);
@@ -170,8 +197,14 @@ public:
         }
     }
 
-    // New: Output raw Complex data (for AoA)
-    // Output must be pre-allocated: doppler_len * fft_len * sizeof(complex)
+    /**
+     * process_complex - Compute range-Doppler map with complex output (for AoA)
+     *
+     * Technique: Same column-wise windowed FFT + fftshift as process(), but
+     * preserves complex values for downstream phase-sensitive processing
+     * such as angle-of-arrival estimation. Output is pre-allocated
+     * doppler_len x fft_len complex matrix.
+     */
     void process_complex(const Complex* input, Complex* output) {
         std::vector<Complex> shifted_col;
         shifted_col.reserve(doppler_len);
@@ -188,15 +221,23 @@ public:
 };
 
 extern "C" {
+    /** doppler_create - C API: Allocate Doppler processor with given dimensions */
     void* doppler_create(int fft_len, int doppler_len) {
         if (fft_len <= 0 || doppler_len <= 0) return nullptr;
         return new DopplerProcessor(fft_len, doppler_len);
     }
 
+    /** doppler_destroy - C API: Free Doppler processor and FFTW resources */
     void doppler_destroy(void* ptr) {
         if (ptr) delete static_cast<DopplerProcessor*>(ptr);
     }
 
+    /**
+     * doppler_process - C API: Compute range-Doppler map (dB magnitude output)
+     *
+     * Technique: Delegates to DopplerProcessor::process for windowed FFT
+     * with log-magnitude conversion.
+     */
     void doppler_process(void* ptr, const float* input, float* output) {
         if (!ptr || !input || !output) return;
         DopplerProcessor* obj = static_cast<DopplerProcessor*>(ptr);
@@ -204,6 +245,12 @@ extern "C" {
         obj->process(c_input, output);
     }
 
+    /**
+     * doppler_process_complex - C API: Compute range-Doppler map (complex output for AoA)
+     *
+     * Technique: Delegates to DopplerProcessor::process_complex for windowed FFT
+     * preserving complex phase information.
+     */
     void doppler_process_complex(void* ptr, const float* input, float* output) {
         if (!ptr || !input || !output) return;
         DopplerProcessor* obj = static_cast<DopplerProcessor*>(ptr);

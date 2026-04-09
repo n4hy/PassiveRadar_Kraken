@@ -63,6 +63,10 @@ def rtlsdr_open(lib, serial):
 
 
 def rtlsdr_configure(lib, dev, freq, gain_tenth_db=0):
+    """Configure RTL-SDR with 2.4 MHz sample rate, given frequency, and manual gain.
+
+    Technique: sequential rtlsdr API calls for sample rate, frequency, and gain setup.
+    """
     lib.rtlsdr_set_sample_rate(dev, 2_400_000)
     lib.rtlsdr_set_center_freq(dev, int(freq))
     lib.rtlsdr_set_tuner_gain_mode(dev, 1)          # manual gain
@@ -83,6 +87,10 @@ def rtlsdr_capture(lib, dev, n_samples=131072):
 
 
 def iq_power_db(iq):
+    """Compute average power of complex IQ samples in dB.
+
+    Technique: mean magnitude-squared with floor to prevent log(0).
+    """
     return float(10 * np.log10(np.mean(np.abs(iq)**2) + 1e-20))
 
 
@@ -97,6 +105,7 @@ def libusb_set_gpio(serial, gpio, value):
     libusb = ctypes.CDLL(ctypes.util.find_library('usb-1.0') or 'libusb-1.0.so.0')
 
     class DevDesc(ctypes.Structure):
+        """USB device descriptor structure matching libusb_device_descriptor layout."""
         _fields_ = [
             ('bLength', ctypes.c_uint8), ('bDescriptorType', ctypes.c_uint8),
             ('bcdUSB', ctypes.c_uint16), ('bDeviceClass', ctypes.c_uint8),
@@ -183,12 +192,20 @@ def libusb_set_gpio(serial, gpio, value):
 
         try:
             def read_reg(addr, block):
+                """Read a single-byte register from the RTL2832U via USB control transfer.
+
+                Technique: vendor-specific IN control transfer to RTL2832U system block.
+                """
                 data = (ctypes.c_uint8 * 1)()
                 r = libusb.libusb_control_transfer(
                     handle, CTRL_IN, 0, addr, block << 8, data, 1, TIMEOUT)
                 return r, data[0]
 
             def write_reg(addr, block, val):
+                """Write a single-byte register to the RTL2832U via USB control transfer.
+
+                Technique: vendor-specific OUT control transfer to RTL2832U system block.
+                """
                 data = (ctypes.c_uint8 * 1)(val & 0xFF)
                 r = libusb.libusb_control_transfer(
                     handle, CTRL_OUT, 0, addr, (block << 8) | 0x10, data, 1, TIMEOUT)
@@ -392,6 +409,10 @@ def test3_cross_correlation(lib, serial_ref, serial_surv, freq):
 
 
 def main():
+    """Run all noise source hardware diagnostic tests and print summary.
+
+    Technique: sequential test execution with per-test pass/fail reporting.
+    """
     parser = argparse.ArgumentParser(
         description="KrakenSDR noise source hardware test (no GNU Radio)")
     parser.add_argument('--serial', default='1000',

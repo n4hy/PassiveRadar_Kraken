@@ -41,6 +41,10 @@ class BistaticTargetGenerator:
     """Generate bistatic radar target returns for testing."""
 
     def __init__(self, params: Optional[SystemParams] = None):
+        """Initialize target generator with system parameters.
+
+        Technique: use provided params or default SystemParams for signal generation.
+        """
         self.params = params or SystemParams()
 
     def generate_fm_waveform(self, n_samples: int, seed: Optional[int] = None) -> np.ndarray:

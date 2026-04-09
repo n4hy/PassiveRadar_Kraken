@@ -431,10 +431,23 @@ public:
 
 // C API for Python ctypes binding
 extern "C" {
+    /**
+     * caf_create - Allocate a CAF processor with default Doppler/range parameters
+     *
+     * Technique: Creates a CafProcessor with default 64 Doppler bins, 256 range
+     * bins, and standard Doppler sweep settings. C API for ctypes binding.
+     */
     void* caf_create(int n_samples) {
         return new CafProcessor(n_samples);
     }
 
+    /**
+     * caf_create_full - Allocate a CAF processor with full parameter control
+     *
+     * Technique: Creates a CafProcessor with user-specified Doppler bins, range
+     * bins, Doppler sweep start/step, and sample rate. Validates inputs and
+     * returns nullptr on invalid parameters. C API for ctypes binding.
+     */
     void* caf_create_full(int n_samples, int n_doppler, int n_range,
                           float doppler_start, float doppler_step, float sample_rate) {
         if (n_samples <= 0 || n_doppler <= 0 || n_range <= 0 || sample_rate <= 0.0f) {
@@ -444,10 +457,22 @@ extern "C" {
                                 doppler_start, doppler_step, sample_rate);
     }
 
+    /**
+     * caf_destroy - Free a CAF processor and its FFTW resources
+     *
+     * Technique: Releases FFTW plans, buffers, and the CafProcessor object.
+     */
     void caf_destroy(void* ptr) {
         if (ptr) delete static_cast<CafProcessor*>(ptr);
     }
 
+    /**
+     * caf_process - Compute single-Doppler cross-correlation (legacy API)
+     *
+     * Technique: Computes zero-Doppler cross-correlation via FFT-based
+     * circular convolution: IFFT(FFT(surv) * conj(FFT(ref))).
+     * Output is complex cross-correlation of n_samples length.
+     */
     void caf_process(void* ptr, const float* ref, const float* surv, float* out) {
         if (!ptr || !ref || !surv || !out) return;
         CafProcessor* obj = static_cast<CafProcessor*>(ptr);
@@ -456,6 +481,13 @@ extern "C" {
                      reinterpret_cast<Complex*>(out));
     }
 
+    /**
+     * caf_process_full - Compute full Cross-Ambiguity Function (all Doppler x range bins)
+     *
+     * Technique: For each Doppler bin, applies precomputed frequency shift phasors
+     * to the reference signal, then computes FFT-based cross-correlation with the
+     * surveillance signal. Output is a 2D range-Doppler magnitude map.
+     */
     void caf_process_full(void* ptr, const float* ref, const float* surv, float* out) {
         if (!ptr || !ref || !surv || !out) return;
         CafProcessor* obj = static_cast<CafProcessor*>(ptr);
@@ -464,16 +496,25 @@ extern "C" {
                          out);
     }
 
+    /**
+     * caf_get_n_doppler - Query the number of Doppler bins in the CAF processor
+     */
     int caf_get_n_doppler(void* ptr) {
         if (!ptr) return 0;
         return static_cast<CafProcessor*>(ptr)->get_n_doppler();
     }
 
+    /**
+     * caf_get_n_range - Query the number of range bins in the CAF processor
+     */
     int caf_get_n_range(void* ptr) {
         if (!ptr) return 0;
         return static_cast<CafProcessor*>(ptr)->get_n_range();
     }
 
+    /**
+     * caf_using_optmath - Query whether OptMathKernels NEON acceleration is active
+     */
     int caf_using_optmath(void* ptr) {
         if (!ptr) return 0;
         return static_cast<CafProcessor*>(ptr)->using_optmath() ? 1 : 0;

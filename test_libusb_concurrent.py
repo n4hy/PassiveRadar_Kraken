@@ -20,6 +20,10 @@ import numpy as np
 
 
 def load_rtlsdr():
+    """Load librtlsdr shared library and set up ctypes function signatures.
+
+    Technique: ctypes CDLL loading with explicit argtypes/restype declarations.
+    """
     lib = ctypes.CDLL(ctypes.util.find_library('rtlsdr') or 'librtlsdr.so.0')
     VP = ctypes.c_void_p
     lib.rtlsdr_get_index_by_serial.argtypes = [ctypes.c_char_p]
@@ -42,6 +46,10 @@ def load_rtlsdr():
 
 
 def capture_power(lib, dev, label=""):
+    """Capture IQ samples and return average power in dB.
+
+    Technique: synchronous USB read, 8-bit to complex conversion, mean power in log scale.
+    """
     n_bytes = 262144
     buf = (ctypes.c_uint8 * n_bytes)()
     n_read = ctypes.c_int(0)
@@ -59,6 +67,7 @@ def libusb_set_gpio0(serial, value):
     libusb = ctypes.CDLL(ctypes.util.find_library('usb-1.0') or 'libusb-1.0.so.0')
 
     class DevDesc(ctypes.Structure):
+        """USB device descriptor structure matching libusb_device_descriptor layout."""
         _fields_ = [
             ('bLength', ctypes.c_uint8), ('bDescriptorType', ctypes.c_uint8),
             ('bcdUSB', ctypes.c_uint16), ('bDeviceClass', ctypes.c_uint8),
@@ -132,12 +141,20 @@ def libusb_set_gpio0(serial, value):
 
         try:
             def read_reg(addr, block):
+                """Read a single-byte register from the RTL2832U via USB control transfer.
+
+                Technique: vendor-specific IN control transfer to RTL2832U system block.
+                """
                 data = (ctypes.c_uint8 * 1)()
                 r = libusb.libusb_control_transfer(
                     handle, CTRL_IN, 0, addr, block << 8, data, 1, TIMEOUT)
                 return r, data[0]
 
             def write_reg(addr, block, val):
+                """Write a single-byte register to the RTL2832U via USB control transfer.
+
+                Technique: vendor-specific OUT control transfer to RTL2832U system block.
+                """
                 data = (ctypes.c_uint8 * 1)(val & 0xFF)
                 r = libusb.libusb_control_transfer(
                     handle, CTRL_OUT, 0, addr, (block << 8) | 0x10, data, 1, TIMEOUT)
@@ -166,6 +183,11 @@ def libusb_set_gpio0(serial, value):
 
 
 def main():
+    """Test whether raw libusb GPIO control works while rtlsdr holds the device open.
+
+    Technique: opens device via rtlsdr, then attempts raw libusb GPIO toggle
+    to determine if concurrent access is possible for noise source control.
+    """
     print("=" * 60)
     print("  Concurrent libusb + rtlsdr GPIO test")
     print("=" * 60)

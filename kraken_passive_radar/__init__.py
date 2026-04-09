@@ -76,6 +76,10 @@ except ImportError:
         """Stub: Empty GPU backend class for CPU-only mode."""
         @staticmethod
         def is_available():
+            """Return False since GPU is not available in CPU-only mode.
+
+            Technique: static stub returning constant False.
+            """
             return False
 
 __all__ = [

@@ -22,6 +22,10 @@ _ks_module = sys.modules['kraken_passive_radar.krakensdr_source']
 
 
 class TestKrakenSDRSource(unittest.TestCase):
+    """Test KrakenSDR source block initialization and runtime setters.
+
+    Technique: mock osmosdr and verify correct API calls for 5-channel coherent SDR.
+    """
     def test_initialization(self):
         """Test that the block initializes osmosdr.source with correct arguments"""
         mock_osmosdr = MagicMock()

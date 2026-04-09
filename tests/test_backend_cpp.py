@@ -10,7 +10,15 @@ from conftest import find_kernel_lib
 
 
 class TestBackendCpp(unittest.TestCase):
+    """Test the C++ backend library's 2D CFAR detector via ctypes.
+
+    Technique: inject a strong target into Gaussian noise and verify detection.
+    """
     def test_cfar_detects_target(self):
+        """Verify 2D CFAR detects a strong target with few false alarms.
+
+        Technique: place a 25 dB target at center of noise field, run CA-CFAR.
+        """
         lib_path = find_kernel_lib("backend")
 
         if not lib_path.exists():

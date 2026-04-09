@@ -18,6 +18,13 @@
 namespace gr {
 namespace kraken_passive_radar {
 
+/**
+ * eca_canceller_impl - Implementation of the ECA-B clutter canceller block
+ *
+ * Technique: Batch Toeplitz least-squares with Cholesky decomposition for
+ * adaptive FIR weight computation, and FFT-based cross-correlation and
+ * FIR filtering for efficient clutter subtraction.
+ */
 class eca_canceller_impl : public eca_canceller
 {
 private:
@@ -46,22 +53,36 @@ private:
 
     gr::thread::mutex d_setlock;
 
+    /** dot_f32 - Compute dot product of two float arrays */
     static inline float dot_f32(const float* a, const float* b, int n);
+    /** cholesky_decompose - Decompose the Toeplitz autocorrelation matrix using Cholesky factorization */
     bool cholesky_decompose();
+    /** cholesky_solve - Solve for optimal FIR filter weights via Cholesky back-substitution */
     void cholesky_solve();
+    /** setup_fir_fft - Allocate FFTW plans and buffers for FFT-based FIR filtering */
     void setup_fir_fft(int n_output);
+    /** cleanup_fir_fft - Destroy FFTW plans and free FFT buffers */
     void cleanup_fir_fft();
 
 public:
+    /**
+     * eca_canceller_impl - Construct ECA-B canceller with tap count, regularization, and channel count
+     */
     eca_canceller_impl(int num_taps, float reg_factor, int num_surv);
     ~eca_canceller_impl();
 
+    /**
+     * work - Compute adaptive FIR weights and subtract clutter from all surveillance channels
+     */
     int work(int noutput_items,
              gr_vector_const_void_star& input_items,
              gr_vector_void_star& output_items) override;
 
+    /** set_num_taps - Update the number of FIR filter taps at runtime */
     void set_num_taps(int num_taps) override;
+    /** set_reg_factor - Update the diagonal loading regularization factor */
     void set_reg_factor(float reg_factor) override;
+    /** set_mu - Set the step size for adaptive weight updates */
     void set_mu(float mu);
 };
 

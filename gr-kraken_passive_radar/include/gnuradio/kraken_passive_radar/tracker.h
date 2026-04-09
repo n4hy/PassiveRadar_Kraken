@@ -104,19 +104,54 @@ public:
                      int max_tracks = 50,
                      int max_detections = 100);
 
+    /**
+     * set_process_noise - Set process noise standard deviations for range and Doppler
+     */
     virtual void set_process_noise(float range, float doppler) = 0;
+
+    /**
+     * set_measurement_noise - Set measurement noise standard deviations for range and Doppler
+     */
     virtual void set_measurement_noise(float range, float doppler) = 0;
+
+    /**
+     * set_gate_threshold - Set the chi-squared gate threshold for measurement-to-track association
+     */
     virtual void set_gate_threshold(float threshold) = 0;
+
+    /**
+     * set_confirm_hits - Set the number of consecutive hits required to confirm a tentative track
+     */
     virtual void set_confirm_hits(int hits) = 0;
+
+    /**
+     * set_delete_misses - Set the number of consecutive misses before a track is deleted
+     */
     virtual void set_delete_misses(int misses) = 0;
 
-    // Get tracks
+    /**
+     * get_tracks - Retrieve all current tracks (tentative, confirmed, and coasting)
+     */
     virtual std::vector<track_t> get_tracks() const = 0;
+
+    /**
+     * get_confirmed_tracks - Retrieve only confirmed tracks
+     */
     virtual std::vector<track_t> get_confirmed_tracks() const = 0;
+
+    /**
+     * get_num_tracks - Return the total number of active tracks
+     */
     virtual int get_num_tracks() const = 0;
+
+    /**
+     * get_num_confirmed_tracks - Return the number of confirmed tracks
+     */
     virtual int get_num_confirmed_tracks() const = 0;
 
-    // Reset tracker state
+    /**
+     * reset - Clear all tracks and reset the tracker to its initial state
+     */
     virtual void reset() = 0;
 };
 

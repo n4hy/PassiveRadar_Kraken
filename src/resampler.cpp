@@ -18,6 +18,16 @@
 
 using ComplexFloat = std::complex<float>;
 
+/**
+ * PolyphaseResampler - Efficient rational-rate sample rate converter
+ *
+ * Technique: Implements polyphase decomposition of an FIR lowpass filter
+ * for L/M rational resampling. The prototype filter taps are partitioned
+ * into L polyphase subfilters (one per interpolation phase), each reversed
+ * for direct dot-product convolution. Uses Structure-of-Arrays (SoA) layout
+ * for real/imaginary components and NEON-optimized dot products when available.
+ * Maintains inter-block state via history buffers and phase tracking.
+ */
 class PolyphaseResampler {
 private:
     int interpolation;
@@ -41,7 +51,12 @@ private:
     int current_phase;
     int excess_input_advance;
 
-    // Inline Dot Product - uses NEON when available
+    /**
+     * dot_prod - SIMD-accelerated real-valued dot product
+     *
+     * Technique: Uses NEON dot product via OptMathKernels when available,
+     * otherwise 8-way unrolled scalar accumulation.
+     */
     static FORCE_INLINE float dot_prod(const float* a, const float* b, int n) {
 #if HAVE_OPTMATHKERNELS
         return optmath::neon::neon_dot_f32(a, b, static_cast<std::size_t>(n));
@@ -60,6 +75,12 @@ private:
     }
 
 public:
+    /**
+     * PolyphaseResampler - Construct resampler with L/M ratio and prototype filter
+     *
+     * Technique: Decomposes prototype lowpass filter into L polyphase subfilters,
+     * reverses each for dot-product convolution, and initializes SoA history buffers.
+     */
     PolyphaseResampler(int interp, int decim, const float* taps_in, int n_taps)
         : interpolation(interp), decimation(decim), num_taps(n_taps), current_phase(0), excess_input_advance(0) {
 
@@ -87,6 +108,15 @@ public:
         history_im.resize(history_len, 0.0f);
     }
 
+    /**
+     * process - Resample a block of complex IQ samples at L/M rate
+     *
+     * Technique: Prepends SoA history to input, iterates through polyphase
+     * phases computing dot products between reversed subfilter taps and
+     * input segments. Phase and input index advance by decimation/interpolation
+     * ratio per output sample. Saves tail of work buffer as history for
+     * next block continuity. Returns number of output samples produced.
+     */
     int process(const ComplexFloat* input, int n_input, ComplexFloat* output, int max_output) {
         // 1. Construct Work Buffers (SoA) - reuse cached buffers
         int history_sz = static_cast<int>(history_re.size());
@@ -158,15 +188,23 @@ public:
 };
 
 extern "C" {
+    /** resampler_create - C API: Allocate polyphase resampler with given L/M ratio and filter taps */
     void* resampler_create(int interp, int decim, const float* taps, int num_taps) {
         if (interp <= 0 || decim <= 0 || !taps || num_taps <= 0) return nullptr;
         return new PolyphaseResampler(interp, decim, taps, num_taps);
     }
 
+    /** resampler_destroy - C API: Free polyphase resampler instance */
     void resampler_destroy(void* ptr) {
         if (ptr) delete static_cast<PolyphaseResampler*>(ptr);
     }
 
+    /**
+     * resampler_process - C API: Resample interleaved complex float buffer at L/M rate
+     *
+     * Technique: Reinterprets float buffers as complex, delegates to
+     * PolyphaseResampler::process. Returns number of output samples produced.
+     */
     int resampler_process(void* ptr, const float* input, int n_input, float* output, int max_output) {
         if (!ptr || !input || !output || n_input <= 0 || max_output <= 0) return 0;
         PolyphaseResampler* obj = static_cast<PolyphaseResampler*>(ptr);

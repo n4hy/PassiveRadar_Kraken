@@ -9,6 +9,10 @@ class NoiseGenerator:
     """Generate various noise types for radar testing."""
 
     def __init__(self, sample_rate: float = 2.4e6):
+        """Initialize noise generator with given sample rate.
+
+        Technique: store sample rate for spectral shaping calculations.
+        """
         self.sample_rate = sample_rate
 
     def generate_awgn(self, n_samples: int,

@@ -43,7 +43,10 @@ class TestECAClutterCancellation(unittest.TestCase):
         ]
 
     def _process_eca(self, ref, surv, num_taps=64):
-        """Helper to run ECA processing."""
+        """Helper to run ECA processing via C++ library.
+
+        Technique: create/process/destroy pattern with ctypes float pointer views.
+        """
         n_samples = len(ref)
         state = self.lib.eca_b_create(num_taps)
         self.assertIsNotNone(state)

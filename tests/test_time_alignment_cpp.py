@@ -10,7 +10,15 @@ from conftest import find_kernel_lib
 
 
 class TestTimeAlignmentCpp(unittest.TestCase):
+    """Test the C++ time alignment library via ctypes.
+
+    Technique: apply known delay and phase shift, verify estimated values match.
+    """
     def test_detects_known_delay(self):
+        """Verify time alignment detects a known delay and phase offset.
+
+        Technique: shift FM-like signal by 17 samples and pi/4 radians, check estimates.
+        """
         lib_path = find_kernel_lib("time_alignment")
 
         if not lib_path.exists():

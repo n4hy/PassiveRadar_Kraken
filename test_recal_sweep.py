@@ -18,7 +18,15 @@ from gnuradio.kraken_passive_radar import krakensdr_source
 
 
 class sweep_flowgraph(gr.top_block):
+    """Minimal 5-channel flowgraph with vector probes for recalibration sweep testing.
+
+    Technique: DC block, LPF/decimate, stream-to-vector, probe per channel.
+    """
     def __init__(self, freq=103.7e6, gain=49.6):
+        """Initialize 5-channel flowgraph for recalibration interval testing.
+
+        Technique: per-channel DC block, LPF/decimation, and vector probe chain.
+        """
         gr.top_block.__init__(self, "Recal Sweep Test")
         samp_rate = 2_400_000
         signal_bw = 250_000
@@ -41,10 +49,18 @@ class sweep_flowgraph(gr.top_block):
             self.connect((self.src, ch), dc, lpf, s2v, probe)
 
     def read_vector(self, ch):
+        """Return the latest contiguous sample vector from channel ch.
+
+        Technique: reads probe_signal_vc output as complex64 array.
+        """
         return np.array(self._probes[ch].level(), dtype=np.complex64)
 
 
 def xcorr_phase(ref, surv):
+    """Compute phase offset between ref and surv via FFT cross-correlation.
+
+    Technique: FFT-based cross-correlation with delay alignment and normalized dot product.
+    """
     N = len(ref)
     Xr = np.fft.fft(ref)
     Xs = np.fft.fft(surv)
@@ -92,6 +108,11 @@ def measure_all(tb, n_surv=4):
 
 
 def main():
+    """Run progressive recalibration interval sweep with linear drift compensation.
+
+    Technique: measures phase at increasing intervals, applying drift rate correction,
+    and stops when compensated deviation exceeds threshold.
+    """
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--freq', type=float, default=103.7e6)

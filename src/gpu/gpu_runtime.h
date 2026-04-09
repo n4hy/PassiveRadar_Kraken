@@ -31,42 +31,62 @@ typedef enum {
  * Device Query Functions
  */
 
-// Get number of CUDA devices
+/**
+ * kraken_gpu_device_count - Return the number of available CUDA devices
+ */
 int kraken_gpu_device_count(void);
 
-// Check if GPU is available and ready
+/**
+ * kraken_gpu_is_available - Check if at least one GPU is available and initialized
+ */
 int kraken_gpu_is_available(void);
 
-// Get device information (name, compute capability)
+/**
+ * kraken_gpu_get_device_info - Query device name and compute capability for a given device ID
+ */
 void kraken_gpu_get_device_info(int device_id, char* name_out, int* compute_capability_out);
 
-// Initialize GPU runtime (call once at startup)
+/**
+ * kraken_gpu_init - Initialize the GPU runtime on the specified device (call once at startup)
+ */
 int kraken_gpu_init(int device_id);
 
-// Cleanup GPU runtime (call once at shutdown)
+/**
+ * kraken_gpu_cleanup - Release GPU runtime resources (call once at shutdown)
+ */
 void kraken_gpu_cleanup(void);
 
 /**
  * Version Information Functions
  */
 
-// Get CUDA runtime version (e.g., 13000 for CUDA 13.0)
+/**
+ * kraken_gpu_cuda_version - Return the CUDA runtime version as an integer (e.g., 13000 for CUDA 13.0)
+ */
 int kraken_gpu_cuda_version(void);
 
-// Get CUDA driver version
+/**
+ * kraken_gpu_driver_version - Return the CUDA driver version as an integer
+ */
 int kraken_gpu_driver_version(void);
 
 /**
  * Backend Selection Functions
  */
 
-// Set global backend preference
+/**
+ * kraken_set_global_backend - Set the global compute backend preference (AUTO, GPU, or CPU)
+ */
 void kraken_set_global_backend(KrakenBackend backend);
 
-// Get currently active backend
+/**
+ * kraken_get_active_backend - Return the currently active compute backend
+ */
 KrakenBackend kraken_get_active_backend(void);
 
-// Check if backend should use GPU (considering environment variable)
+/**
+ * kraken_should_use_gpu - Check if GPU should be used, considering backend setting and environment
+ */
 int kraken_should_use_gpu(void);
 
 #ifdef __cplusplus

@@ -76,14 +76,39 @@ public:
                      int max_detections = 100,
                      float min_snr_db = 0.0f);
 
+    /**
+     * set_min_cluster_size - Set the minimum number of cells required to form a valid detection cluster
+     */
     virtual void set_min_cluster_size(int size) = 0;
+
+    /**
+     * set_max_cluster_extent - Set the maximum cluster size before it is split into sub-clusters
+     */
     virtual void set_max_cluster_extent(int extent) = 0;
+
+    /**
+     * set_range_resolution - Update the range resolution in meters for centroid conversion
+     */
     virtual void set_range_resolution(float res_m) = 0;
+
+    /**
+     * set_doppler_resolution - Update the Doppler resolution in Hz for centroid conversion
+     */
     virtual void set_doppler_resolution(float res_hz) = 0;
+
+    /**
+     * set_min_snr_db - Set the minimum SNR threshold in dB for valid detections
+     */
     virtual void set_min_snr_db(float snr_db) = 0;
 
-    // Get detections from last frame
+    /**
+     * get_detections - Retrieve the list of clustered detections from the last processed frame
+     */
     virtual std::vector<detection_t> get_detections() const = 0;
+
+    /**
+     * get_num_detections - Return the number of detections from the last processed frame
+     */
     virtual int get_num_detections() const = 0;
 };
 

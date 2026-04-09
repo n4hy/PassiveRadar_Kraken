@@ -98,17 +98,44 @@ public:
                      int n_sources = 1,
                      int n_snapshots = 16);
 
+    /**
+     * set_d_lambda - Update the element spacing in wavelengths
+     */
     virtual void set_d_lambda(float d_lambda) = 0;
+
+    /**
+     * set_scan_range - Set the minimum and maximum scan angles in degrees
+     */
     virtual void set_scan_range(float min_deg, float max_deg) = 0;
+
+    /**
+     * set_array_type - Switch between ULA (0) and UCA (1) array geometry
+     */
     virtual void set_array_type(int type) = 0;
+
+    /**
+     * set_algorithm - Select AoA algorithm: BARTLETT (0) or MUSIC (1)
+     */
     virtual void set_algorithm(int algorithm) = 0;
+
+    /**
+     * set_n_sources - Set the assumed number of signal sources for MUSIC algorithm
+     */
     virtual void set_n_sources(int n_sources) = 0;
+
+    /**
+     * set_n_snapshots - Set the snapshot buffer depth for MUSIC covariance estimation
+     */
     virtual void set_n_snapshots(int n_snapshots) = 0;
 
-    // Get AoA results from last frame
+    /**
+     * get_aoa_results - Retrieve AoA estimation results from the last processed frame
+     */
     virtual std::vector<aoa_result_t> get_aoa_results() const = 0;
 
-    // Get full angular spectrum for debugging
+    /**
+     * get_spectrum - Retrieve the full angular power spectrum for debugging or display
+     */
     virtual std::vector<float> get_spectrum() const = 0;
 };
 

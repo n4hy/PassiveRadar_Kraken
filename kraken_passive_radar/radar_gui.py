@@ -81,6 +81,10 @@ class RadarGUI:
     """
 
     def __init__(self, params: Optional[RadarGUIParams] = None):
+        """Initialize the integrated radar GUI with all display panels and controls.
+
+        Technique: tkinter main window with embedded matplotlib figures for each panel.
+        """
         self.params = params if params else RadarGUIParams()
 
         # Create main window
@@ -115,7 +119,10 @@ class RadarGUI:
         self.anim = None
 
     def _create_widgets(self):
-        """Create GUI widgets."""
+        """Create GUI widgets including display frames and control panel.
+
+        Technique: tkinter ttk LabelFrames in a 2x2 grid layout with bottom control bar.
+        """
         # Main container
         self.main_frame = ttk.Frame(self.root)
         self.main_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
@@ -148,7 +155,10 @@ class RadarGUI:
         self._create_control_panel()
 
     def _create_control_panel(self):
-        """Create control panel with buttons."""
+        """Create control panel with start/stop, reset, recalibrate buttons and dynamic range slider.
+
+        Technique: ttk widgets packed horizontally with status label on the right.
+        """
         self.control_frame = ttk.Frame(self.main_frame)
         self.control_frame.pack(fill=tk.X, pady=5)
 
@@ -196,7 +206,10 @@ class RadarGUI:
         self.status_label.pack(side=tk.RIGHT, padx=10)
 
     def _setup_figures(self):
-        """Setup matplotlib figures for each panel."""
+        """Setup matplotlib figures for each panel and embed them in tkinter frames.
+
+        Technique: FigureCanvasTkAgg embedding of matplotlib Figure objects.
+        """
         # Range-Doppler figure
         self.rd_fig = Figure(figsize=(6, 4), dpi=100)
         self.rd_ax = self.rd_fig.add_subplot(111)
@@ -232,7 +245,10 @@ class RadarGUI:
         self.metrics_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
     def _setup_rd_plot(self):
-        """Setup Range-Doppler plot."""
+        """Setup Range-Doppler plot with imshow heatmap and detection scatter overlay.
+
+        Technique: viridis colormap heatmap with colorbar and detection markers.
+        """
         self.rd_ax.set_xlabel('Range (km)')
         self.rd_ax.set_ylabel('Doppler (Hz)')
         self.rd_ax.set_title('Range-Doppler Map')
@@ -257,7 +273,10 @@ class RadarGUI:
         self.rd_ax.grid(True, alpha=0.3)
 
     def _setup_ppi_plot(self):
-        """Setup PPI plot."""
+        """Setup PPI polar plot with North-up orientation and track/detection scatters.
+
+        Technique: polar projection with theta-zero at North and clockwise direction.
+        """
         self.ppi_ax.set_theta_zero_location('N')
         self.ppi_ax.set_theta_direction(-1)
         self.ppi_ax.set_ylim(0, self.params.max_range_km)
@@ -277,7 +296,10 @@ class RadarGUI:
         self.ppi_ax.grid(True, alpha=0.3)
 
     def _setup_cal_plot(self):
-        """Setup calibration plot."""
+        """Setup calibration plot with SNR bars, phase scatter, and correlation bars.
+
+        Technique: three-panel gridspec with per-channel bar/scatter indicators.
+        """
         gs = self.cal_fig.add_gridspec(1, 3, wspace=0.3)
 
         # SNR bars
@@ -313,7 +335,10 @@ class RadarGUI:
         self.cal_corr_ax.axhline(0.95, color='green', linestyle='--', alpha=0.5)
 
     def _setup_metrics_plot(self):
-        """Setup metrics plot."""
+        """Setup metrics plot with latency bars and detection/track count text.
+
+        Technique: horizontal bar chart for latencies with threshold warning lines.
+        """
         gs = self.metrics_fig.add_gridspec(1, 2, wspace=0.3)
 
         # Latency bars
@@ -471,7 +496,10 @@ class RadarGUI:
         self.status_var.set("Status: Recalibrating...")
 
     def _on_dr_change(self, value):
-        """Handle dynamic range slider change."""
+        """Handle dynamic range slider change by updating heatmap color limits.
+
+        Technique: symmetric clim adjustment around zero.
+        """
         if not hasattr(self, 'rd_im') or self.rd_im is None:
             return
         dr = float(value)

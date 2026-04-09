@@ -12,7 +12,15 @@ from conftest import find_kernel_lib
 
 
 class TestDopplerCpp(unittest.TestCase):
+    """Test the C++ Doppler processing library via ctypes.
+
+    Technique: inject known Doppler frequencies and verify FFT shift placement.
+    """
     def setUp(self):
+        """Load the Doppler C++ library and configure ctypes function signatures.
+
+        Technique: ctypes CDLL loading with explicit argtypes/restype.
+        """
         lib_path = find_kernel_lib("doppler_processing")
 
         if not lib_path.exists():
@@ -38,6 +46,10 @@ class TestDopplerCpp(unittest.TestCase):
         self.lib.doppler_process.restype = None
 
     def test_doppler_processing(self):
+        """Verify DC and Nyquist Doppler signals land at correct bins after FFT shift.
+
+        Technique: DC signal in column 5 should peak at center; Nyquist in column 8 at edge.
+        """
         fft_len = 16
         doppler_len = 16 # small power of 2
 

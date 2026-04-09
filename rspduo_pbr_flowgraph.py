@@ -33,8 +33,18 @@ import threading
 
 
 class rspduo_pbr_flowgraph(gr.top_block, Qt.QWidget):
+    """GNU Radio Qt GUI flowgraph for RSPduo dual-tuner passive bistatic radar.
+
+    Technique: coherent dual-tuner RSPduo with ECA clutter cancellation,
+    FFT cross-correlation, and Doppler processing for range-Doppler output.
+    """
 
     def __init__(self):
+        """Initialize RSPduo passive radar flowgraph with Qt GUI and signal processing chain.
+
+        Technique: builds dual-channel (ref/surv) processing with DC blocking,
+        LPF/decimation, AGC, ECA, cross-correlation, and Doppler FFT.
+        """
         gr.top_block.__init__(self, "RSPduo Passive Radar - Range-Doppler", catch_exceptions=True)
         Qt.QWidget.__init__(self)
         self.setWindowTitle("RSPduo Passive Radar - Range-Doppler")
@@ -271,6 +281,10 @@ class rspduo_pbr_flowgraph(gr.top_block, Qt.QWidget):
 
 
     def closeEvent(self, event):
+        """Handle Qt window close by saving geometry and stopping the flowgraph.
+
+        Technique: persist window position via QSettings, then stop GNU Radio.
+        """
         self.settings = Qt.QSettings("gnuradio/flowgraphs", "rspduo_pbr_flowgraph")
         self.settings.setValue("geometry", self.saveGeometry())
         self.stop()
@@ -279,17 +293,27 @@ class rspduo_pbr_flowgraph(gr.top_block, Qt.QWidget):
         event.accept()
 
     def get_signal_bw(self):
+        """Return the current signal bandwidth in Hz."""
         return self.signal_bw
 
     def set_signal_bw(self, signal_bw):
+        """Update signal bandwidth, recomputing decimation and LPF taps.
+
+        Technique: recalculates Hamming-windowed FIR low-pass filter coefficients.
+        """
         self.signal_bw = signal_bw
         self.set_decimation(int(self.samp_rate / self.signal_bw))
         self.set_lpf_taps(firdes.low_pass(1.0, self.samp_rate, self.signal_bw/2, self.signal_bw/10, window.WIN_HAMMING))
 
     def get_samp_rate(self):
+        """Return the current sample rate in Hz."""
         return self.samp_rate
 
     def set_samp_rate(self, samp_rate):
+        """Update sample rate and propagate to all dependent blocks.
+
+        Technique: cascading update of decimation, LPF, and GUI frequency ranges.
+        """
         self.samp_rate = samp_rate
         self.set_decimated_rate(int(self.samp_rate / self.decimation))
         self.set_decimation(int(self.samp_rate / self.signal_bw))
@@ -299,85 +323,145 @@ class rspduo_pbr_flowgraph(gr.top_block, Qt.QWidget):
         self.rspduo_src.set_sample_rate(self.samp_rate)
 
     def get_num_doppler_bins(self):
+        """Return the number of Doppler bins."""
         return self.num_doppler_bins
 
     def set_num_doppler_bins(self, num_doppler_bins):
+        """Update Doppler bin count and propagate to RD size and processor.
+
+        Technique: recalculates range-Doppler map dimensions.
+        """
         self.num_doppler_bins = num_doppler_bins
         self.set_rd_size(self.num_doppler_bins * self.fft_size)
         self.doppler_proc.set_num_doppler_bins(self.num_doppler_bins)
 
     def get_fft_size(self):
+        """Return the FFT size for cross-correlation."""
         return self.fft_size
 
     def set_fft_size(self, fft_size):
+        """Update FFT size and recompute range-Doppler map dimensions.
+
+        Technique: passthrough setter updating rd_size.
+        """
         self.fft_size = fft_size
         self.set_rd_size(self.num_doppler_bins * self.fft_size)
 
     def get_decimation(self):
+        """Return the current decimation factor."""
         return self.decimation
 
     def set_decimation(self, decimation):
+        """Update decimation factor and recompute decimated rate.
+
+        Technique: integer rate change for downstream processing.
+        """
         self.decimation = decimation
         self.set_decimated_rate(int(self.samp_rate / self.decimation))
 
     def get_rf_gain_reduction(self):
+        """Return the current RF gain reduction in dB."""
         return self.rf_gain_reduction
 
     def set_rf_gain_reduction(self, rf_gain_reduction):
+        """Update RF gain reduction on the RSPduo hardware.
+
+        Technique: delegates to RSPduo source set_rf_gain.
+        """
         self.rf_gain_reduction = rf_gain_reduction
         self.rspduo_src.set_rf_gain(self.rf_gain_reduction)
 
     def get_rd_size(self):
+        """Return the range-Doppler map total size (doppler_bins * fft_size)."""
         return self.rd_size
 
     def set_rd_size(self, rd_size):
+        """Update the stored range-Doppler map size.
+
+        Technique: passthrough setter for derived parameter.
+        """
         self.rd_size = rd_size
 
     def get_lpf_taps(self):
+        """Return the current low-pass filter tap coefficients."""
         return self.lpf_taps
 
     def set_lpf_taps(self, lpf_taps):
+        """Update LPF taps on both reference and surveillance filter blocks.
+
+        Technique: propagates new FIR coefficients to freq_xlating_fir_filter blocks.
+        """
         self.lpf_taps = lpf_taps
         self.freq_xlating_fir_ref.set_taps(self.lpf_taps)
         self.freq_xlating_fir_surv.set_taps(self.lpf_taps)
 
     def get_if_gain(self):
+        """Return the current IF gain in dB."""
         return self.if_gain
 
     def set_if_gain(self, if_gain):
+        """Update the RSPduo IF gain setting.
+
+        Technique: delegates to RSPduo source set_if_gain.
+        """
         self.if_gain = if_gain
         self.rspduo_src.set_if_gain(self.if_gain)
 
     def get_eca_taps(self):
+        """Return the number of ECA canceller filter taps."""
         return self.eca_taps
 
     def set_eca_taps(self, eca_taps):
+        """Update ECA canceller tap count at runtime.
+
+        Technique: delegates to C++ ECA block's set_num_taps.
+        """
         self.eca_taps = eca_taps
         self.eca_canceller.set_num_taps(self.eca_taps)
 
     def get_eca_reg(self):
+        """Return the ECA regularization factor."""
         return self.eca_reg
 
     def set_eca_reg(self, eca_reg):
+        """Update the ECA regularization factor at runtime.
+
+        Technique: Tikhonov regularization parameter for least-squares ECA filter.
+        """
         self.eca_reg = eca_reg
         self.eca_canceller.set_reg_factor(self.eca_reg)
 
     def get_decimated_rate(self):
+        """Return the effective sample rate after decimation."""
         return self.decimated_rate
 
     def set_decimated_rate(self, decimated_rate):
+        """Update the stored decimated rate value.
+
+        Technique: passthrough setter for derived parameter.
+        """
         self.decimated_rate = decimated_rate
 
     def get_cpi_samples(self):
+        """Return the coherent processing interval length in samples."""
         return self.cpi_samples
 
     def set_cpi_samples(self, cpi_samples):
+        """Update the CPI length in samples.
+
+        Technique: passthrough setter for range bin count.
+        """
         self.cpi_samples = cpi_samples
 
     def get_center_freq(self):
+        """Return the current center frequency in Hz."""
         return self.center_freq
 
     def set_center_freq(self, center_freq):
+        """Retune the RSPduo to a new center frequency.
+
+        Technique: delegates to RSPduo source set_frequency.
+        """
         self.center_freq = center_freq
         self.rspduo_src.set_frequency(self.center_freq)
 
@@ -385,7 +469,10 @@ class rspduo_pbr_flowgraph(gr.top_block, Qt.QWidget):
 
 
 def main(top_block_cls=rspduo_pbr_flowgraph, options=None):
+    """Launch the RSPduo passive radar Qt GUI application.
 
+    Technique: Qt event loop with signal handlers for graceful shutdown.
+    """
     qapp = Qt.QApplication(sys.argv)
 
     tb = top_block_cls()
@@ -394,6 +481,10 @@ def main(top_block_cls=rspduo_pbr_flowgraph, options=None):
     tb.show()
 
     def sig_handler(sig=None, frame=None):
+        """Handle SIGINT/SIGTERM by stopping flowgraph and quitting Qt.
+
+        Technique: graceful shutdown via stop/wait then application exit.
+        """
         tb.stop()
         tb.wait()
 

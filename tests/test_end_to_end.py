@@ -11,7 +11,12 @@ from conftest import find_kernel_lib
 
 # 1. Mock GNU Radio
 class MockBlock:
+    """Mock GNU Radio block base class for offline pipeline testing.
+
+    Technique: stub all block lifecycle methods to enable unit testing without GNU Radio.
+    """
     def __init__(self, name, in_sig, out_sig):
+        """Initialize mock block with name and I/O signatures."""
         self.name = name
         self.in_sig = in_sig
         self.out_sig = out_sig
@@ -19,24 +24,37 @@ class MockBlock:
         self.history = 0
 
     def set_output_multiple(self, mult):
+        """Stub for setting output item granularity."""
         self.output_multiple = mult
 
     def consume_each(self, n):
+        """Stub for consuming n items on all input ports."""
         self.consumed.append(n)
 
     def consume(self, port, n):
+        """Stub for consuming n items on a specific input port."""
         self.consumed.append((port, n))
 
     def set_history(self, h):
+        """Stub for setting block history (look-back samples)."""
         self.history = h
 
     def forecast(self, nout, nin_req):
+        """Stub for declaring input requirements for a given output count."""
         pass
 
 class MockSyncBlock(MockBlock):
+    """Mock GNU Radio sync_block for offline testing.
+
+    Technique: inherits MockBlock stubs with no additional behavior.
+    """
     pass
 
 class MockBasicBlock(MockBlock):
+    """Mock GNU Radio basic_block for offline testing.
+
+    Technique: inherits MockBlock stubs with no additional behavior.
+    """
     pass
 
 gnuradio = MagicMock()
@@ -71,7 +89,15 @@ from kraken_passive_radar.custom_blocks import ConditioningBlock, CafBlock, Back
 from kraken_passive_radar.doppler_processing import DopplerProcessingBlock
 
 class TestEndToEndOffline(unittest.TestCase):
+    """End-to-end offline test of the full passive radar processing pipeline.
+
+    Technique: manually chain Conditioning, ECA, CAF, Doppler, and Backend blocks.
+    """
     def test_manual_pipeline(self):
+        """Verify full pipeline detects a target at expected range-Doppler bin.
+
+        Technique: synthesize ref+surv with known target, run all blocks, check peak and CFAR.
+        """
         print("SETTING UP MANUAL PIPELINE TEST")
 
         cpi_len = 4096

@@ -230,7 +230,10 @@ class TestGPUCAFCorrectness:
 
 
 class TestGPUCAFPerformance:
-    """Test GPU CAF throughput and speedup."""
+    """Test GPU CAF throughput and speedup.
+
+    Technique: measure wall-clock time over multiple iterations with warmup.
+    """
 
     def test_gpu_throughput(self, gpu_caf_lib, caf_params, synthetic_signal):
         """Measure GPU CAF processing time."""
@@ -377,7 +380,10 @@ class TestGPUCAFPerformance:
 
 
 class TestGPUCAFRobustness:
-    """Test GPU CAF error handling and edge cases."""
+    """Test GPU CAF error handling and edge cases.
+
+    Technique: exercise boundary conditions and NULL handles to verify crash safety.
+    """
 
     def test_null_handle(self, gpu_caf_lib):
         """Test graceful handling of NULL processor handle."""

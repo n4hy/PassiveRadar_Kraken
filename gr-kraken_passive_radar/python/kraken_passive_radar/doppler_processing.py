@@ -21,6 +21,12 @@ class DopplerProcessingBlock(gr.basic_block):
     """
 
     def __init__(self, fft_len=1024, doppler_len=128):
+        """Initialize the Doppler processing block with FFT and Doppler dimensions.
+
+        Technique: Loads a C++ shared library that accumulates doppler_len input
+        vectors of fft_len samples, applies windowing, FFT across the slow-time
+        dimension, and log-magnitude conversion to produce a range-Doppler map.
+        """
         warnings.warn(
             "DopplerProcessingBlock is deprecated. Use "
             "gnuradio.kraken_passive_radar.doppler_processor (C++ block) instead.",
@@ -64,6 +70,11 @@ class DopplerProcessingBlock(gr.basic_block):
         self.log_interval = 2.0 # Seconds
 
     def _load_library(self):
+        """Load the Doppler processing C++ shared library.
+
+        Technique: Searches the module directory and system library path for
+        libkraken_doppler_processing.so.
+        """
         # Helper to load the shared library
         base_dir = os.path.dirname(__file__)
         candidates = [
@@ -81,6 +92,11 @@ class DopplerProcessingBlock(gr.basic_block):
         raise OSError(f"Could not load Doppler library. Tried {candidates}. Last error: {last_err}")
 
     def forecast(self, noutput_items, ninput_items_required):
+        """Declare input requirements: each output needs doppler_len input vectors.
+
+        Technique: Acts as a decimator, requiring doppler_len input vectors
+        to produce one output range-Doppler image.
+        """
         # We act as a decimator: 1 output requires 'doppler_len' input vectors
         req = noutput_items * self.doppler_len
 
@@ -90,6 +106,12 @@ class DopplerProcessingBlock(gr.basic_block):
             pass
 
     def general_work(self, input_items, output_items):
+        """Process accumulated range vectors into range-Doppler images.
+
+        Technique: Consumes doppler_len input vectors per output, passing them
+        to the C++ doppler_process kernel which performs slow-time windowing,
+        FFT, and log-magnitude conversion. Logs throughput metrics periodically.
+        """
         in0 = input_items[0]
         out0 = output_items[0]
 
@@ -137,5 +159,6 @@ class DopplerProcessingBlock(gr.basic_block):
         return num_blocks
 
     def __del__(self):
+        """Release the C++ Doppler processor state object."""
         if getattr(self, "_state", None) and getattr(self, "_lib", None):
             self._lib.doppler_destroy(self._state)

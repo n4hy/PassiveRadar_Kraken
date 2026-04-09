@@ -123,6 +123,10 @@ class phase_corrector(gr.sync_block):
     and n counts samples since the last calibration.
     """
     def __init__(self, sample_rate=250000):
+        """Initialize phase corrector with given sample rate.
+
+        Technique: NCO-based per-sample phase rotation using exp(-j*phi) phasors.
+        """
         gr.sync_block.__init__(
             self, name="Phase Corrector",
             in_sig=[np.complex64],
@@ -147,6 +151,10 @@ class phase_corrector(gr.sync_block):
             self._sample_count = 0
 
     def work(self, input_items, output_items):
+        """Apply phase and drift correction to each sample block.
+
+        Technique: cumprod NCO for drift compensation, single phasor multiply for static correction.
+        """
         n = len(input_items[0])
         with self._lock:
             phi0 = self._phi0
@@ -171,9 +179,19 @@ class phase_corrector(gr.sync_block):
 
 
 class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
+    """GNU Radio Qt GUI flowgraph for KrakenSDR/RSPduo passive bistatic radar.
+
+    Technique: 5-channel phase-calibrated ECA clutter cancellation with
+    FFT cross-correlation range-Doppler processing and matplotlib display.
+    """
 
     def __init__(self, source_type='kraken',
                  rspduo_if_gain=40.0, rspduo_rf_gain=0.0):
+        """Initialize the passive radar flowgraph with source selection and Qt GUI.
+
+        Technique: builds signal chain with DC blocking, LPF/decimation, AGC,
+        ECA cancellation, FFT cross-correlation, and Doppler processing.
+        """
         source_label = "RSPduo" if source_type == 'rspduo' else "KrakenSDR"
         title = f"{source_label} Passive Radar — Range-Doppler"
         gr.top_block.__init__(self, title, catch_exceptions=True)
@@ -757,6 +775,10 @@ class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
             self.phase_canvas.draw_idle()
 
     def closeEvent(self, event):
+        """Handle Qt window close by stopping calibration and flowgraph.
+
+        Technique: signal stop events to calibration thread, save window geometry.
+        """
         self._rd_timer.stop()
         self._cal_stop.set()
         self._cal_wake.set()  # unblock cal thread so it exits
@@ -767,17 +789,27 @@ class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
         event.accept()
 
     def get_signal_bw(self):
+        """Return the current signal bandwidth in Hz."""
         return self.signal_bw
 
     def set_signal_bw(self, signal_bw):
+        """Update signal bandwidth, recomputing decimation and LPF taps.
+
+        Technique: recalculates Hamming-windowed FIR low-pass filter coefficients.
+        """
         self.signal_bw = signal_bw
         self.set_decimation(int(self.samp_rate / self.signal_bw))
         self.set_lpf_taps(firdes.low_pass(1.0, self.samp_rate, self.signal_bw/2, self.signal_bw/10, window.WIN_HAMMING))
 
     def get_samp_rate(self):
+        """Return the current sample rate in Hz."""
         return self.samp_rate
 
     def set_samp_rate(self, samp_rate):
+        """Update sample rate and propagate to dependent blocks and filters.
+
+        Technique: cascading update of decimation, LPF taps, and GUI frequency ranges.
+        """
         self.samp_rate = samp_rate
         self.set_decimated_rate(int(self.samp_rate / self.decimation))
         self.set_decimation(int(self.samp_rate / self.signal_bw))
@@ -787,16 +819,26 @@ class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
         self.qtgui_freq_sink_surv.set_frequency_range(0, self.samp_rate)
 
     def get_decimation(self):
+        """Return the current decimation factor."""
         return self.decimation
 
     def set_decimation(self, decimation):
+        """Update decimation factor and recompute decimated rate.
+
+        Technique: integer rate change applied to FIR filter blocks.
+        """
         self.decimation = decimation
         self.set_decimated_rate(int(self.samp_rate / self.decimation))
 
     def get_rf_gain(self):
+        """Return the current RF gain setting in dB."""
         return self.rf_gain
 
     def set_rf_gain(self, rf_gain):
+        """Update RF gain on the SDR source hardware.
+
+        Technique: delegates to source-specific gain setter (KrakenSDR or RSPduo).
+        """
         self.rf_gain = rf_gain
         if self.source_type == 'rspduo':
             self.sdr_src.set_rf_gain(self.rf_gain)
@@ -804,55 +846,94 @@ class kraken_pbr_flowgraph(gr.top_block, Qt.QWidget):
             self.sdr_src.set_gain(self.rf_gain)
 
     def get_lpf_taps(self):
+        """Return the current low-pass filter tap coefficients."""
         return self.lpf_taps
 
     def set_lpf_taps(self, lpf_taps):
+        """Update LPF taps on all freq_xlating_fir_filter blocks.
+
+        Technique: propagates new FIR coefficients to reference and surveillance filters.
+        """
         self.lpf_taps = lpf_taps
         self.freq_xlating_fir_ref.set_taps(self.lpf_taps)
         for fir in self.fir_filters:
             fir.set_taps(self.lpf_taps)
 
     def get_fft_size(self):
+        """Return the current FFT size for cross-correlation."""
         return self.fft_size
 
     def set_fft_size(self, fft_size):
+        """Update the FFT size used in range processing.
+
+        Technique: stored for range-Doppler map dimensioning.
+        """
         self.fft_size = fft_size
 
     def get_eca_taps(self):
+        """Return the number of ECA clutter canceller filter taps."""
         return self.eca_taps
 
     def set_eca_taps(self, eca_taps):
+        """Update the ECA canceller tap count at runtime.
+
+        Technique: delegates to C++ ECA block's set_num_taps method.
+        """
         self.eca_taps = eca_taps
         self.eca_canceller.set_num_taps(self.eca_taps)
 
     def get_eca_reg(self):
+        """Return the ECA regularization factor."""
         return self.eca_reg
 
     def set_eca_reg(self, eca_reg):
+        """Update the ECA regularization factor at runtime.
+
+        Technique: Tikhonov regularization parameter for least-squares ECA filter.
+        """
         self.eca_reg = eca_reg
         self.eca_canceller.set_reg_factor(self.eca_reg)
 
     def get_decimated_rate(self):
+        """Return the effective sample rate after decimation."""
         return self.decimated_rate
 
     def set_decimated_rate(self, decimated_rate):
+        """Update the stored decimated rate value.
+
+        Technique: passthrough setter for derived parameter.
+        """
         self.decimated_rate = decimated_rate
 
     def get_cpi_samples(self):
+        """Return the coherent processing interval length in samples."""
         return self.cpi_samples
 
     def set_cpi_samples(self, cpi_samples):
+        """Update the CPI length in samples.
+
+        Technique: passthrough setter for range bin count.
+        """
         self.cpi_samples = cpi_samples
 
     def get_center_freq(self):
+        """Return the current center frequency in Hz."""
         return self.center_freq
 
     def set_center_freq(self, center_freq):
+        """Retune the SDR source to a new center frequency.
+
+        Technique: delegates to source hardware via set_frequency.
+        """
         self.center_freq = center_freq
         self.sdr_src.set_frequency(self.center_freq)
 
 
 def main(top_block_cls=kraken_pbr_flowgraph, options=None):
+    """Launch the KrakenSDR/RSPduo passive radar Qt GUI application.
+
+    Technique: Qt event loop with background calibration thread for KrakenSDR mode.
+    """
     parser = ArgumentParser(description="KrakenSDR/RSPduo Passive Radar GUI")
     parser.add_argument("--source", choices=['kraken', 'rspduo'], default='kraken',
                         help="SDR source: kraken (5-ch KrakenSDR) or rspduo (2-ch SDRplay RSPduo)")
@@ -881,6 +962,10 @@ def main(top_block_cls=kraken_pbr_flowgraph, options=None):
         print("RSPduo mode: Phase calibration skipped (coherent clock)")
 
     def sig_handler(sig=None, frame=None):
+        """Handle SIGINT/SIGTERM by stopping calibration thread, flowgraph, and Qt.
+
+        Technique: signal stop events, then graceful GNU Radio and Qt shutdown.
+        """
         tb._cal_stop.set()
         tb._cal_wake.set()
         tb.stop()

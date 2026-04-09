@@ -8,6 +8,14 @@
 
 using Complex = std::complex<float>;
 
+/**
+ * Conditioning - Automatic Gain Control (AGC) for IQ signal normalization
+ *
+ * Technique: Error-feedback AGC that adjusts gain to maintain constant output
+ * amplitude. Uses slow gain adaptation with decay-only mode during silence
+ * to prevent gain spikes. Optionally uses NEON-optimized batch magnitude
+ * computation via OptMathKernels.
+ */
 class Conditioning {
     float gain;
     float rate;
@@ -15,8 +23,21 @@ class Conditioning {
     std::vector<float> mag_buf;  // Pre-allocated magnitude buffer
     std::vector<float> re_buf, im_buf;  // Deinterleave buffers
 public:
+    /**
+     * Conditioning - Construct AGC with specified adaptation rate
+     *
+     * Technique: Initializes gain to unity with configurable convergence rate alpha.
+     */
     Conditioning(float alpha=1e-5f) : gain(1.0f), rate(alpha), target(1.0f) {}
 
+    /**
+     * process - Apply AGC to a block of complex IQ samples in-place
+     *
+     * Technique: Computes per-sample magnitude (NEON batch or scalar), updates
+     * gain via error = target - |x|*gain with rate-limited adaptation.
+     * Implements decay-only mode when signal is below threshold to prevent
+     * gain spikes on signal return. Gain is clamped to [-60dB, +60dB] range.
+     */
     void process(Complex* in, int n) {
 #ifdef HAVE_OPTMATHKERNELS
         // Batch-compute all magnitudes using NEON
@@ -72,8 +93,16 @@ public:
 };
 
 extern "C" {
+    /** cond_create - C API: Allocate AGC instance with given adaptation rate */
     void* cond_create(float rate) { return new Conditioning(rate); }
+    /** cond_destroy - C API: Free AGC instance */
     void cond_destroy(void* p) { if (p) delete static_cast<Conditioning*>(p); }
+    /**
+     * cond_process - C API: Apply AGC to interleaved complex float buffer in-place
+     *
+     * Technique: Delegates to Conditioning::process after reinterpreting
+     * the float buffer as complex samples.
+     */
     void cond_process(void* p, float* buf, int n) {
         if (!p || !buf || n <= 0) return;
         static_cast<Conditioning*>(p)->process(reinterpret_cast<Complex*>(buf), n);

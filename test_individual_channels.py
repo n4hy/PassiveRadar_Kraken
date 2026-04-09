@@ -4,6 +4,10 @@ import osmosdr
 import time
 
 def test_single_serial(serial):
+    """Test initializing and briefly holding open a single RTL-SDR device by serial number.
+
+    Technique: osmosdr source creation with serial-specific device string.
+    """
     print(f"\n--- Testing Single Device Serial {serial} ---")
     try:
         # Try to open just ONE device by serial
@@ -27,6 +31,10 @@ def test_single_serial(serial):
         return False
 
 def main():
+    """Test each KrakenSDR dongle individually to identify hardware failures.
+
+    Technique: sequential single-device initialization with per-serial status tracking.
+    """
     serials = [1000, 1001, 1002, 1003, 1004]
     print(f"Testing individual initialization of serials: {serials}")
 

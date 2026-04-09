@@ -29,6 +29,12 @@ class EcaBClutterCanceller(gr.sync_block):
     """
 
     def __init__(self, num_taps=16, num_surv_channels=1, lib_path=""):
+        """Initialize the ECA-B clutter canceller with filter length and channel count.
+
+        Technique: Creates per-channel C++ ECA-B (Extensive Cancellation Algorithm -
+        Batches) state objects that adaptively estimate and subtract direct-path
+        and multipath clutter from surveillance channels using the reference signal.
+        """
         warnings.warn(
             "EcaBClutterCanceller is deprecated. Use "
             "gnuradio.kraken_passive_radar.eca_canceller (C++ VOLK block) instead.",
@@ -88,6 +94,11 @@ class EcaBClutterCanceller(gr.sync_block):
         self.log_interval = LOGGING_INTERVAL_SEC
 
     def _load_library(self, lib_path: str):
+        """Load the ECA-B clutter cancellation C++ shared library.
+
+        Technique: Searches user-specified path, module directory, and system
+        library path for the .so file, with diagnostic output on failure.
+        """
         candidates = []
         if lib_path:
             candidates.append(lib_path)
@@ -121,6 +132,12 @@ class EcaBClutterCanceller(gr.sync_block):
         )
 
     def work(self, input_items, output_items):
+        """Process reference and surveillance streams through the ECA-B canceller.
+
+        Technique: Splits input into cache-friendly chunks and calls the C++
+        eca_b_process kernel per chunk per surveillance channel. Logs throughput
+        metrics (MSPS, processing time, CPU load estimate) periodically.
+        """
         try:
             ref = input_items[0]
             n = len(ref)
@@ -190,6 +207,7 @@ class EcaBClutterCanceller(gr.sync_block):
             return 0
 
     def __del__(self):
+        """Release all per-channel C++ ECA-B state objects."""
         try:
             if getattr(self, "_states", None) and getattr(self, "_lib", None):
                 for state in self._states:

@@ -57,15 +57,27 @@ def _get_lib():
 
 
 def _check(ret, msg=""):
+    """Raise RuntimeError if librtlsdr return code indicates failure.
+
+    Technique: simple non-zero return code guard pattern.
+    """
     if ret != 0:
         raise RuntimeError(f"librtlsdr error {ret}: {msg}")
 
 
 def get_device_count():
+    """Return the number of RTL-SDR devices detected by librtlsdr.
+
+    Technique: direct ctypes call to rtlsdr_get_device_count.
+    """
     return _get_lib().rtlsdr_get_device_count()
 
 
 def get_index_by_serial(serial: str) -> int:
+    """Look up RTL-SDR device index by serial number string.
+
+    Technique: ctypes call to rtlsdr_get_index_by_serial.
+    """
     idx = _get_lib().rtlsdr_get_index_by_serial(serial.encode())
     if idx < 0:
         raise RuntimeError(f"Device with serial {serial} not found")
@@ -73,6 +85,10 @@ def get_index_by_serial(serial: str) -> int:
 
 
 def open_device(index: int):
+    """Open an RTL-SDR device by index and return its handle.
+
+    Technique: ctypes call to rtlsdr_open with pointer-to-pointer pattern.
+    """
     dev = ctypes.c_void_p()
     _check(_get_lib().rtlsdr_open(ctypes.byref(dev), ctypes.c_uint32(index)),
            f"open device {index}")
@@ -80,10 +96,18 @@ def open_device(index: int):
 
 
 def close_device(dev):
+    """Close an open RTL-SDR device handle.
+
+    Technique: ctypes call to rtlsdr_close.
+    """
     _get_lib().rtlsdr_close(dev)
 
 
 def configure_device(dev, freq_hz: int, sample_rate: int, gain_tenth_db: int):
+    """Configure RTL-SDR device frequency, sample rate, and manual gain.
+
+    Technique: sequential ctypes calls to set center freq, sample rate, and tuner gain.
+    """
     lib = _get_lib()
     _check(lib.rtlsdr_set_center_freq(dev, ctypes.c_uint32(freq_hz)),
            "set_center_freq")
@@ -96,11 +120,19 @@ def configure_device(dev, freq_hz: int, sample_rate: int, gain_tenth_db: int):
 
 
 def set_noise_source(dev, gpio: int, enable: bool):
+    """Enable or disable the KrakenSDR noise source via GPIO bias tee control.
+
+    Technique: ctypes call to rtlsdr_set_bias_tee_gpio.
+    """
     _check(_get_lib().rtlsdr_set_bias_tee_gpio(dev, ctypes.c_int(gpio), ctypes.c_int(int(enable))),
            f"set_bias_tee_gpio({gpio}, {enable})")
 
 
 def read_samples(dev, num_samples: int) -> np.ndarray:
+    """Capture IQ samples from RTL-SDR and return as normalized complex64 array.
+
+    Technique: synchronous USB read with 8-bit unsigned to float32 IQ conversion.
+    """
     lib = _get_lib()
     num_bytes = num_samples * 2
     buf = (ctypes.c_uint8 * num_bytes)()
@@ -294,6 +326,10 @@ class KrakenDevices:
     """Context manager for opening/closing all 5 KrakenSDR devices."""
 
     def __init__(self, freq_hz, sample_rate, gain_db):
+        """Initialize device manager with RF parameters for all 5 KrakenSDR dongles.
+
+        Technique: stores configuration for batch open/configure on context entry.
+        """
         self.freq_hz = freq_hz
         self.sample_rate = sample_rate
         self.gain_tenth = int(gain_db * 10)
@@ -301,6 +337,10 @@ class KrakenDevices:
         self.ctrl_dev = None
 
     def __enter__(self):
+        """Open and configure all 5 KrakenSDR devices by serial number.
+
+        Technique: sequential device open with serial-to-index lookup.
+        """
         for serial in SERIALS:
             idx = get_index_by_serial(serial)
             dev = open_device(idx)
@@ -311,6 +351,10 @@ class KrakenDevices:
         return self
 
     def __exit__(self, *args):
+        """Close all devices and disable noise source on exit.
+
+        Technique: graceful cleanup with exception suppression per device.
+        """
         for serial, dev in self.devices:
             try:
                 if serial == NOISE_CTRL_SERIAL:
@@ -321,6 +365,10 @@ class KrakenDevices:
         self.devices = []
 
     def noise_on(self, settle_sec=0.3):
+        """Enable noise source, wait for settling, and flush stale samples.
+
+        Technique: GPIO toggle followed by timed settle and buffer flush.
+        """
         set_noise_source(self.ctrl_dev, NOISE_GPIO, True)
         time.sleep(settle_sec)
         # Flush stale samples
@@ -328,6 +376,10 @@ class KrakenDevices:
             read_samples(dev, 16384)
 
     def noise_off(self):
+        """Disable the internal noise source.
+
+        Technique: GPIO toggle to reconnect antennas via silicon switch.
+        """
         set_noise_source(self.ctrl_dev, NOISE_GPIO, False)
 
     def capture_all(self, n_samples):
@@ -343,6 +395,10 @@ class KrakenDevices:
         lib = _get_lib()  # Get lib once before spawning threads
 
         def capture_one(serial, dev):
+            """Capture samples from one device with barrier synchronization.
+
+            Technique: threading.Barrier ensures all USB reads start simultaneously.
+            """
             try:
                 _check(lib.rtlsdr_reset_buffer(dev), "reset_buffer")
                 barrier.wait(timeout=5.0)
@@ -431,6 +487,10 @@ def calibrate(freq_hz: int = 103700000,
 
         # Process both snapshots
         def process_snapshot(cal_data):
+            """Compute per-channel phase offsets from a calibration data snapshot.
+
+            Technique: delay estimation, sample alignment, and frequency-compensated phase estimation.
+            """
             reference = cal_data[SERIALS[0]]
             phases = np.zeros(5, dtype=np.float64)
             corrs = np.zeros(5, dtype=np.float64)

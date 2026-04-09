@@ -83,6 +83,10 @@ class MetricsDashboard:
     """
 
     def __init__(self, params: Optional[MetricsDashboardParams] = None):
+        """Initialize metrics dashboard with display parameters and history buffers.
+
+        Technique: deque-based history for sparkline rendering with configurable length.
+        """
         self.params = params if params else MetricsDashboardParams()
 
         # Data storage (thread-safe)
@@ -121,7 +125,10 @@ class MetricsDashboard:
         self.color_bg = '#1a1a2e'
 
     def _setup_plot(self):
-        """Initialize the matplotlib figure."""
+        """Initialize the matplotlib figure with latency, counts, resources, backend, and timing panels.
+
+        Technique: 4x4 gridspec on dark background with color-coded status indicators.
+        """
         self.fig = plt.figure(figsize=(16, 9), facecolor=self.color_bg)
         self.fig.canvas.manager.set_window_title('Passive Radar Metrics Dashboard')
 
@@ -156,7 +163,10 @@ class MetricsDashboard:
                           fontweight='bold', color='white')
 
     def _setup_latency_display(self):
-        """Setup latency breakdown with sparklines."""
+        """Setup latency breakdown with horizontal bars and threshold lines.
+
+        Technique: horizontal bar chart with per-stage latency values and warning/critical thresholds.
+        """
         ax = self.axes['latency']
         ax.set_xlim(0, 100)
         ax.set_ylim(-0.5, 5.5)
@@ -195,7 +205,10 @@ class MetricsDashboard:
             spine.set_color('white')
 
     def _setup_counts_display(self):
-        """Setup detection/track count display."""
+        """Setup detection/track count display with large text labels.
+
+        Technique: text annotations on hidden axes for numeric readout.
+        """
         ax = self.axes['counts']
         ax.axis('off')
         ax.set_title('Detection & Tracking', color='white')
@@ -215,7 +228,10 @@ class MetricsDashboard:
         )
 
     def _setup_detection_sparkline(self):
-        """Setup detection count sparkline."""
+        """Setup detection and track count sparkline time series.
+
+        Technique: dual line plot with auto-scaling Y axis from deque history.
+        """
         ax = self.axes['det_spark']
         ax.set_xlim(0, self.params.history_length)
         ax.set_ylim(0, 20)
@@ -236,7 +252,10 @@ class MetricsDashboard:
             spine.set_color('white')
 
     def _setup_resources_display(self):
-        """Setup system resources display."""
+        """Setup system resources display with CPU and memory usage bars.
+
+        Technique: horizontal bar chart with 70%/90% threshold lines for warning/critical.
+        """
         ax = self.axes['resources']
         ax.set_xlim(0, 100)
         ax.set_ylim(-0.5, 1.5)
@@ -268,7 +287,10 @@ class MetricsDashboard:
             spine.set_color('white')
 
     def _setup_backend_display(self):
-        """Setup backend acceleration status display."""
+        """Setup backend acceleration status display with NEON and Vulkan indicators.
+
+        Technique: Circle patches as LED-style status indicators with text labels.
+        """
         ax = self.axes['backend']
         ax.axis('off')
         ax.set_title('Acceleration Backend', color='white')
@@ -294,7 +316,10 @@ class MetricsDashboard:
         )
 
     def _setup_timing_display(self):
-        """Setup frame timing display."""
+        """Setup frame timing display with period, count, drop, and sample rate indicators.
+
+        Technique: text annotations and Circle patch for sample rate lock status.
+        """
         ax = self.axes['timing']
         ax.axis('off')
         ax.set_title('Frame Timing', color='white')
@@ -327,7 +352,10 @@ class MetricsDashboard:
                 fontsize=9, color='white', va='center')
 
     def _get_latency_color(self, latency_ms: float) -> str:
-        """Get color based on latency value."""
+        """Get color based on latency value using warning and critical thresholds.
+
+        Technique: threshold comparison returning green, yellow, or red hex color.
+        """
         if latency_ms >= self.params.latency_critical_ms:
             return self.color_bad
         elif latency_ms >= self.params.latency_warning_ms:
@@ -336,7 +364,10 @@ class MetricsDashboard:
             return self.color_good
 
     def _get_resource_color(self, percent: float) -> str:
-        """Get color based on resource usage."""
+        """Get color based on resource usage percentage.
+
+        Technique: threshold comparison at 70% and 90% returning green, yellow, or red.
+        """
         if percent >= 90:
             return self.color_bad
         elif percent >= 70:

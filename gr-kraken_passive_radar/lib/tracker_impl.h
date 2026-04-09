@@ -36,6 +36,12 @@ using MeasVec  = Eigen::Matrix<float, NY, 1>;
 using MeasMat  = Eigen::Matrix<float, NY, NY>;
 using GainMat  = Eigen::Matrix<float, NX, NY>;
 
+/**
+ * srukf_track_t - Internal track state for the Square Root UKF tracker
+ *
+ * Stores the state estimate, sqrt covariance factor, track lifecycle
+ * metadata, RTS smoother history, and adaptive noise parameters.
+ */
 struct srukf_track_t {
     int id;
     track_status_t status;
@@ -57,6 +63,14 @@ struct srukf_track_t {
     float adaptive_q_scale;                // Process noise scaling factor
 };
 
+/**
+ * tracker_impl - Implementation of the multi-target SRUKF tracker block
+ *
+ * Technique: Square Root Unscented Kalman Filter with coordinated-turn
+ * dynamics model, Global Nearest Neighbor data association, Cholesky
+ * rank-1 updates, RTS smoother for post-processing, and adaptive
+ * process noise based on innovation-driven maneuver detection.
+ */
 class tracker_impl : public tracker
 {
 private:
@@ -89,61 +103,93 @@ private:
 
     mutable gr::thread::mutex d_mutex;
 
+    /** compute_weights - Compute UKF sigma point weights from alpha, beta, kappa parameters */
     void compute_weights();
+    /** build_process_noise - Construct and Cholesky-factor the process noise covariance matrix Q */
     void build_process_noise(float q_range, float q_doppler, float q_turn);
 
-    // Coordinated-turn state transition
+    /** f - Coordinated-turn state transition function for the process model */
     StateVec f(const StateVec& x) const;
-    // Direct measurement
+    /** h - Direct measurement function mapping state to observation space */
     MeasVec h(const StateVec& x) const;
 
-    // Cholesky rank-1 update/downdate (in-place on lower-triangular S)
+    /**
+     * cholupdate - Cholesky rank-1 update or downdate in-place on lower-triangular factor S
+     *
+     * Technique: Modifies S such that S*S^T += sign * v*v^T
+     */
     template<int N>
     static void cholupdate(Eigen::Matrix<float,N,N>& S,
                            Eigen::Matrix<float,N,1> v, float sign);
 
+    /** predict_track - Propagate track state forward one time step using SRUKF predict */
     void predict_track(srukf_track_t& track);
+    /** update_track - Incorporate a measurement into the track using SRUKF update */
     void update_track(srukf_track_t& track,
                       float range_m, float doppler_hz,
                       float aoa_deg, float aoa_confidence);
+    /** compute_distance - Compute statistical distance between a track prediction and a measurement */
     float compute_distance(const srukf_track_t& track,
                           float range_m, float doppler_hz) const;
+    /** associate_detections - Assign detections to tracks using Global Nearest Neighbor */
     void associate_detections(const float* detections, int num_dets);
+    /** create_track - Initialize a new tentative track from an unassociated detection */
     void create_track(float range_m, float doppler_hz,
                      float aoa_deg, float aoa_confidence);
+    /** delete_stale_tracks - Remove tracks that have exceeded the maximum consecutive miss count */
     void delete_stale_tracks();
+    /** update_track_status - Transition track lifecycle state based on hit/miss outcome */
     void update_track_status(srukf_track_t& track, bool updated);
+    /** to_public_track - Convert internal srukf_track_t to the public track_t structure */
     track_t to_public_track(const srukf_track_t& t) const;
 
-    // RTS smoother for post-processing refinement
+    /** save_rts_history - Store current state and covariance for RTS smoother backpass */
     void save_rts_history(srukf_track_t& track);
+    /** run_rts_smoother - Apply Rauch-Tung-Striebel backward smoothing pass over stored history */
     void run_rts_smoother(srukf_track_t& track);
 
-    // Adaptive process noise
+    /** update_maneuver_indicator - Detect target maneuvers from innovation magnitude */
     void update_maneuver_indicator(srukf_track_t& track, const MeasVec& innovation);
+    /** get_adaptive_sqrt_Q - Return scaled process noise sqrt factor based on maneuver indicator */
     StateMat get_adaptive_sqrt_Q(const srukf_track_t& track) const;
 
 public:
+    /**
+     * tracker_impl - Construct SRUKF tracker with timing, noise, gating, and lifecycle parameters
+     */
     tracker_impl(float dt, float process_noise_range, float process_noise_doppler,
                  float meas_noise_range, float meas_noise_doppler,
                  float gate_threshold, int confirm_hits, int delete_misses,
                  int max_tracks, int max_detections);
     ~tracker_impl();
 
+    /**
+     * work - Run full tracking cycle: predict, associate, update, create, and prune tracks
+     */
     int work(int noutput_items,
              gr_vector_const_void_star& input_items,
              gr_vector_void_star& output_items) override;
 
+    /** set_process_noise - Update process noise standard deviations and rebuild Q matrix */
     void set_process_noise(float range, float doppler) override;
+    /** set_measurement_noise - Update measurement noise standard deviations */
     void set_measurement_noise(float range, float doppler) override;
+    /** set_gate_threshold - Update chi-squared gate threshold for association */
     void set_gate_threshold(float threshold) override;
+    /** set_confirm_hits - Update hits required to confirm a tentative track */
     void set_confirm_hits(int hits) override;
+    /** set_delete_misses - Update consecutive misses before track deletion */
     void set_delete_misses(int misses) override;
 
+    /** get_tracks - Return all active tracks converted to public format */
     std::vector<track_t> get_tracks() const override;
+    /** get_confirmed_tracks - Return only confirmed tracks in public format */
     std::vector<track_t> get_confirmed_tracks() const override;
+    /** get_num_tracks - Return total number of active tracks */
     int get_num_tracks() const override;
+    /** get_num_confirmed_tracks - Return number of confirmed tracks */
     int get_num_confirmed_tracks() const override;
+    /** reset - Clear all tracks and reset tracker to initial state */
     void reset() override;
 };
 

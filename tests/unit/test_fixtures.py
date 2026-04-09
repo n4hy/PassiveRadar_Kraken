@@ -24,6 +24,10 @@ class TestBistaticTargetGenerator(unittest.TestCase):
     """Tests for BistaticTargetGenerator."""
 
     def setUp(self):
+        """Create default and custom-parameter BistaticTargetGenerator instances.
+
+        Technique: instantiate generators with default and explicit SystemParams.
+        """
         self.generator = BistaticTargetGenerator()
         params = SystemParams(
             sample_rate=1e6,
@@ -183,6 +187,7 @@ class TestClutterGenerator(unittest.TestCase):
     """Tests for ClutterGenerator."""
 
     def setUp(self):
+        """Create ClutterGenerator instance with standard 2.4 MHz sample rate."""
         self.generator = ClutterGenerator(sample_rate=2.4e6)
 
     def test_direct_path_power(self):
@@ -276,6 +281,7 @@ class TestNoiseGenerator(unittest.TestCase):
     """Tests for NoiseGenerator."""
 
     def setUp(self):
+        """Create NoiseGenerator instance with standard 2.4 MHz sample rate."""
         self.generator = NoiseGenerator(sample_rate=2.4e6)
 
     def test_awgn_shape_dtype(self):
@@ -390,7 +396,10 @@ class TestNoiseGenerator(unittest.TestCase):
 
 
 class TestIntegration(unittest.TestCase):
-    """Integration tests combining fixtures."""
+    """Integration tests combining fixtures.
+
+    Technique: compose target, clutter, and noise generators into full scenarios.
+    """
 
     def test_scenario_with_clutter(self):
         """Test creating scenario with additional clutter."""

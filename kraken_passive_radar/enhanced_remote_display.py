@@ -415,6 +415,10 @@ class EnhancedRemoteRadarDisplay(RemoteRadarDisplay):
 
 
 def main():
+    """Parse command-line arguments and launch the enhanced remote radar display.
+
+    Technique: argparse CLI with configurable CFAR, clustering, and tracker parameters.
+    """
     parser = argparse.ArgumentParser(
         description='Enhanced Remote Delay-Doppler Display with Local Processing',
         formatter_class=argparse.RawDescriptionHelpFormatter,

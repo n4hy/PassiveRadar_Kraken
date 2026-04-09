@@ -1,6 +1,10 @@
 
 
 def create_block(name, id, parameters, coordinate, rotation=0, state='enabled'):
+    """Create a GRC block definition dictionary with layout metadata.
+
+    Technique: direct dictionary construction matching GRC YAML schema.
+    """
     return {
         'name': name,
         'id': id,
@@ -16,6 +20,10 @@ def create_block(name, id, parameters, coordinate, rotation=0, state='enabled'):
     }
 
 def format_yaml(data):
+    """Serialize a GRC flowgraph data dict to GRC-compatible YAML string.
+
+    Technique: manual YAML formatting to match GRC 3.10 file format.
+    """
     output = []
 
     # Options Block
@@ -71,6 +79,11 @@ def format_yaml(data):
     return "\n".join(output)
 
 def generate():
+    """Generate a complete KrakenSDR passive radar GRC flowgraph file.
+
+    Technique: programmatic construction of 5-channel ECA-B + CAF processing chain
+    with per-channel filter, FFT cross-correlation, and range-Doppler output.
+    """
     START_X = 8
     START_Y = 200
     COL_W = 250

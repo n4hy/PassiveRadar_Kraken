@@ -26,6 +26,10 @@ _rs_module = sys.modules['kraken_passive_radar.rspduo_source']
 
 
 class TestRSPduoSource(unittest.TestCase):
+    """Test RSPduo dual-tuner source block initialization and runtime setters.
+
+    Technique: mock sdrplay3 and verify correct API calls for diversity reception mode.
+    """
 
     def setUp(self):
         """Reset mock before each test."""

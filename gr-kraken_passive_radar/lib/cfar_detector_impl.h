@@ -14,6 +14,13 @@
 namespace gr {
 namespace kraken_passive_radar {
 
+/**
+ * cfar_detector_impl - Implementation of the CFAR detector block
+ *
+ * Technique: 2D Cell-Averaging CFAR with support for CA, GO, SO, and OS
+ * variants. Uses leading/lagging reference windows with guard cells and
+ * computes an adaptive noise threshold per cell under test.
+ */
 class cfar_detector_impl : public cfar_detector
 {
 private:
@@ -37,10 +44,20 @@ private:
     
     mutable gr::thread::mutex d_mutex;
     
+    /**
+     * compute_threshold_factor - Derive the CFAR threshold multiplier from the Pfa and number of reference cells
+     */
     void compute_threshold_factor();
+
+    /**
+     * estimate_noise_level - Estimate the local noise level around a cell under test using reference cells
+     */
     float estimate_noise_level(const float *data, int range_idx, int doppler_idx);
 
 public:
+    /**
+     * cfar_detector_impl - Construct CFAR detector with grid dimensions and algorithm parameters
+     */
     cfar_detector_impl(int num_range_bins,
                        int num_doppler_bins,
                        int guard_cells_range,
@@ -52,12 +69,20 @@ public:
                        int os_k);
     ~cfar_detector_impl();
 
+    /** set_pfa - Update Pfa and recompute threshold factor */
     void set_pfa(float pfa) override;
+    /** set_cfar_type - Switch CFAR algorithm variant */
     void set_cfar_type(int cfar_type) override;
+    /** set_guard_cells - Update guard cell counts in both dimensions */
     void set_guard_cells(int range, int doppler) override;
+    /** set_ref_cells - Update reference cell counts in both dimensions */
     void set_ref_cells(int range, int doppler) override;
+    /** get_num_detections - Return detection count from the last frame */
     int get_num_detections() const override;
 
+    /**
+     * work - Apply CFAR detection across the range-Doppler map and output detection mask
+     */
     int work(int noutput_items,
              gr_vector_const_void_star &input_items,
              gr_vector_void_star &output_items) override;

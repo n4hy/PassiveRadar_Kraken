@@ -25,9 +25,23 @@
 
 using Complex = std::complex<float>;
 
-// Helper for solving Ax = b using Cholesky Decomposition
+/**
+ * LinearSolver - Cholesky decomposition solver for Hermitian positive-definite systems
+ *
+ * Technique: Solves Ax = b using Cholesky decomposition A = L*L^H,
+ * followed by forward and backward substitution. Used by ECA-B to
+ * solve the Wiener-Hopf equation for optimal FIR filter weights.
+ */
 class LinearSolver {
 public:
+    /**
+     * solve_cholesky - Solve Hermitian positive-definite linear system via Cholesky
+     *
+     * Technique: Three-step process: (1) Cholesky factorization A = L*L^H,
+     * (2) forward substitution L*y = b, (3) backward substitution L^H*x = y.
+     * Reuses caller-provided L and y buffers to avoid allocation in the hot path.
+     * Returns false if A is not positive-definite (diagonal element <= 0).
+     */
     static bool solve_cholesky(const std::vector<Complex>& A,
                                const std::vector<Complex>& b,
                                std::vector<Complex>& x,
@@ -78,6 +92,18 @@ public:
     }
 };
 
+/**
+ * ECABCanceller - Extensive Cancellation Algorithm Batched (ECA-B) clutter canceller
+ *
+ * Technique: Block-adaptive Wiener filter for direct-path interference cancellation
+ * in passive radar. Computes optimal FIR filter weights by solving the Wiener-Hopf
+ * equation R*w = p via Cholesky decomposition, where R is the reference signal
+ * autocorrelation matrix and p is the cross-correlation with surveillance.
+ * Supports adjustable delay alignment between reference and surveillance channels.
+ * Uses diagonal loading for numerical stability and Toeplitz structure exploitation
+ * via diagonal update recursion for efficient R matrix computation.
+ * Optionally uses NEON-optimized dot products via OptMathKernels.
+ */
 class ECABCanceller {
 private:
     int   num_taps;
@@ -118,7 +144,13 @@ private:
     std::vector<Complex> solver_L;
     std::vector<Complex> solver_y;
 
-    // Inline Dot Product - uses NEON when available
+    /**
+     * dot_prod - SIMD-accelerated real-valued dot product
+     *
+     * Technique: Uses OptMathKernels NEON dot product when available,
+     * otherwise falls back to 8-way unrolled scalar accumulation
+     * for improved ILP on modern CPUs.
+     */
     static FORCE_INLINE float dot_prod(const float* a, const float* b, int n) {
 #if HAVE_OPTMATHKERNELS
         return optmath::neon::neon_dot_f32(a, b, static_cast<std::size_t>(n));
@@ -137,6 +169,13 @@ private:
     }
 
 public:
+    /**
+     * ECABCanceller - Construct ECA-B canceller with given tap count and max delay
+     *
+     * Technique: Pre-allocates all buffers (autocorrelation matrix, cross-correlation,
+     * filter weights, reference history ring buffer) to avoid allocation in the
+     * processing loop. Enables FTZ/DAZ on x86 and ARM to prevent denormal slowdowns.
+     */
     explicit ECABCanceller(int taps, int max_delay_samples = 4096)
         : num_taps(taps),
           diagonal_loading(1e-6f),
@@ -173,14 +212,27 @@ public:
         full_ref.reserve(65536);
     }
 
+    /** set_delay - Thread-safe setter for reference-surveillance delay alignment (samples) */
     void set_delay(int d) {
         if (d < 0) d = 0;
         if (d > max_delay) d = max_delay;
         delay_samples.store(d, std::memory_order_release);
     }
 
+    /** get_delay - Thread-safe getter for current delay alignment (samples) */
     int get_delay() const { return delay_samples.load(std::memory_order_acquire); }
 
+    /**
+     * process - Execute one block of ECA-B clutter cancellation
+     *
+     * Technique: (1) Prepends reference history and aligns at configured delay,
+     * (2) computes autocorrelation matrix R using dot products with Toeplitz
+     * diagonal update recursion for efficiency, (3) computes cross-correlation
+     * vector p between reference and surveillance, (4) solves Wiener-Hopf
+     * equation R*w = p via Cholesky decomposition, (5) applies optimal FIR
+     * filter w to reference and subtracts from surveillance to produce
+     * clutter-cancelled error output, (6) updates reference history ring buffer.
+     */
     void process(const Complex* ref_in, const Complex* surv_in, Complex* out_err, int n_samples) {
         if (n_samples <= 0) return;
 
@@ -366,15 +418,26 @@ public:
 
 extern "C" {
 
+/**
+ * eca_b_create - C API: Allocate ECA-B canceller with given tap count
+ *
+ * Technique: Creates an ECABCanceller with default max_delay=4096 samples.
+ */
 void* eca_b_create(int taps) {
     // Keep ABI stable: default max_delay=4096.
     return new ECABCanceller(taps, 4096);
 }
 
+/** eca_b_destroy - C API: Free ECA-B canceller instance */
 void eca_b_destroy(void* ptr) {
     if (ptr) delete static_cast<ECABCanceller*>(ptr);
 }
 
+/**
+ * eca_b_process - C API: Run ECA-B clutter cancellation on interleaved complex buffers
+ *
+ * Technique: Reinterprets float buffers as complex, delegates to ECABCanceller::process.
+ */
 void eca_b_process(void* ptr, const float* ref_in, const float* surv_in, float* out_err, int n_samples) {
     if (!ptr || !ref_in || !surv_in || !out_err || n_samples <= 0) return;
     ECABCanceller* obj = static_cast<ECABCanceller*>(ptr);
@@ -384,13 +447,19 @@ void eca_b_process(void* ptr, const float* ref_in, const float* surv_in, float* 
     obj->process(c_ref, c_surv, c_out, n_samples);
 }
 
-// NEW: optional setter for delay (does not break existing users of the C ABI).
+/**
+ * eca_b_set_delay - C API: Set reference-surveillance delay alignment
+ *
+ * Technique: Thread-safe delay update via atomic store. Does not break
+ * existing users of the C ABI (additive API extension).
+ */
 void eca_b_set_delay(void* ptr, int delay_samples) {
     if (!ptr) return;
     ECABCanceller* obj = static_cast<ECABCanceller*>(ptr);
     obj->set_delay(delay_samples);
 }
 
+/** eca_b_get_delay - C API: Get current delay alignment (samples) */
 int eca_b_get_delay(void* ptr) {
     if (!ptr) return 0;
     ECABCanceller* obj = static_cast<ECABCanceller*>(ptr);

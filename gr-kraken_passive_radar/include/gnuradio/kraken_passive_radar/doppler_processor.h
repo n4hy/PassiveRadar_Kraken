@@ -49,7 +49,14 @@ public:
                      int window_type = 1,
                      bool output_power = true);
 
+    /**
+     * set_num_doppler_bins - Update the number of Doppler bins (slow-time FFT size) at runtime
+     */
     virtual void set_num_doppler_bins(int num_doppler_bins) = 0;
+
+    /**
+     * set_window_type - Select the window function: 0=rectangular, 1=Hamming, 2=Hann, 3=Blackman
+     */
     virtual void set_window_type(int window_type) = 0;
 };
 

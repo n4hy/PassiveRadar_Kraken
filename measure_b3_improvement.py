@@ -143,6 +143,10 @@ def compare_results(baseline_file, test_file):
     print("\n" + "="*60)
 
 def main():
+    """Parse arguments and run CAF measurement or comparison of results.
+
+    Technique: CLI dispatch to either measurement collection or baseline vs test comparison.
+    """
     parser = argparse.ArgumentParser(
         description="Measure Block B3 CAF improvement",
         formatter_class=argparse.RawDescriptionHelpFormatter,

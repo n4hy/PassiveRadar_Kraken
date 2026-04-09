@@ -58,19 +58,49 @@ public:
                      float corr_threshold = 0.95,
                      float phase_threshold_deg = 5.0);
 
-    // Getters for current coherence state
+    /**
+     * is_calibration_needed - Check whether coherence has degraded and recalibration is required
+     */
     virtual bool is_calibration_needed() const = 0;
+
+    /**
+     * get_correlation - Return the current cross-correlation coefficient for a given channel
+     */
     virtual float get_correlation(int channel) const = 0;
+
+    /**
+     * get_phase_offset - Return the measured phase offset in radians for a given channel
+     */
     virtual float get_phase_offset(int channel) const = 0;
+
+    /**
+     * get_phase_variance - Return the phase variance for a given channel
+     */
     virtual float get_phase_variance(int channel) const = 0;
-    
-    // Runtime parameter adjustment
+
+    /**
+     * set_measure_interval - Update the interval between coherence measurements in milliseconds
+     */
     virtual void set_measure_interval(float interval_ms) = 0;
+
+    /**
+     * set_corr_threshold - Set the minimum acceptable correlation coefficient
+     */
     virtual void set_corr_threshold(float threshold) = 0;
+
+    /**
+     * set_phase_threshold - Set the maximum acceptable phase standard deviation in degrees
+     */
     virtual void set_phase_threshold(float threshold_deg) = 0;
-    
-    // Manual calibration trigger/acknowledge
+
+    /**
+     * request_calibration - Manually trigger a calibration request
+     */
     virtual void request_calibration() = 0;
+
+    /**
+     * acknowledge_calibration - Acknowledge that calibration has been completed externally
+     */
     virtual void acknowledge_calibration() = 0;
 };
 

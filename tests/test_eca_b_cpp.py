@@ -10,7 +10,15 @@ from conftest import find_kernel_lib
 
 
 class TestEcaBCpp(unittest.TestCase):
+    """Test the C++ ECA-B clutter canceller library via ctypes.
+
+    Technique: generate known clutter filter, verify ECA-B reduces output power.
+    """
     def test_eca_b_reduces_clutter_power(self):
+        """Verify ECA-B achieves greater than 10 dB clutter power reduction.
+
+        Technique: convolve reference with random FIR filter, run ECA-B, measure residual.
+        """
         lib_path = find_kernel_lib("eca_b_clutter_canceller")
 
         if not lib_path.exists():

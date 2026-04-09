@@ -10,7 +10,15 @@ from conftest import find_kernel_lib
 
 
 class TestConditioningCpp(unittest.TestCase):
+    """Test the C++ signal conditioning (AGC) library via ctypes.
+
+    Technique: feed a low-amplitude signal and verify power increases toward target level.
+    """
     def test_agc_normalizes_level(self):
+        """Verify AGC increases power of a low-amplitude complex signal.
+
+        Technique: compare input vs output mean power after AGC processing.
+        """
         lib_path = find_kernel_lib("conditioning")
 
         if not lib_path.exists():

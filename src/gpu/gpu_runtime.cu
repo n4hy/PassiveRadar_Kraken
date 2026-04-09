@@ -16,12 +16,13 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Provide CUDA version info
+/** kraken_gpu_cuda_version - Return CUDA runtime version (e.g., 13000 for CUDA 13.0) */
 extern "C"
 int kraken_gpu_cuda_version(void) {
     return CUDART_VERSION;
 }
 
+/** kraken_gpu_driver_version - Return installed CUDA driver version */
 extern "C"
 int kraken_gpu_driver_version(void) {
     int driver_version = 0;
@@ -35,7 +36,9 @@ static int g_gpu_initialized = 0;
 static int g_active_device = 0;  // Used to track which device is active
 
 /**
- * Get number of CUDA devices
+ * kraken_gpu_device_count - Return number of available CUDA devices
+ *
+ * Technique: Calls cudaGetDeviceCount; returns 0 if no driver or no GPUs.
  */
 extern "C"
 int kraken_gpu_device_count(void) {
@@ -51,7 +54,10 @@ int kraken_gpu_device_count(void) {
 }
 
 /**
- * Check if GPU is available
+ * kraken_gpu_is_available - Check if a usable GPU (Volta+) is present
+ *
+ * Technique: Enumerates devices and checks compute capability >= 7.0
+ * (Volta or newer) to ensure adequate feature support.
  */
 extern "C"
 int kraken_gpu_is_available(void) {
@@ -75,7 +81,10 @@ int kraken_gpu_is_available(void) {
 }
 
 /**
- * Get device information
+ * kraken_gpu_get_device_info - Query device name and compute capability
+ *
+ * Technique: Reads cudaDeviceProp for the specified device and copies
+ * name string and compute capability (major*10 + minor) to output pointers.
  */
 extern "C"
 void kraken_gpu_get_device_info(int device_id, char* name_out, int* compute_capability_out) {
@@ -104,7 +113,11 @@ void kraken_gpu_get_device_info(int device_id, char* name_out, int* compute_capa
 }
 
 /**
- * Initialize GPU runtime
+ * kraken_gpu_init - Initialize CUDA runtime on specified device
+ *
+ * Technique: Validates device_id, calls cudaSetDevice, and prints device
+ * info. Idempotent - returns 0 if already initialized. Sets global state
+ * for active device tracking.
  */
 extern "C"
 int kraken_gpu_init(int device_id) {
@@ -142,7 +155,10 @@ int kraken_gpu_init(int device_id) {
 }
 
 /**
- * Cleanup GPU runtime
+ * kraken_gpu_cleanup - Reset CUDA device and release all resources
+ *
+ * Technique: Calls cudaDeviceReset to destroy all allocations, streams,
+ * and contexts on the active device. Clears initialized flag.
  */
 extern "C"
 void kraken_gpu_cleanup(void) {
@@ -155,7 +171,10 @@ void kraken_gpu_cleanup(void) {
 }
 
 /**
- * Set global backend
+ * kraken_set_global_backend - Set processing backend (GPU/CPU/AUTO)
+ *
+ * Technique: Stores backend preference in global state. Logs the
+ * selected mode to stderr for diagnostics.
  */
 extern "C"
 void kraken_set_global_backend(KrakenBackend backend) {
@@ -178,16 +197,19 @@ void kraken_set_global_backend(KrakenBackend backend) {
     fprintf(stderr, "KRAKEN backend set to: %s\n", backend_str);
 }
 
-/**
- * Get active backend
- */
+/** kraken_get_active_backend - Return current backend setting (GPU/CPU/AUTO) */
 extern "C"
 KrakenBackend kraken_get_active_backend(void) {
     return g_backend;
 }
 
 /**
- * Check if should use GPU (considering environment variable and backend setting)
+ * kraken_should_use_gpu - Determine whether GPU should be used for processing
+ *
+ * Technique: Priority-based decision: (1) KRAKEN_GPU_BACKEND environment
+ * variable ("gpu"/"cpu") takes highest priority, (2) global backend
+ * setting (GPU/CPU/AUTO), (3) in AUTO mode, checks hardware availability
+ * via kraken_gpu_is_available().
  */
 extern "C"
 int kraken_should_use_gpu(void) {

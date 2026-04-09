@@ -127,7 +127,11 @@ __global__ void fftshift_complex_kernel(const cufftComplex* __restrict__ input,
 }
 
 /**
- * Precompute Hamming window on GPU
+ * precompute_window - Generate Hamming window coefficients and upload to GPU
+ *
+ * Technique: Computes the standard Hamming window w[i] = 0.54 - 0.46*cos(2*pi*i/(N-1))
+ *   on the CPU, then transfers the coefficient array to device memory for
+ *   reuse across processing calls
  */
 static int precompute_window(DopplerProcessorGPU* proc) {
     // Allocate host buffer
@@ -165,7 +169,11 @@ static int precompute_window(DopplerProcessorGPU* proc) {
 }
 
 /**
- * Create Doppler processor instance
+ * doppler_gpu_create - Allocate and initialize a GPU Doppler processor
+ *
+ * Technique: Sets up cuFFT batched plans for column-wise FFTs, allocates device
+ *   and pinned host memory, precomputes the Hamming window, and creates a
+ *   dedicated CUDA stream for asynchronous execution
  */
 extern "C"
 void* doppler_gpu_create(int fft_len, int doppler_len) {
@@ -251,7 +259,10 @@ void* doppler_gpu_create(int fft_len, int doppler_len) {
 }
 
 /**
- * Destroy Doppler processor instance
+ * doppler_gpu_destroy - Release all resources held by a GPU Doppler processor
+ *
+ * Technique: Destroys the cuFFT plan, frees all device and pinned host memory
+ *   allocations, destroys the CUDA stream, and deletes the processor struct
  */
 extern "C"
 void doppler_gpu_destroy(void* handle) {
@@ -286,7 +297,12 @@ void doppler_gpu_destroy(void* handle) {
 }
 
 /**
- * Process Doppler FFT with log magnitude output
+ * doppler_gpu_process - Compute Doppler FFT and return log-magnitude output
+ *
+ * Technique: Applies a Hamming window to the input CPI matrix, performs
+ *   batched column-wise FFTs via cuFFT, then extracts FFT-shifted
+ *   log-magnitude (dB) via a dedicated kernel; all stages run on a
+ *   single CUDA stream for pipelined execution
  */
 extern "C"
 void doppler_gpu_process(void* handle, const float* input, float* output) {
@@ -348,7 +364,12 @@ void doppler_gpu_process(void* handle, const float* input, float* output) {
 }
 
 /**
- * Process Doppler FFT with complex output
+ * doppler_gpu_process_complex - Compute Doppler FFT and return complex IQ output
+ *
+ * Technique: Applies a Hamming window, performs batched column-wise FFTs
+ *   via cuFFT, then writes FFT-shifted complex values in interleaved
+ *   I/Q format; identical pipeline to doppler_gpu_process but preserves
+ *   phase information instead of computing magnitude
  */
 extern "C"
 void doppler_gpu_process_complex(void* handle, const float* input, float* output) {

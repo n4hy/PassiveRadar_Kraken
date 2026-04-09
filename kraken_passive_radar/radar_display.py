@@ -72,6 +72,10 @@ class PPIDisplay:
     """
 
     def __init__(self, params: Optional[PPIDisplayParams] = None):
+        """Initialize PPI display with configurable parameters and empty state.
+
+        Technique: thread-safe data storage with lock-guarded detection and track lists.
+        """
         self.params = params if params else PPIDisplayParams()
 
         # Data storage (thread-safe)
@@ -102,7 +106,10 @@ class PPIDisplay:
         }
 
     def _setup_plot(self):
-        """Initialize the matplotlib figure."""
+        """Initialize the matplotlib polar figure with range rings and azimuth grid.
+
+        Technique: polar projection with North-up, clockwise orientation and scatter overlays.
+        """
         self.fig = plt.figure(figsize=(10, 10))
         self.fig.canvas.manager.set_window_title('Passive Radar PPI Display')
 
@@ -187,7 +194,10 @@ class PPIDisplay:
         return [self.detection_scatter, self.track_scatter]
 
     def _update_tracks(self, tracks: List[PPITrack]):
-        """Update track visualization."""
+        """Update track visualization including positions, history trails, velocity arrows, and labels.
+
+        Technique: scatter markers with per-track Line2D history, annotated velocity arrows, and text labels.
+        """
         active_ids = set()
 
         # Current track positions and colors

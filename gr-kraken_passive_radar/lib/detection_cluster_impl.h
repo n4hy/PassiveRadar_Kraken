@@ -16,6 +16,13 @@
 namespace gr {
 namespace kraken_passive_radar {
 
+/**
+ * detection_cluster_impl - Implementation of the detection clustering block
+ *
+ * Technique: BFS-based connected components labeling with 8-connectivity
+ * on the CFAR detection mask, followed by power-weighted centroid
+ * computation and SNR estimation for each cluster.
+ */
 class detection_cluster_impl : public detection_cluster
 {
 private:
@@ -43,21 +50,30 @@ private:
         { 1, -1}, { 1, 0}, { 1, 1}
     };
 
-    // Connected components using BFS — stores cell indices per cluster
+    /**
+     * find_connected_components - Label connected regions in the detection mask using BFS with 8-connectivity
+     */
     int find_connected_components(const float* det_mask);
 
-    // Compute cluster statistics from stored cell indices
+    /**
+     * compute_cluster_stats - Compute power-weighted centroid, SNR, and size for a cluster of cells
+     */
     void compute_cluster_stats(const std::vector<int>& cells,
                                const float* power_linear,
                                float noise_floor,
                                detection_t& det);
 
-    // Index helpers
+    /** idx - Convert (range, doppler) bin indices to linear array index */
     int idx(int r, int d) const { return d * d_num_range_bins + r; }
+    /** range_from_idx - Extract range bin index from a linear index */
     int range_from_idx(int i) const { return i % d_num_range_bins; }
+    /** doppler_from_idx - Extract Doppler bin index from a linear index */
     int doppler_from_idx(int i) const { return i / d_num_range_bins; }
 
 public:
+    /**
+     * detection_cluster_impl - Construct clustering block with grid dimensions and cluster constraints
+     */
     detection_cluster_impl(int num_range_bins,
                            int num_doppler_bins,
                            int min_cluster_size,
@@ -68,17 +84,27 @@ public:
                            float min_snr_db);
     ~detection_cluster_impl();
 
+    /**
+     * work - Process CFAR mask and power map to produce clustered detection list
+     */
     int work(int noutput_items,
              gr_vector_const_void_star& input_items,
              gr_vector_void_star& output_items) override;
 
+    /** set_min_cluster_size - Update minimum cells required for a valid cluster */
     void set_min_cluster_size(int size) override;
+    /** set_max_cluster_extent - Update maximum cluster size before splitting */
     void set_max_cluster_extent(int extent) override;
+    /** set_range_resolution - Update range resolution for bin-to-meters conversion */
     void set_range_resolution(float res_m) override;
+    /** set_doppler_resolution - Update Doppler resolution for bin-to-Hz conversion */
     void set_doppler_resolution(float res_hz) override;
+    /** set_min_snr_db - Update minimum SNR threshold for valid detections */
     void set_min_snr_db(float snr_db) override;
 
+    /** get_detections - Return clustered detections from the last frame */
     std::vector<detection_t> get_detections() const override;
+    /** get_num_detections - Return detection count from the last frame */
     int get_num_detections() const override;
 };
 

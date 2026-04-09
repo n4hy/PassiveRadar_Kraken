@@ -4,6 +4,10 @@ import osmosdr
 import time
 
 def test_init(args_str):
+    """Attempt to initialize an osmosdr source with given arguments string.
+
+    Technique: osmosdr source creation to verify multi-device serial addressing.
+    """
     print(f"\n--- Testing osmosdr.source(args='{args_str}') ---")
     try:
         src = osmosdr.source(args=args_str)
@@ -18,6 +22,10 @@ def test_init(args_str):
         return 0
 
 def main():
+    """Test multi-device osmosdr initialization with explicit serial number mapping.
+
+    Technique: tries multiple device string formats to verify channel-to-serial mapping.
+    """
     print("Detecting KrakenSDR configuration...")
     print("Goal: Ensure Channel 0 maps to Serial 1000, etc.")
 

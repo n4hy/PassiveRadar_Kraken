@@ -98,7 +98,7 @@ def test_atsc3_mode():
     return True
 
 def test_signal_type_switching():
-    """Test runtime signal type switching"""
+    """Test runtime signal type switching between passthrough, FM, and ATSC3 modes."""
     print("\n" + "="*60)
     print("TEST 4: Runtime Signal Type Switching")
     print("="*60)

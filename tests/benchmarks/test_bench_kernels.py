@@ -15,15 +15,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 class BenchmarkResult:
     """Container for benchmark results."""
     def __init__(self, name, mean_ms, std_ms, iterations):
+        """Initialize benchmark result with name, timing statistics, and iteration count."""
         self.name = name
         self.mean_ms = mean_ms
         self.std_ms = std_ms
         self.iterations = iterations
 
     def __str__(self):
+        """Return human-readable summary of benchmark result."""
         return f"{self.name}: {self.mean_ms:.3f} +/- {self.std_ms:.3f} ms ({self.iterations} iterations)"
 
     def to_dict(self):
+        """Convert benchmark result to dictionary for JSON serialization."""
         return {
             'name': self.name,
             'mean_ms': self.mean_ms,
@@ -33,7 +36,10 @@ class BenchmarkResult:
 
 
 def benchmark(func, iterations=100, warmup=10):
-    """Run benchmark and return results."""
+    """Run benchmark with warmup and return mean/std timing in milliseconds.
+
+    Technique: perf_counter timing with configurable warmup iterations to stabilize caches.
+    """
     # Warmup
     for _ in range(warmup):
         func()
@@ -106,6 +112,7 @@ class TestKernelBenchmarks(unittest.TestCase):
         obj = lib.caf_create(n)
 
         def run_caf():
+            """Execute single CAF processing call for benchmarking."""
             lib.caf_process(
                 obj,
                 ref.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
@@ -149,6 +156,7 @@ class TestKernelBenchmarks(unittest.TestCase):
         state = lib.eca_b_create(num_taps)
 
         def run_eca():
+            """Execute single ECA processing call for benchmarking."""
             lib.eca_b_process(
                 state,
                 ref.view(np.float32).ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
@@ -172,6 +180,7 @@ class TestKernelBenchmarks(unittest.TestCase):
         data = (np.random.randn(n) + 1j * np.random.randn(n)).astype(np.complex64)
 
         def run_fft():
+            """Execute single NumPy FFT call for benchmarking."""
             np.fft.fft(data)
 
         mean_ms, std_ms = benchmark(run_fft, iterations=100)
@@ -187,6 +196,7 @@ class TestKernelBenchmarks(unittest.TestCase):
         surv = (np.random.randn(n) + 1j * np.random.randn(n)).astype(np.complex64)
 
         def run_xcorr():
+            """Execute single FFT-based cross-correlation for benchmarking."""
             np.fft.ifft(np.fft.fft(surv) * np.conj(np.fft.fft(ref)))
 
         mean_ms, std_ms = benchmark(run_xcorr, iterations=100)
@@ -203,6 +213,7 @@ class TestKernelBenchmarks(unittest.TestCase):
         data = np.random.exponential(1.0, (n_doppler, n_range)).astype(np.float32)
 
         def run_cfar():
+            """Execute single 2D CFAR detection pass for benchmarking."""
             guard = 2
             ref_cells = 4
             pfa = 1e-4
@@ -234,14 +245,21 @@ class TestKernelBenchmarks(unittest.TestCase):
 
 
 class TestMemoryBenchmarks(unittest.TestCase):
-    """Memory allocation benchmarks."""
+    """Memory allocation benchmarks.
+
+    Technique: time numpy array allocation at various sizes.
+    """
 
     def test_allocation_overhead(self):
-        """Measure array allocation overhead."""
+        """Measure numpy complex64 array allocation overhead at various sizes.
+
+        Technique: benchmark np.zeros allocation across powers of two.
+        """
         sizes = [1024, 4096, 16384, 65536]
 
         for n in sizes:
             def allocate():
+                """Allocate a single complex64 array for benchmarking."""
                 return np.zeros(n, dtype=np.complex64)
 
             mean_ms, std_ms = benchmark(allocate, iterations=1000)

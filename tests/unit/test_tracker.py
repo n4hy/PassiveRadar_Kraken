@@ -13,6 +13,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 
 class TrackStatus(Enum):
+    """Track lifecycle states for multi-target tracking.
+
+    Technique: integer-valued enum mapping tracker state machine transitions.
+    """
     TENTATIVE = 1
     CONFIRMED = 2
     COASTING = 3
@@ -43,9 +47,16 @@ class TrackState:
 
 
 class KalmanFilter:
-    """Simple Kalman filter for track state estimation."""
+    """Simple Kalman filter for track state estimation.
+
+    Technique: linear Kalman filter with constant-velocity state model.
+    """
 
     def __init__(self, process_noise=10.0, measurement_noise=50.0):
+        """Initialize Kalman filter with process and measurement noise covariances.
+
+        Technique: set up state vector, covariance, Q, R, and measurement matrices.
+        """
         # State: [range, doppler, range_rate, doppler_rate]
         self.state = np.zeros(4)
         self.P = np.eye(4) * 1000.0  # Initial covariance
@@ -93,9 +104,16 @@ class KalmanFilter:
 
 
 class MultiTargetTracker:
-    """Simple multi-target tracker with GNN association."""
+    """Simple multi-target tracker with GNN association.
+
+    Technique: greedy nearest-neighbor data association with gating and M/N logic.
+    """
 
     def __init__(self, confirm_hits=3, delete_misses=5, gate_threshold=50.0):
+        """Initialize tracker with confirmation, deletion, and gating parameters.
+
+        Technique: M/N logic for track promotion and deletion.
+        """
         self.tracks = {}
         self.next_id = 1
         self.confirm_hits = confirm_hits
@@ -104,7 +122,10 @@ class MultiTargetTracker:
         self.dt = 0.1  # Time step in seconds
 
     def predict(self, dt=None):
-        """Predict all tracks to current time."""
+        """Predict all tracks to current time.
+
+        Technique: apply Kalman predict step to each active track.
+        """
         if dt is None:
             dt = self.dt
         for track_id, (kf, state) in self.tracks.items():
@@ -112,7 +133,10 @@ class MultiTargetTracker:
             state.age += 1
 
     def update(self, detections: List[Detection]):
-        """Update tracks with new detections."""
+        """Update tracks with new detections.
+
+        Technique: predict, associate via GNN, update matched tracks, initiate new ones.
+        """
         # Predict existing tracks
         self.predict()
 
@@ -153,7 +177,10 @@ class MultiTargetTracker:
                 self._initiate_track(det)
 
     def _associate(self, detections):
-        """Associate detections to tracks using GNN."""
+        """Associate detections to tracks using GNN.
+
+        Technique: build cost matrix with gating, then greedy minimum-cost assignment.
+        """
         if not self.tracks or not detections:
             return {}
 
@@ -201,7 +228,10 @@ class MultiTargetTracker:
         return associations
 
     def _initiate_track(self, det):
-        """Create new track from detection."""
+        """Create new track from detection.
+
+        Technique: initialize Kalman filter state from measurement, set TENTATIVE status.
+        """
         kf = KalmanFilter()
         kf.state = np.array([det.range_m, det.doppler_hz, 0, 0])
 
@@ -221,12 +251,18 @@ class MultiTargetTracker:
         self.next_id += 1
 
     def get_confirmed_tracks(self):
-        """Get all confirmed tracks."""
+        """Get all confirmed tracks.
+
+        Technique: filter track list by CONFIRMED status.
+        """
         return [state for kf, state in self.tracks.values()
                 if state.status == TrackStatus.CONFIRMED]
 
     def get_all_tracks(self):
-        """Get all tracks."""
+        """Get all tracks regardless of status.
+
+        Technique: extract state objects from all active track entries.
+        """
         return [state for kf, state in self.tracks.values()]
 
 
@@ -373,7 +409,10 @@ class TestMultiTargetTracker(unittest.TestCase):
 
 
 class TestTrackerPerformance(unittest.TestCase):
-    """Performance tests for tracker."""
+    """Performance tests for tracker.
+
+    Technique: scale test with many simultaneous targets to verify tracking capacity.
+    """
 
     def test_many_tracks(self):
         """Test tracking with many simultaneous targets."""

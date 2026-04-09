@@ -47,6 +47,12 @@ class rspduo_source(gr.hier_block2):
                  bandwidth=0,
                  bias_t=False, rf_notch=False, dab_notch=False,
                  am_notch=False):
+        """Initialize the RSPduo dual-tuner source with frequency, gain, and filter settings.
+
+        Technique: Opens the SDRplay RSPduo in dual-tuner diversity reception mode
+        via gr-sdrplay3, proactively restarting the sdrplay service to clear stale
+        locks, then configures both tuners with identical gain and frequency settings.
+        """
         gr.hier_block2.__init__(
             self,
             "RSPduo Source",
@@ -177,33 +183,42 @@ class rspduo_source(gr.hier_block2):
     # --- Runtime callbacks ---
 
     def set_frequency(self, freq):
+        """Set the center frequency on both RSPduo tuners."""
         self.frequency = freq
         self.sdrplay_src.set_center_freq(freq, False)
 
     def set_sample_rate(self, rate):
+        """Set the sample rate on the RSPduo source."""
         self.sample_rate = rate
         self.sdrplay_src.set_sample_rate(rate, False)
 
     def set_if_gain(self, gain):
+        """Set IF gain reduction on both tuners, clamped to hardware range."""
         self.if_gain = self._clamp_if_gain(gain)
         self.sdrplay_src.set_gain(-self.if_gain, -self.if_gain, 'IF', False)
 
     def set_rf_gain(self, gain):
+        """Set RF gain reduction on both tuners."""
         self.rf_gain = gain
         self.sdrplay_src.set_gain(-gain, -gain, 'RF', False)
 
     def set_bandwidth(self, bw):
+        """Set the analog bandwidth filter on the RSPduo."""
         self.bandwidth = bw
         self.sdrplay_src.set_bandwidth(int(bw))
 
     def set_bias_t(self, enable):
+        """Enable or disable the RSPduo bias-T power supply."""
         self.sdrplay_src.set_biasT(enable)
 
     def set_rf_notch_filter(self, enable):
+        """Enable or disable the RSPduo RF notch filter."""
         self.sdrplay_src.set_rf_notch_filter(enable)
 
     def set_dab_notch_filter(self, enable):
+        """Enable or disable the RSPduo DAB notch filter."""
         self.sdrplay_src.set_dab_notch_filter(enable)
 
     def set_am_notch_filter(self, enable):
+        """Enable or disable the RSPduo AM notch filter."""
         self.sdrplay_src.set_am_notch_filter(enable)

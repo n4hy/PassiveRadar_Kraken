@@ -15,12 +15,20 @@
  * Memory Pool Implementation
  */
 
+/** MemoryBlock - Tracks a single GPU allocation within the memory pool */
 struct MemoryBlock {
     void* ptr;
     size_t size;
     bool in_use;
 };
 
+/**
+ * KrakenGPUMemoryPool - Thread-safe GPU memory pool with block reuse
+ *
+ * Technique: Maintains a list of allocated GPU memory blocks with usage tracking.
+ * On allocation, first tries to reuse a freed block of sufficient size before
+ * calling cudaMalloc. Thread-safe via std::mutex.
+ */
 struct KrakenGPUMemoryPool {
     std::vector<MemoryBlock> blocks;
     std::unordered_map<void*, size_t> ptr_to_index;
@@ -30,9 +38,10 @@ struct KrakenGPUMemoryPool {
 };
 
 /**
- * Device Memory Allocation
+ * kraken_gpu_alloc - Allocate GPU device memory via cudaMalloc
+ *
+ * Technique: Direct cudaMalloc wrapper with error reporting to stderr.
  */
-
 extern "C"
 void* kraken_gpu_alloc(size_t size) {
     void* ptr = nullptr;
@@ -46,6 +55,7 @@ void* kraken_gpu_alloc(size_t size) {
     return ptr;
 }
 
+/** kraken_gpu_free - Free GPU device memory via cudaFree */
 extern "C"
 void kraken_gpu_free(void* ptr) {
     if (ptr != nullptr) {
@@ -53,6 +63,12 @@ void kraken_gpu_free(void* ptr) {
     }
 }
 
+/**
+ * kraken_gpu_alloc_host - Allocate pinned (page-locked) host memory
+ *
+ * Technique: Uses cudaMallocHost for DMA-capable pinned memory,
+ * enabling faster async host-device transfers.
+ */
 extern "C"
 void* kraken_gpu_alloc_host(size_t size) {
     void* ptr = nullptr;
@@ -66,6 +82,7 @@ void* kraken_gpu_alloc_host(size_t size) {
     return ptr;
 }
 
+/** kraken_gpu_free_host - Free pinned host memory via cudaFreeHost */
 extern "C"
 void kraken_gpu_free_host(void* ptr) {
     if (ptr != nullptr) {
@@ -73,28 +90,28 @@ void kraken_gpu_free_host(void* ptr) {
     }
 }
 
-/**
- * Memory Transfers
- */
-
+/** kraken_gpu_memcpy_h2d - Synchronous host-to-device memory copy */
 extern "C"
 int kraken_gpu_memcpy_h2d(void* dst, const void* src, size_t size) {
     cudaError_t err = cudaMemcpy(dst, src, size, cudaMemcpyHostToDevice);
     return (err == cudaSuccess) ? 0 : -1;
 }
 
+/** kraken_gpu_memcpy_d2h - Synchronous device-to-host memory copy */
 extern "C"
 int kraken_gpu_memcpy_d2h(void* dst, const void* src, size_t size) {
     cudaError_t err = cudaMemcpy(dst, src, size, cudaMemcpyDeviceToHost);
     return (err == cudaSuccess) ? 0 : -1;
 }
 
+/** kraken_gpu_memcpy_d2d - Synchronous device-to-device memory copy */
 extern "C"
 int kraken_gpu_memcpy_d2d(void* dst, const void* src, size_t size) {
     cudaError_t err = cudaMemcpy(dst, src, size, cudaMemcpyDeviceToDevice);
     return (err == cudaSuccess) ? 0 : -1;
 }
 
+/** kraken_gpu_memcpy_h2d_async - Asynchronous host-to-device copy on given CUDA stream */
 extern "C"
 int kraken_gpu_memcpy_h2d_async(void* dst, const void* src, size_t size, void* stream) {
     cudaError_t err = cudaMemcpyAsync(dst, src, size, cudaMemcpyHostToDevice,
@@ -102,6 +119,7 @@ int kraken_gpu_memcpy_h2d_async(void* dst, const void* src, size_t size, void* s
     return (err == cudaSuccess) ? 0 : -1;
 }
 
+/** kraken_gpu_memcpy_d2h_async - Asynchronous device-to-host copy on given CUDA stream */
 extern "C"
 int kraken_gpu_memcpy_d2h_async(void* dst, const void* src, size_t size, void* stream) {
     cudaError_t err = cudaMemcpyAsync(dst, src, size, cudaMemcpyDeviceToHost,
@@ -110,9 +128,10 @@ int kraken_gpu_memcpy_d2h_async(void* dst, const void* src, size_t size, void* s
 }
 
 /**
- * Memory Pool Implementation
+ * kraken_gpu_memory_pool_create - Allocate and initialize a GPU memory pool
+ *
+ * Technique: Creates empty pool with zero-initialized tracking counters.
  */
-
 extern "C"
 KrakenGPUMemoryPool* kraken_gpu_memory_pool_create(void) {
     return new KrakenGPUMemoryPool{
@@ -124,6 +143,11 @@ KrakenGPUMemoryPool* kraken_gpu_memory_pool_create(void) {
     };
 }
 
+/**
+ * kraken_gpu_memory_pool_destroy - Free all pool allocations and destroy pool
+ *
+ * Technique: Iterates all tracked blocks, calls cudaFree on each, then deletes pool.
+ */
 extern "C"
 void kraken_gpu_memory_pool_destroy(KrakenGPUMemoryPool* pool) {
     if (pool == nullptr) {
@@ -140,6 +164,14 @@ void kraken_gpu_memory_pool_destroy(KrakenGPUMemoryPool* pool) {
     delete pool;
 }
 
+/**
+ * kraken_gpu_memory_pool_alloc - Allocate from pool with block reuse
+ *
+ * Technique: Thread-safe (mutex-locked). First scans existing freed blocks
+ * for one of sufficient size; if found, marks it in-use and returns its
+ * pointer (O(n) scan, first-fit). Otherwise calls cudaMalloc and adds
+ * the new block to the pool's tracking list.
+ */
 extern "C"
 void* kraken_gpu_memory_pool_alloc(KrakenGPUMemoryPool* pool, size_t size) {
     if (pool == nullptr) {
@@ -179,6 +211,12 @@ void* kraken_gpu_memory_pool_alloc(KrakenGPUMemoryPool* pool, size_t size) {
     return ptr;
 }
 
+/**
+ * kraken_gpu_memory_pool_free - Return allocation to pool for future reuse
+ *
+ * Technique: Thread-safe. Looks up pointer in hash map, marks block as not
+ * in-use (does NOT call cudaFree - block is retained for reuse).
+ */
 extern "C"
 void kraken_gpu_memory_pool_free(KrakenGPUMemoryPool* pool, void* ptr) {
     if (pool == nullptr || ptr == nullptr) {
@@ -205,6 +243,12 @@ void kraken_gpu_memory_pool_free(KrakenGPUMemoryPool* pool, void* ptr) {
     pool->total_in_use -= block.size;
 }
 
+/**
+ * kraken_gpu_memory_pool_stats - Query pool usage statistics
+ *
+ * Technique: Thread-safe read of total allocated bytes, in-use bytes,
+ * and number of allocation blocks.
+ */
 extern "C"
 void kraken_gpu_memory_pool_stats(KrakenGPUMemoryPool* pool,
                                    size_t* total_allocated,
